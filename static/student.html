@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robotics Execution Portal - Student Sandbox</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Monaco Editor CDN -->
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+    <!-- Three.js and OrbitControls for 3D Robot Visualizer -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="/static/ur3_visualizer.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white shadow-lg">UR</div>
+            <div>
+                <h1 class="text-base font-bold tracking-tight">Robotics Execution Portal</h1>
+                <p class="text-xs text-slate-400">Student Robotic Arm Sandbox &amp; Simulation</p>
+            </div>
+        </div>
+
+        <div class="flex items-center flex-wrap gap-3">
+            <!-- Documentation & Examples Link -->
+            <a href="https://sdurobotics.gitlab.io/ur_rtde" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition">
+                <span>📚 Docs</span>
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                </svg>
+            </a>
+
+            <!-- Live Robot Readiness Badge (Pings Robot) -->
+            <div id="connectionStatus" class="flex items-center space-x-2 text-xs text-rose-400 bg-rose-950/60 border border-rose-800 px-3 py-1.5 rounded-full transition-all">
+                <span id="pingDot" class="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span id="pingText">Checking Robot Ping...</span>
+            </div>
+
+            <!-- Student User Badge / Logout -->
+            <div id="userHeaderBadge" class="flex items-center space-x-2 bg-slate-850 border border-slate-700 px-3 py-1.5 rounded-lg text-xs shadow-inner">
+                <span class="text-slate-400">Student:</span>
+                <span id="loggedInStudentName" class="font-bold text-sky-400">Not Logged In</span>
+                <button onclick="logoutStudent()" title="Log out / Switch Student" class="text-[11px] text-slate-400 hover:text-rose-400 hover:underline ml-1 font-medium transition">
+                    (Log Out)
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-6 grid grid-cols-1 xl:grid-cols-12 gap-6">
+        
+        <!-- Left: Code Editor (7 cols) -->
+        <div class="xl:col-span-7 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
+            <!-- Program Name Header -->
+            <div class="p-4 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex-1 min-w-[220px]">
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+                        Program Name (Must be unique for your account)
+                    </label>
+                    <input id="programName" type="text" placeholder="e.g., Trajectory Routine v1" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition font-medium">
+                </div>
+                <!-- Save Status Indicator -->
+                <div id="saveToast" class="text-xs text-emerald-400 font-medium opacity-0 transition-opacity duration-300">
+                    ✓ Code Saved!
+                </div>
+            </div>
+
+            <!-- Editor Header -->
+            <div class="px-4 py-2 bg-slate-850/80 flex items-center justify-between border-b border-slate-800 text-xs text-slate-400">
+                <div class="flex items-center space-x-3">
+                    <span class="font-mono text-slate-300">main.py</span>
+                    <button onclick="resetEditorToDefault()" class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline">Reset to Template</button>
+                </div>
+                <span id="robotIpNotice">Target: Loading...</span>
+            </div>
+
+            <!-- Monaco Container -->
+            <div id="editorContainer" class="flex-1 min-h-[460px]"></div>
+
+            <!-- Robot Offline Notice Banner (Informational: student CAN send, but execution on arm waits for online) -->
+            <div id="robotOfflineNotice" class="hidden px-4 py-2 bg-amber-950/80 border-t border-amber-800 text-xs text-amber-300 flex items-center space-x-2 font-medium">
+                <span>⚠️</span>
+                <span><strong>Robot Currently Offline:</strong> You can still save and queue your code. Physical execution runs once the robot is online.</span>
+            </div>
+
+            <!-- Actions Bar -->
+            <div class="p-4 bg-slate-850 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center space-x-2">
+                    <!-- Save Code Button -->
+                    <button id="btnSave" onclick="saveCodeLocally()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow">
+                        <span>💾 Save Code</span>
+                    </button>
+                    
+                    <!-- My Saved Projects Button -->
+                    <button id="btnMyProjects" onclick="openMyProjectsModal()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow border border-sky-500/30">
+                        <span>📂 My Projects</span>
+                        <span id="myProjectsCountBadge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-sky-600 text-white">0</span>
+                    </button>
+
+                    <!-- Examples Dropdown Button -->
+                    <div class="relative inline-block text-left">
+                        <button id="btnExamples" onclick="toggleExamplesMenu(event)" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow border border-slate-700">
+                            <span>📚 Examples ▾</span>
+                        </button>
+                        <div id="examplesDropdown" class="hidden absolute left-0 bottom-full mb-2 w-80 max-w-sm bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-96">
+                            <div class="px-3 py-2 bg-slate-850 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                                <span id="examplesModalTitle">Lab Examples</span>
+                                <button onclick="fetchExamples(true)" class="text-blue-400 hover:underline text-[10px]">Refresh</button>
+                            </div>
+                            <div id="examplesListContainer" class="overflow-y-auto divide-y divide-slate-800 p-1">
+                                <div class="p-3 text-xs text-slate-500 text-center">Loading examples...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                    <!-- Check Syntax Button -->
+                    <button id="btnSyntax" onclick="checkSyntax()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg transition border border-slate-700 flex items-center space-x-1.5">
+                        <span>🔍 Check Syntax</span>
+                    </button>
+                    
+                    <!-- 3D Simulate Button -->
+                    <button id="btnSimulate" onclick="simulateCode()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center space-x-1.5">
+                        <span>🎮 Simulate in 3D</span>
+                    </button>
+
+                    <!-- Send for Execution Button -->
+                    <button id="btnSubmit" onclick="submitCode()" class="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5">
+                        <span>🚀 Send for Execution</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: 3D Visualizer & Execution Log (5 cols) -->
+        <div class="xl:col-span-5 flex flex-col gap-6">
+            
+            <!-- 3D Robot Arm Visualizer Panel -->
+            <div class="bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden flex flex-col h-72">
+                <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <span id="studentVisDot" class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
+                        <span id="studentVisTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">3D Simulation View</span>
+                    </div>
+                    <div class="flex items-center space-x-1.5">
+                        <button onclick="ur3Vis.setPhotoPose()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-sky-300 rounded transition">Photo</button>
+                        <button onclick="ur3Vis.setHomePose()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded transition">Home</button>
+                        <button onclick="ur3Vis.resetCamera()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded transition">Reset</button>
+                    </div>
+                </div>
+                <div id="ur3CanvasContainer" class="flex-1 relative bg-[#111622]">
+                    <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
+                        Joints: <span class="ur3AngleReadout text-sky-300">0° | -80° | 100° | -110° | -90° | 0°</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Execution Status & Live Log Terminal -->
+            <div class="flex-1 min-h-[300px] flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
+                <div class="px-4 py-2.5 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <span id="submissionStatus" class="text-xs font-bold uppercase tracking-wider text-slate-300">Execution Output</span>
+                        <span id="statusBadge" class="hidden text-[10px] font-semibold px-2 py-0.5 rounded-full">PENDING</span>
+                    </div>
+                    <button onclick="clearTerminal()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
+                </div>
+                <div id="terminal" class="flex-1 p-4 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
+Welcome to Robotics Execution Console.
+Write your Python script, click "Save Code", and click "Send for Execution" to queue for the robot.
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Student Projects History Modal -->
+    <div id="myProjectsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+            <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-850">
+                <div class="flex items-center space-x-2">
+                    <span class="text-lg">📂</span>
+                    <div>
+                        <h3 class="text-sm font-bold text-white">My Saved Projects &amp; Submissions</h3>
+                        <p class="text-[11px] text-slate-400">View your past routines or reload them into the editor</p>
+                    </div>
+                </div>
+                <button onclick="closeMyProjectsModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
+            </div>
+
+            <div class="p-4 overflow-y-auto flex-1 min-h-0 space-y-3" id="myProjectsListContainer">
+                <div class="p-6 text-xs text-slate-500 text-center">Loading your saved projects...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Student Authentication Modal (Login & Registration) -->
+    <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-5">
+            
+            <!-- Login Form -->
+            <div id="loginFormSection" class="space-y-4">
+                <div class="text-center space-y-1">
+                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 text-2xl mb-1">🤖</div>
+                    <h2 class="text-lg font-bold text-white">Student Lab Login</h2>
+                    <p class="text-xs text-slate-400">Select your student account and enter your password</p>
+                </div>
+
+                <div id="loginAlert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Select Student User</label>
+                    <select id="loginStudentSelect" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition">
+                        <option value="">-- Loading Approved Students --</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
+                    <input id="loginPassword" type="password" placeholder="Enter your password" onkeydown="if(event.key==='Enter') submitStudentLogin()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition">
+                </div>
+
+                <button id="btnLoginSubmit" onclick="submitStudentLogin()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center justify-center space-x-1.5">
+                    <span>Log In &amp; Enter Lab</span>
+                </button>
+
+                <div class="text-center pt-2 border-t border-slate-800">
+                    <button onclick="toggleAuthMode('register')" class="text-xs text-sky-400 hover:text-sky-300 font-medium">
+                        ➕ New Student? Create an Account
+                    </button>
+                </div>
+            </div>
+
+            <!-- Registration Form -->
+            <div id="registerFormSection" class="hidden space-y-4">
+                <div class="text-center space-y-1">
+                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 text-2xl mb-1">✍️</div>
+                    <h2 class="text-lg font-bold text-white">Student Registration</h2>
+                    <p class="text-xs text-slate-400">Register your student account for instructor approval</p>
+                </div>
+
+                <div id="registerAlert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Your Name / Username</label>
+                    <input id="regUsername" type="text" placeholder="e.g., Alice Smith" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Set Password</label>
+                    <input id="regPassword" type="password" placeholder="Minimum 4 characters" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Confirm Password</label>
+                    <input id="regConfirmPassword" type="password" placeholder="Re-enter password" onkeydown="if(event.key==='Enter') submitStudentRegister()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
+                </div>
+
+                <button id="btnRegisterSubmit" onclick="submitStudentRegister()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center justify-center space-x-1.5">
+                    <span>Create Account (Submit for Approval)</span>
+                </button>
+
+                <div class="text-center pt-2 border-t border-slate-800">
+                    <button onclick="toggleAuthMode('login')" class="text-xs text-slate-400 hover:text-white font-medium">
+                        &larr; Back to Login
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Monaco Loader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <script>
+        let editor;
+        let currentSubId = null;
+        let logSocket = null;
+        let isRobotReady = false;
+        let configuredIp = "10.0.10.60";
+        let currentRobotModel = "ur";
+        let ur3Vis = null;
+        let currentStudentUser = null;
+        let currentAuthToken = null;
+        let myProjectsData = [];
+
+        const STORAGE_CODE_KEY = "ur_student_code_v3";
+        const STORAGE_PROG_KEY = "ur_student_prog_name_v3";
+        const STORAGE_TOKEN_KEY = "ur_student_token";
+        const STORAGE_USER_KEY = "ur_student_user";
+
+        function buildDefaultCode(robotIp, model = 'ur') {
+            if (model === 'niryo') {
+                return `import time
+from pyniryo import NiryoRobot
+
+ROBOT_IP = "${robotIp}"
+robot = NiryoRobot(ROBOT_IP)
+robot.calibrate_auto()
+print("Niryo Ned arm calibrated and ready.")
+
+# Ready pose [j1, j2, j3, j4, j5, j6] (rad)
+ready_joints = [0.0, 0.5, -1.25, 0.0, 0.0, 0.0]
+robot.move_joints(ready_joints)
+time.sleep(0.5)
+
+# Move pose (Cartesian [x, y, z, roll, pitch, yaw])
+robot.move_pose([0.20, 0.0, 0.20, 0.0, 1.57, 0.0])
+time.sleep(1.0)
+
+# Return to sleep
+robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+robot.close_connection()
+print("Routine completed successfully!")
+`;
+            }
+
+            return `import numpy as np
+from rtde_control import RTDEControlInterface as RTDEControl
+from rtde_receive import RTDEReceiveInterface as RTDEReceive
+
+ROBOT_IP = "${robotIp}"
+rtde_c = RTDEControl(ROBOT_IP)
+rtde_r = RTDEReceive(ROBOT_IP)
+
+# Move to a safe home position using moveJ (joint space)
+# Arguments: joint positions [rad], speed [rad/s], acceleration [rad/s^2]
+home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+rtde_c.moveJ(home_q, 0.5, 0.5)
+
+# Read the TCP pose after arriving at home so moveL targets are always valid
+# Pose: [x, y, z, rx, ry, rz] in meters and axis-angle [rad]
+tcp_pose = rtde_r.getActualTCPPose()
+print("TCP pose at home:", [round(x, 3) for x in tcp_pose[:3]])
+
+# Move 15 cm down in Z using moveL (Cartesian linear move)
+# Arguments: pose, speed [m/s], acceleration [m/s^2]
+pose_down = tcp_pose[:]
+pose_down[2] -= 0.15
+rtde_c.moveL(pose_down, 0.25, 0.5)
+
+# Move 10 cm in X
+pose_side = pose_down[:]
+pose_side[0] += 0.10
+rtde_c.moveL(pose_side, 0.25, 0.5)
+
+# Return to home TCP pose
+rtde_c.moveL(tcp_pose, 0.25, 0.5)
+
+# Return to home joint configuration
+rtde_c.moveJ(home_q, 0.5, 0.5)
+
+rtde_c.stopScript()
+print("Routine completed successfully!")
+`;
+        }
+
+        // Initialize on DOM load
+        window.addEventListener("DOMContentLoaded", () => {
+            ur3Vis = new UR3Visualizer("ur3CanvasContainer");
+            
+            const savedName = localStorage.getItem(STORAGE_PROG_KEY);
+            if (savedName) {
+                document.getElementById("programName").value = savedName;
+            }
+
+            // Check student authentication
+            checkExistingAuth();
+        });
+
+        // ==========================================
+        // Authentication & User Management
+        // ==========================================
+
+        async function checkExistingAuth() {
+            const savedToken = localStorage.getItem(STORAGE_TOKEN_KEY);
+            const savedUser = localStorage.getItem(STORAGE_USER_KEY);
+
+            if (savedToken && savedUser) {
+                try {
+                    const res = await fetch('/api/auth/me', {
+                        headers: { 'Authorization': `Bearer ${savedToken}` }
+                    });
+                    const data = await res.json();
+                    if (data.authenticated && data.user) {
+                        currentAuthToken = savedToken;
+                        currentStudentUser = data.user;
+                        onStudentLoggedIn();
+                        return;
+                    }
+                } catch(e) {}
+            }
+
+            // Not authenticated -> show login modal and load approved students
+            showAuthModal();
+        }
+
+        function showAuthModal() {
+            document.getElementById("authModal").classList.remove("hidden");
+            toggleAuthMode("login");
+            fetchApprovedStudents();
+        }
+
+        function toggleAuthMode(mode) {
+            const loginSec = document.getElementById("loginFormSection");
+            const regSec = document.getElementById("registerFormSection");
+            clearAuthAlerts();
+
+            if (mode === "register") {
+                loginSec.classList.add("hidden");
+                regSec.classList.remove("hidden");
+                document.getElementById("regUsername").focus();
+            } else {
+                regSec.classList.add("hidden");
+                loginSec.classList.remove("hidden");
+                fetchApprovedStudents();
+            }
+        }
+
+        function clearAuthAlerts() {
+            const lAlert = document.getElementById("loginAlert");
+            const rAlert = document.getElementById("registerAlert");
+            if (lAlert) { lAlert.className = "hidden"; lAlert.innerText = ""; }
+            if (rAlert) { rAlert.className = "hidden"; rAlert.innerText = ""; }
+        }
+
+        function showAuthAlert(type, message, isError = true) {
+            const el = document.getElementById(type === "login" ? "loginAlert" : "registerAlert");
+            if (!el) return;
+            el.className = isError
+                ? "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-800 text-rose-300"
+                : "p-3 rounded-lg text-xs font-medium bg-emerald-950/80 border border-emerald-800 text-emerald-300";
+            el.innerText = message;
+            el.classList.remove("hidden");
+        }
+
+        async function fetchApprovedStudents() {
+            const sel = document.getElementById("loginStudentSelect");
+            sel.innerHTML = '<option value="">-- Loading Approved Students --</option>';
+
+            try {
+                const res = await fetch('/api/auth/students');
+                const data = await res.json();
+                const students = data.students || [];
+
+                if (students.length === 0) {
+                    sel.innerHTML = '<option value="">(No approved students yet — create an account)</option>';
+                    return;
+                }
+
+                sel.innerHTML = '<option value="">-- Select Your Name --</option>' +
+                    students.map(s => `<option value="${escapeHtml(s.username)}">${escapeHtml(s.username)}</option>`).join("");
+                
+                // Select previous username if known
+                if (currentStudentUser && currentStudentUser.username) {
+                    sel.value = currentStudentUser.username;
+                }
+            } catch (e) {
+                sel.innerHTML = '<option value="">Error loading students</option>';
+            }
+        }
+
+        async function submitStudentLogin() {
+            const username = document.getElementById("loginStudentSelect").value.trim();
+            const password = document.getElementById("loginPassword").value.trim();
+
+            if (!username) {
+                showAuthAlert("login", "Please select your student username from the dropdown.");
+                return;
+            }
+            if (!password) {
+                showAuthAlert("login", "Please enter your password.");
+                return;
+            }
+
+            const btn = document.getElementById("btnLoginSubmit");
+            btn.disabled = true;
+            btn.innerText = "Authenticating...";
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    showAuthAlert("login", data.detail || "Login failed.");
+                    btn.disabled = false;
+                    btn.innerText = "Log In & Enter Lab";
+                    return;
+                }
+
+                currentAuthToken = data.token;
+                currentStudentUser = data.user;
+                localStorage.setItem(STORAGE_TOKEN_KEY, currentAuthToken);
+                localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(currentStudentUser));
+
+                onStudentLoggedIn();
+            } catch (e) {
+                showAuthAlert("login", "Network error during login: " + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Log In & Enter Lab";
+            }
+        }
+
+        async function submitStudentRegister() {
+            const username = document.getElementById("regUsername").value.trim();
+            const password = document.getElementById("regPassword").value.trim();
+            const confirm = document.getElementById("regConfirmPassword").value.trim();
+
+            if (!username) {
+                showAuthAlert("register", "Please enter your username / name.");
+                return;
+            }
+            if (password.length < 4) {
+                showAuthAlert("register", "Password must be at least 4 characters.");
+                return;
+            }
+            if (password !== confirm) {
+                showAuthAlert("register", "Passwords do not match.");
+                return;
+            }
+
+            const btn = document.getElementById("btnRegisterSubmit");
+            btn.disabled = true;
+            btn.innerText = "Creating account...";
+
+            try {
+                const res = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    showAuthAlert("register", data.detail || "Registration failed.");
+                    btn.disabled = false;
+                    btn.innerText = "Create Account (Submit for Approval)";
+                    return;
+                }
+
+                showAuthAlert("register", `✓ Account "${username}" registered! Please ask your instructor to approve your account before logging in.`, false);
+                document.getElementById("regPassword").value = "";
+                document.getElementById("regConfirmPassword").value = "";
+                setTimeout(() => {
+                    toggleAuthMode("login");
+                }, 3000);
+            } catch (e) {
+                showAuthAlert("register", "Network error: " + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Create Account (Submit for Approval)";
+            }
+        }
+
+        function onStudentLoggedIn() {
+            document.getElementById("authModal").classList.add("hidden");
+            document.getElementById("loggedInStudentName").innerText = currentStudentUser.username;
+            appendStudentLog(`\n[AUTH] Logged in as student "${currentStudentUser.username}". Sandbox unlocked.\n`, false);
+            fetchStudentProjects();
+        }
+
+        function logoutStudent() {
+            if (currentAuthToken) {
+                fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${currentAuthToken}` }
+                }).catch(() => {});
+            }
+            currentAuthToken = null;
+            currentStudentUser = null;
+            localStorage.removeItem(STORAGE_TOKEN_KEY);
+            localStorage.removeItem(STORAGE_USER_KEY);
+            document.getElementById("loggedInStudentName").innerText = "Not Logged In";
+            showAuthModal();
+        }
+
+        // ==========================================
+        // Student Saved Projects History
+        // ==========================================
+
+        async function fetchStudentProjects() {
+            if (!currentStudentUser) return;
+            try {
+                const res = await fetch(`/api/student/projects?student_name=${encodeURIComponent(currentStudentUser.username)}`, {
+                    headers: { 'Authorization': `Bearer ${currentAuthToken}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                myProjectsData = data.projects || [];
+                
+                const badge = document.getElementById("myProjectsCountBadge");
+                if (badge) {
+                    if (myProjectsData.length > 0) {
+                        badge.innerText = myProjectsData.length;
+                        badge.classList.remove("hidden");
+                    } else {
+                        badge.classList.add("hidden");
+                    }
+                }
+                renderMyProjectsList(myProjectsData);
+            } catch (e) {
+                console.error("Failed to fetch student projects:", e);
+            }
+        }
+
+        function openMyProjectsModal() {
+            document.getElementById("myProjectsModal").classList.remove("hidden");
+            fetchStudentProjects();
+        }
+
+        function closeMyProjectsModal() {
+            document.getElementById("myProjectsModal").classList.add("hidden");
+        }
+
+        function renderMyProjectsList(projects) {
+            const container = document.getElementById("myProjectsListContainer");
+            if (!container) return;
+
+            if (!projects || projects.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center bg-slate-950/40 rounded-xl border border-slate-800 space-y-2">
+                        <div class="text-3xl">📭</div>
+                        <div class="text-xs font-bold text-slate-300">No Saved Projects Found</div>
+                        <p class="text-[11px] text-slate-500">When you send a program for execution, it is automatically saved in your personal project history.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = projects.map(p => {
+                const dateStr = new Date(p.submitted_at).toLocaleString();
+                const statusColors = {
+                    pending: "bg-amber-500/20 text-amber-400 border border-amber-500/40",
+                    running: "bg-blue-500/20 text-blue-400 border border-blue-500/40 animate-pulse",
+                    completed: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40",
+                    failed: "bg-rose-500/20 text-rose-400 border border-rose-500/40",
+                    aborted: "bg-red-600 text-white font-bold",
+                    rejected: "bg-slate-700 text-slate-300"
+                };
+                const badge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${statusColors[p.status] || 'bg-slate-700'}">${p.status}</span>`;
+                const codeSnippet = p.code ? p.code.split('\n').slice(0, 3).join('\n') : '';
+
+                return `
+                    <div class="p-3.5 bg-slate-850 hover:bg-slate-800/80 rounded-xl border border-slate-800 transition flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs font-bold text-white">${escapeHtml(p.task_id)}</span>
+                                ${badge}
+                                <span class="text-[10px] text-slate-500 font-mono">#${p.id}</span>
+                            </div>
+                            <div class="text-[11px] text-slate-400 mt-0.5">Submitted: ${dateStr}</div>
+                            <pre class="text-[10px] text-slate-400 font-mono bg-slate-950/60 p-2 rounded mt-2 overflow-x-auto border border-slate-800 max-h-16">${escapeHtml(codeSnippet)}</pre>
+                        </div>
+                        <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                            <button onclick="loadProjectIntoEditor(${p.id})" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
+                                <span>📋 Open in Editor</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function loadProjectIntoEditor(id) {
+            const proj = myProjectsData.find(p => p.id === id);
+            if (!proj) return;
+            if (confirm(`Load project "${proj.task_id}" into editor? This replaces current editor code.`)) {
+                editor.setValue(proj.code);
+                document.getElementById("programName").value = proj.task_id;
+                saveCodeLocally();
+                closeMyProjectsModal();
+                appendStudentLog(`\n[PROJECTS] Loaded project #${proj.id} ("${proj.task_id}") into editor.\n`);
+            }
+        }
+
+        // ==========================================
+        // Monaco Editor Setup
+        // ==========================================
+
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+        require(['vs/editor/editor.main'], async function () {
+            try {
+                const confRes = await fetch('/api/config');
+                const confData = await confRes.json();
+                configuredIp = confData.robot_ip;
+                currentRobotModel = confData.robot_model || 'ur';
+                if (ur3Vis) {
+                    ur3Vis.setRobotModel(currentRobotModel);
+                }
+                updateTargetNotice();
+            } catch (e) {
+                console.error("Config fetch error:", e);
+            }
+
+            let savedCode = localStorage.getItem(STORAGE_CODE_KEY);
+            const initialCode = savedCode || buildDefaultCode(configuredIp, currentRobotModel);
+
+            editor = monaco.editor.create(document.getElementById('editorContainer'), {
+                value: initialCode,
+                language: 'python',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: false },
+                fontSize: 13,
+                fontFamily: "Fira Code, Menlo, Monaco, Consolas, monospace",
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+                tabSize: 4
+            });
+
+            editor.onDidChangeModelContent(() => {
+                const code = editor.getValue();
+                localStorage.setItem(STORAGE_CODE_KEY, code);
+            });
+
+            document.getElementById("programName").addEventListener("input", (e) => {
+                localStorage.setItem(STORAGE_PROG_KEY, e.target.value);
+            });
+
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
+                saveCodeLocally();
+            });
+
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function() {
+                submitCode();
+            });
+
+            checkRobotStatus();
+            fetchExamples();
+            setInterval(checkRobotStatus, 3000);
+        });
+
+        function updateTargetNotice() {
+            const modelLabel = (currentRobotModel === 'niryo') ? 'Niryo Ned' : 'UR3 Arm';
+            const notice = document.getElementById("robotIpNotice");
+            if (notice) notice.innerText = `Target: ${modelLabel} (${configuredIp})`;
+
+            const visTitle = document.getElementById("studentVisTitle");
+            const visDot = document.getElementById("studentVisDot");
+            if (visTitle) visTitle.innerText = `3D Simulator (${modelLabel})`;
+            if (visDot) visDot.className = (currentRobotModel === 'niryo') ? "w-2.5 h-2.5 rounded-full bg-cyan-400" : "w-2.5 h-2.5 rounded-full bg-sky-400";
+
+            const exTitle = document.getElementById("examplesModalTitle");
+            if (exTitle) exTitle.innerText = `Lab Examples (${modelLabel})`;
+        }
+
+        function resetEditorToDefault() {
+            if (confirm("Reset editor to default starting template? Any unsaved edits will be lost.")) {
+                editor.setValue(buildDefaultCode(configuredIp, currentRobotModel));
+                saveCodeLocally();
+            }
+        }
+
+        function saveCodeLocally() {
+            const code = editor.getValue();
+            const progName = document.getElementById("programName").value;
+            localStorage.setItem(STORAGE_CODE_KEY, code);
+            localStorage.setItem(STORAGE_PROG_KEY, progName);
+            
+            const toast = document.getElementById("saveToast");
+            toast.style.opacity = '1';
+            setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+        }
+
+        async function checkRobotStatus() {
+            const statusDiv = document.getElementById("connectionStatus");
+            const pingDot = document.getElementById("pingDot");
+            const pingText = document.getElementById("pingText");
+            const notice = document.getElementById("robotOfflineNotice");
+
+            try {
+                const res = await fetch('/api/robot-status');
+                const data = await res.json();
+                isRobotReady = data.is_ready;
+                configuredIp = data.ip;
+                const model = data.robot_model || 'ur';
+                if (currentRobotModel !== model) {
+                    currentRobotModel = model;
+                    if (ur3Vis) ur3Vis.setRobotModel(model);
+                    fetchExamples();
+                }
+                updateTargetNotice();
+
+                const modelLabel = (model === 'niryo') ? 'Niryo Ned' : 'UR3 Arm';
+
+                if (isRobotReady) {
+                    statusDiv.className = "flex items-center space-x-2 text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-3 py-1.5 rounded-full transition-all";
+                    pingDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+                    pingText.innerText = `${modelLabel} Ready (${data.ip})`;
+                    notice.classList.add("hidden");
+                } else {
+                    statusDiv.className = "flex items-center space-x-2 text-xs text-rose-400 bg-rose-950/60 border border-rose-800 px-3 py-1.5 rounded-full transition-all";
+                    pingDot.className = "w-2 h-2 rounded-full bg-rose-500";
+                    pingText.innerText = `${modelLabel} Offline (${data.ip} - No Ping)`;
+                    notice.classList.remove("hidden");
+                }
+            } catch (err) {
+                isRobotReady = false;
+                statusDiv.className = "flex items-center space-x-2 text-xs text-rose-400 bg-rose-950/60 border border-rose-800 px-3 py-1.5 rounded-full transition-all";
+                pingDot.className = "w-2 h-2 rounded-full bg-rose-500";
+                pingText.innerText = "Server Disconnected";
+                notice.classList.remove("hidden");
+            }
+        }
+
+        async function checkSyntax() {
+            const code = editor.getValue();
+            const btn = document.getElementById("btnSyntax");
+            btn.disabled = true;
+            btn.innerHTML = "<span>⏳ Checking...</span>";
+
+            try {
+                const res = await fetch('/api/check-syntax', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+                const data = await res.json();
+                
+                clearTerminal();
+                if (data.valid) {
+                    appendStudentLog("✓ SYNTAX & SAFETY CHECK PASSED!\nNo hazardous OS / system calls detected.\nYour code is ready for simulation and execution.\n");
+                } else {
+                    appendStudentLog("✗ SYNTAX OR SAFETY VIOLATIONS DETECTED:\n" + data.errors.map(e => " - " + e).join("\n") + "\n\nPlease correct these issues before submitting.\n");
+                }
+            } catch (err) {
+                appendStudentLog("[ERROR] Failed to contact server for syntax check: " + err.message + "\n");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "<span>🔍 Check Syntax</span>";
+            }
+        }
+
+        async function simulateCode() {
+            const code = editor.getValue();
+            if (!code.trim()) {
+                alert("Please write or paste code first.");
+                return;
+            }
+
+            const btn = document.getElementById("btnSimulate");
+            btn.disabled = true;
+            btn.innerHTML = "<span>⏳ Simulating...</span>";
+
+            try {
+                const res = await fetch('/api/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+
+                const data = await res.json();
+                if (!res.ok || data.success === false) {
+                    clearTerminal();
+                    const errMsg = data.error || (data.errors ? data.errors.join("\n") : data.detail) || "Simulation failed";
+                    appendStudentLog("✗ SIMULATION ERROR:\n" + errMsg + "\n");
+                    return;
+                }
+
+                // Auto-switch visualizer if robot model detected in code
+                if (data.robot_model && ur3Vis && ur3Vis.currentModel !== data.robot_model) {
+                    ur3Vis.setRobotModel(data.robot_model);
+                }
+
+                clearTerminal();
+                const modelName = (data.robot_model === 'niryo') ? 'Niryo Ned' : 'UR3';
+                appendStudentLog(`=== 3D TRAJECTORY SIMULATION (${modelName}) ===\n`);
+                if (data.logs && data.logs.length > 0) {
+                    appendStudentLog(data.logs.join("\n") + "\n\n");
+                }
+                appendStudentLog(`Trajectory: ${data.waypoints.length} waypoints computed.\nPlaying smooth animation in 3D simulator...\n`);
+
+                if (ur3Vis && data.waypoints && data.waypoints.length > 0) {
+                    ur3Vis.playTrajectory(
+                        data.waypoints,
+                        (wp, idx, total) => {
+                            if (wp.is_final) {
+                                appendStudentLog(`[STEP ${idx}/${total}] ${wp.label}\n`, true);
+                            }
+                        },
+                        () => {
+                            appendStudentLog("✓ 3D Trajectory playback complete!\n");
+                        }
+                    );
+                } else {
+                    appendStudentLog("[INFO] Routine completed (no motion waypoints commanded).\n");
+                }
+            } catch (err) {
+                appendStudentLog("[ERROR] Simulation call failed: " + err.message + "\n");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "<span>🎮 Simulate in 3D</span>";
+            }
+        }
+
+        async function submitCode() {
+            if (!currentStudentUser) {
+                showAuthModal();
+                return;
+            }
+
+            const programName = document.getElementById("programName").value.trim();
+            const code = editor.getValue();
+
+            if (!programName) {
+                alert("Please enter a Program Name (Execution Name).");
+                document.getElementById("programName").focus();
+                return;
+            }
+
+            saveCodeLocally();
+
+            const btn = document.getElementById("btnSubmit");
+            btn.disabled = true;
+            btn.innerText = "Sending...";
+
+            try {
+                const response = await fetch('/api/submit', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAuthToken}`
+                    },
+                    body: JSON.stringify({ 
+                        student_name: currentStudentUser.username,
+                        program_name: programName, 
+                        task_id: programName, 
+                        code 
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    alert("Submission Blocked: " + (data.errors ? data.errors.join("\n") : data.detail));
+                    return;
+                }
+
+                currentSubId = data.submission_id;
+                document.getElementById("submissionStatus").innerText = `Execution #${currentSubId}: ${programName} (${currentStudentUser.username})`;
+                updateBadge("pending");
+                clearTerminal();
+                
+                const offlineHint = !isRobotReady ? " (NOTE: Robot is offline; program will execute once physical robot is ready)" : "";
+                appendStudentLog(`[INFO] Program "${programName}" submitted by ${currentStudentUser.username} as #${currentSubId}${offlineHint}. Awaiting instructor approval...\n`, false);
+                connectLogStream(currentSubId);
+
+                // Animate routine in 3D visualizer immediately upon submission
+                fetch('/api/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                }).then(r => r.json()).then(simData => {
+                    if (simData.success && simData.waypoints && simData.waypoints.length > 0 && ur3Vis) {
+                        if (simData.robot_model && simData.robot_model !== ur3Vis.currentModel) {
+                            ur3Vis.setRobotModel(simData.robot_model);
+                        }
+                        ur3Vis.playTrajectory(simData.waypoints);
+                    }
+                }).catch(err => console.warn("Background simulation animation error:", err));
+
+                // Refresh saved projects list
+                fetchStudentProjects();
+            } catch (err) {
+                alert("Error sending for execution: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "<span>🚀 Send for Execution</span>";
+            }
+        }
+
+        function updateBadge(status) {
+            const badge = document.getElementById("statusBadge");
+            badge.classList.remove("hidden");
+            const colors = {
+                pending: "bg-amber-500/20 text-amber-400 border border-amber-500/40",
+                running: "bg-blue-500/20 text-blue-400 border border-blue-500/40 animate-pulse",
+                completed: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40",
+                failed: "bg-rose-500/20 text-rose-400 border border-rose-500/40",
+                aborted: "bg-red-600 text-white font-bold",
+                rejected: "bg-slate-700 text-slate-300"
+            };
+            badge.className = `text-[10px] font-semibold px-2 py-0.5 rounded-full ${colors[status] || "bg-slate-700"}`;
+            badge.innerText = status.toUpperCase();
+        }
+
+        function clearTerminal() {
+            document.getElementById("terminal").innerText = "";
+        }
+
+        function appendStudentLog(text, autoScroll = true) {
+            const t = document.getElementById("terminal");
+            t.innerText += text;
+            if (autoScroll) {
+                t.scrollTop = t.scrollHeight;
+            }
+        }
+
+        function connectLogStream(subId) {
+            if (logSocket) {
+                logSocket.close();
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/logs/${subId}`;
+            logSocket = new WebSocket(wsUrl);
+
+            logSocket.onopen = () => {
+                appendStudentLog(`[WEBSOCKET] Connected to real-time log channel for execution #${subId}.\n`, false);
+            };
+
+            logSocket.onmessage = (event) => {
+                appendStudentLog(event.data);
+                if (event.data.includes("[COMPLETED]")) updateBadge("completed");
+                if (event.data.includes("[FAILED]")) updateBadge("failed");
+                if (event.data.includes("[ABORTED]")) updateBadge("aborted");
+            };
+
+            logSocket.onclose = () => {
+                appendStudentLog(`\n[WEBSOCKET] Log stream closed.\n`);
+            };
+        }
+
+        // ==========================================
+        // Lab Examples Dropdown (Model-Aware)
+        // ==========================================
+
+        function toggleExamplesMenu(event) {
+            event.stopPropagation();
+            const dd = document.getElementById("examplesDropdown");
+            dd.classList.toggle("hidden");
+        }
+
+        window.addEventListener("click", () => {
+            const dd = document.getElementById("examplesDropdown");
+            if (dd && !dd.classList.contains("hidden")) {
+                dd.classList.add("hidden");
+            }
+        });
+
+        async function fetchExamples(forceAlert = false) {
+            try {
+                const res = await fetch(`/api/examples?model=${currentRobotModel}`);
+                const data = await res.json();
+                renderExamplesList(data.examples || [], data.robot_model || currentRobotModel);
+                if (forceAlert) {
+                    const modelName = (data.robot_model === 'niryo') ? 'Niryo Ned' : 'UR3';
+                    appendStudentLog(`[INFO] Examples refreshed for ${modelName}.\n`);
+                }
+            } catch (e) {
+                console.error("Failed to load examples:", e);
+            }
+        }
+
+        function renderExamplesList(examples, model) {
+            const container = document.getElementById("examplesListContainer");
+            if (!container) return;
+
+            if (examples.length === 0) {
+                container.innerHTML = `<div class="p-3 text-xs text-slate-500 text-center">No examples available for ${model === 'niryo' ? 'Niryo Ned' : 'UR3'}.</div>`;
+                return;
+            }
+
+            container.innerHTML = examples.map(ex => `
+                <div class="p-2.5 hover:bg-slate-800 rounded-lg transition cursor-pointer flex items-center justify-between gap-2 group" onclick="loadExampleCode(${ex.id})">
+                    <div class="flex-1 min-w-0">
+                        <div class="text-xs font-bold text-slate-200 group-hover:text-blue-400 transition truncate">${escapeHtml(ex.title)}</div>
+                        <div class="text-[11px] text-slate-400 truncate mt-0.5">${escapeHtml(ex.description || "(No description)")}</div>
+                    </div>
+                    <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition font-medium">Load</span>
+                </div>
+            `).join("");
+        }
+
+        async function loadExampleCode(exampleId) {
+            try {
+                const res = await fetch(`/api/examples/${exampleId}`);
+                const ex = await res.json();
+                if (ex && ex.code) {
+                    if (confirm(`Load example "${ex.title}" into editor? This replaces current editor code.`)) {
+                        editor.setValue(ex.code);
+                        saveCodeLocally();
+                        appendStudentLog(`[INFO] Loaded example: ${ex.title}\n`);
+                        const dd = document.getElementById("examplesDropdown");
+                        if (dd) dd.classList.add("hidden");
+                    }
+                }
+            } catch (e) {
+                alert("Failed to load example: " + e.message);
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>

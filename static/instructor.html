@@ -1,0 +1,2230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UR Robotics Lab - Execution Dispatcher</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Monaco Editor CDN for Read-only preview -->
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+    <!-- Three.js and OrbitControls for 3D UR3 Visualizer -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="/static/ur3_visualizer.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+    <!-- Top Navigation / Physical Safety Control Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-2xl">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-lg text-sm tracking-wider">EXEC</div>
+            <div>
+                <h1 class="text-base font-bold tracking-tight">Robot Execution Dispatcher</h1>
+                <p class="text-xs text-slate-400">Universal Robots Real-time Safety &amp; Execution Supervisor</p>
+            </div>
+        </div>
+
+        <!-- Robot Configuration & Physical Controls -->
+        <div class="flex items-center flex-wrap gap-3">
+            
+            <!-- Robot Model Switcher (UR Arm / Niryo One) -->
+            <div class="flex items-center space-x-1 bg-slate-900 border border-slate-700 p-1 rounded-lg shadow-inner">
+                <button id="btnModelUR" onclick="selectRobotModel('ur')" class="px-2.5 py-1 text-xs font-bold rounded-md bg-indigo-600 text-white shadow transition flex items-center space-x-1">
+                    <span class="w-2 h-2 rounded-full bg-sky-300 mr-1"></span>
+                    <span>UR Arm</span>
+                </button>
+                <button id="btnModelNiryo" onclick="selectRobotModel('niryo')" class="px-2.5 py-1 text-xs font-bold rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400 mr-1 opacity-60"></span>
+                    <span>Niryo One</span>
+                </button>
+            </div>
+
+            <!-- Distinct IP Input for Active Robot Model -->
+            <div class="flex items-center space-x-2 bg-slate-850 border border-slate-700 px-3 py-1.5 rounded-lg shadow-inner">
+                <label id="lblRobotIp" for="inputRobotIp" class="text-xs font-semibold text-slate-400">UR IP:</label>
+                <input id="inputRobotIp" type="text" placeholder="10.0.10.60" oninput="this.dataset.dirty='true'" onkeydown="if(event.key==='Enter') saveRobotConfig()" class="bg-slate-900 border border-slate-600 rounded px-2.5 py-0.5 text-xs text-white w-32 focus:outline-none focus:border-indigo-500 font-mono transition">
+                <button id="btnSaveIp" onclick="saveRobotConfig()" class="px-2.5 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded shadow transition flex items-center space-x-1">
+                    <span>Save IP</span>
+                </button>
+            </div>
+
+            <!-- Ping / Reachability Badge (NEVER IDLE IF OFFLINE) -->
+            <div id="robotStatusBadge" class="flex items-center space-x-2 text-xs bg-rose-950/60 border border-rose-800 text-rose-400 px-3 py-1.5 rounded-lg transition-all">
+                <span id="robotStatusDot" class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                <span id="robotStatusText" class="font-bold">ROBOT OFFLINE (NO PING)</span>
+            </div>
+
+            <!-- Create & Send Code Button -->
+            <button onclick="activateCodeCreator()" class="px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center space-x-1.5">
+                <span>✍️ Create &amp; Send Code</span>
+            </button>
+
+            <!-- Upload / Manage Examples Button -->
+            <button onclick="openExampleModal()" class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-600 text-white text-xs font-semibold rounded-lg shadow transition flex items-center space-x-1.5">
+                <span>📚 Manage Examples</span>
+            </button>
+
+            <!-- Manage Users & Approvals Button -->
+            <button onclick="openUsersModal()" class="relative px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 shadow transition flex items-center space-x-1.5">
+                <span>👥 Users</span>
+                <span id="pendingUsersBadge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-rose-500 text-white animate-pulse">0</span>
+            </button>
+
+            <!-- Clear Queue -->
+            <button onclick="clearQueue()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 transition">
+                Clear Pending
+            </button>
+
+            <!-- Log Out -->
+            <button onclick="logoutAdmin()" class="px-2.5 py-1.5 bg-slate-850 hover:bg-rose-950 text-slate-400 hover:text-rose-400 text-xs font-semibold rounded-lg border border-slate-700 hover:border-rose-800 transition flex items-center space-x-1">
+                <span>🔒 Log Out</span>
+            </button>
+
+            <!-- Physical Emergency Stop / Abort Button -->
+            <button onclick="abortRobot()" class="px-5 py-2 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-xs font-extrabold tracking-wider uppercase rounded-lg shadow-lg shadow-red-600/30 flex items-center space-x-2 transition animate-pulse">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 4.243a9 9 0 01-12.728 0m0 0l2.829-2.829m-2.829 2.829L3 21m2.829-5.464a5 5 0 010-7.072m0 0l2.829 2.829"></path>
+                </svg>
+                <span>EMERGENCY ABORT</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 p-6 grid grid-cols-1 xl:grid-cols-12 gap-6">
+
+        <!-- Left: Queue & Submissions List (5 cols) -->
+        <div class="xl:col-span-5 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+                <div>
+                    <h2 class="text-sm font-bold text-slate-200">Execution Queue</h2>
+                    <p class="text-xs text-slate-400">Select a program to inspect code, simulate, &amp; execute</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="activateCodeCreator()" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow transition flex items-center space-x-1">
+                        <span>+ New Script</span>
+                    </button>
+                    <button onclick="clearAllSubmissions()" class="text-xs text-rose-400 hover:text-rose-300 hover:underline">Clear All</button>
+                    <span class="text-slate-600">|</span>
+                    <button onclick="fetchSubmissions()" class="text-xs text-blue-400 hover:underline">Refresh</button>
+                </div>
+            </div>
+
+            <!-- Table of submissions -->
+            <div class="flex-1 overflow-y-auto max-h-[calc(100vh-200px)]">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-850 text-slate-400 uppercase tracking-wider font-semibold sticky top-0">
+                        <tr>
+                            <th class="p-3">#</th>
+                            <th class="p-3">Program Name</th>
+                            <th class="p-3">Student</th>
+                            <th class="p-3">Status</th>
+                            <th class="p-3">Time</th>
+                            <th class="p-3 text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="submissionsTable" class="divide-y divide-slate-800">
+                        <tr><td colspan="5" class="p-4 text-center text-slate-500">Loading queue...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Right: Code Inspection, 3D Simulator, & Telemetry Console (7 cols) -->
+        <div class="xl:col-span-7 flex flex-col space-y-6">
+
+            <!-- Code Inspector & Creator Card -->
+            <div class="flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
+                
+                <!-- Inspector Header (Active when inspecting a submission or example) -->
+                <div id="inspectorHeader" class="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-850">
+                    <div>
+                        <h3 id="inspectTitle" class="text-sm font-bold text-slate-200">No Program Selected</h3>
+                        <p id="inspectSub" class="text-xs text-slate-400">Select a program from the execution queue or click "Create &amp; Send Code"</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <!-- Quick New Button when empty -->
+                        <button id="btnQuickCreate" onclick="activateCodeCreator()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
+                            <span>✍️ Create Code</span>
+                        </button>
+                        <div id="inspectorActions" class="hidden flex items-center space-x-2">
+                            <!-- Edit / Clone in Creator Button -->
+                            <button id="btnEditClone" onclick="editCurrentInCreator()" title="Edit or clone this script in code studio" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                                <span>✏️ Edit / Clone</span>
+                            </button>
+                            <!-- Save as Example Button -->
+                            <button id="btnSaveAsExample" onclick="saveCurrentAsExample()" title="Save code as shared lab example" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                                <span>⭐ Save as Example</span>
+                            </button>
+                            <!-- Delete Program Button -->
+                            <button id="btnDelete" onclick="deleteSelected()" class="px-3 py-1.5 bg-slate-800 hover:bg-rose-950/80 hover:border-rose-700 text-slate-400 hover:text-rose-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                                <span>🗑️ Delete</span>
+                            </button>
+                            <button id="btnReject" onclick="rejectSelected()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-rose-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
+                                Reject
+                            </button>
+                            <!-- Simulate in 3D Button -->
+                            <button id="btnSimulateAdmin" onclick="simulateSelected()" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center space-x-1.5 cursor-pointer">
+                                <span>🎮 Simulate in 3D</span>
+                            </button>
+                            <!-- Execute Button: Disabled if Robot is Offline -->
+                            <button id="btnApprove" onclick="approveSelected()" class="px-5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center space-x-1.5">
+                                <span>▶ Execute on Robot</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Code Creator Header (Active when creating / drafting code) -->
+                <div id="creatorHeader" class="hidden p-3.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900">
+                    <div class="flex items-center flex-wrap gap-2.5">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 uppercase tracking-wider flex items-center space-x-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse mr-1"></span>
+                            <span>Code Studio</span>
+                        </span>
+                        <div class="flex items-center space-x-1.5">
+                            <label for="creatorProgName" class="text-xs font-semibold text-slate-400">Name:</label>
+                            <input id="creatorProgName" type="text" placeholder="e.g., Admin Routine" value="Admin Routine" oninput="saveCreatorDraftLocally()" class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium w-44 transition">
+                        </div>
+                    </div>
+
+                    <!-- Creator Action Toolbar -->
+                    <div class="flex items-center flex-wrap gap-2">
+                        <!-- Templates Dropdown -->
+                        <div class="relative inline-block text-left">
+                            <button id="btnCreatorTemplates" onclick="toggleCreatorTemplatesMenu(event)" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
+                                <span>📋 Templates ▾</span>
+                            </button>
+                            <div id="creatorTemplatesDropdown" class="hidden absolute right-0 mt-1 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
+                                <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-indigo-400 uppercase">UR Arm Presets (RTDE)</div>
+                                <div class="py-1 text-xs">
+                                    <button onclick="loadCreatorTemplate('default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">📄 Default UR_RTDE Script</button>
+                                    <button onclick="loadCreatorTemplate('cartesian')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">1. Cartesian Probe (moveJ + moveL)</button>
+                                    <button onclick="loadCreatorTemplate('square')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">2. Square Contour Path</button>
+                                    <button onclick="loadCreatorTemplate('joint')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">3. Joint Articulation (moveJ)</button>
+                                    <button onclick="loadCreatorTemplate('gripper')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">4. Gripper / Digital Output</button>
+                                </div>
+                                <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-cyan-400 uppercase">Niryo One Presets (pyniryo)</div>
+                                <div class="py-1 text-xs">
+                                    <button onclick="loadCreatorTemplate('niryo_default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">🤖 Default Niryo Routine</button>
+                                    <button onclick="loadCreatorTemplate('niryo_pick')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">1. Niryo Pick &amp; Place</button>
+                                    <button onclick="loadCreatorTemplate('niryo_joint')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">2. Niryo Joint Articulation</button>
+                                    <button onclick="loadCreatorTemplate('niryo_gripper')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">3. Niryo Gripper Tool Test</button>
+                                </div>
+                                <div class="p-1 bg-slate-850">
+                                    <button onclick="openExampleModal()" class="w-full text-center px-2 py-1 text-[11px] text-indigo-300 hover:underline font-medium">Browse All Examples &rarr;</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Import .py file -->
+                        <input type="file" id="creatorFileInput" accept=".py" class="hidden" onchange="handleCreatorFileImport(event)">
+                        <button onclick="document.getElementById('creatorFileInput').click()" title="Import local .py file" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                            <span>📁 Import</span>
+                        </button>
+
+                        <!-- Check Syntax -->
+                        <button onclick="checkCreatorSyntax()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                            <span>🔍 Check</span>
+                        </button>
+
+                        <!-- Simulate in 3D -->
+                        <button id="btnSimulateCreator" onclick="simulateCreatorCode()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
+                            <span>🎮 Simulate</span>
+                        </button>
+
+                        <!-- Send to Queue -->
+                        <button id="btnSendQueue" onclick="sendCreatorCode(false)" title="Add to execution queue as pending" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 text-xs font-bold rounded-lg border border-sky-500/30 transition flex items-center space-x-1 shadow">
+                            <span>📥 Send to Queue</span>
+                        </button>
+
+                        <!-- Send & Execute Now -->
+                        <button id="btnSendExecute" onclick="sendCreatorCode(true)" title="Send and immediately run on physical robot" class="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center space-x-1.5">
+                            <span>🚀 Send &amp; Execute</span>
+                        </button>
+
+                        <!-- Toggle Editor Expand -->
+                        <button id="btnToggleExpand" onclick="toggleEditorExpand()" title="Toggle taller editor height" class="p-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 text-xs transition">
+                            <span>⛶</span>
+                        </button>
+
+                        <!-- Close / Exit Creator Mode -->
+                        <button onclick="exitCodeCreator()" title="Exit code studio" class="p-1.5 px-2.5 bg-slate-800 hover:bg-rose-900/60 text-slate-400 hover:text-rose-300 rounded-lg border border-slate-700 text-xs font-bold transition">
+                            ✕
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Syntax / Status Banner in Creator Mode -->
+                <div id="creatorStatusBanner" class="hidden px-4 py-2 text-xs font-mono border-b border-slate-800 flex items-center justify-between">
+                    <span id="creatorStatusText"></span>
+                    <button onclick="document.getElementById('creatorStatusBanner').classList.add('hidden')" class="text-slate-500 hover:text-white font-bold ml-2">&times;</button>
+                </div>
+
+                <!-- Monaco Code Viewer Container -->
+                <div id="inspectEditorContainer" class="min-h-[260px] max-h-[340px] transition-all duration-200"></div>
+            </div>
+
+            <!-- Lower Row: 3D UR3 Visualizer & Live Terminal Side-by-Side -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <!-- 3D Robot Visualizer (UR3 matching photo) -->
+                <div class="bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden flex flex-col h-72">
+                    <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span id="visModelDot" class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
+                            <span id="visModelTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">3D Simulator (UR3)</span>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <button onclick="adminUr3Vis.setPhotoPose()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-sky-300 rounded transition">Photo</button>
+                            <button onclick="adminUr3Vis.setHomePose()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Home</button>
+                            <button onclick="adminUr3Vis.resetCamera()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Reset</button>
+                        </div>
+                    </div>
+                    <div id="adminUr3CanvasContainer" class="flex-1 relative bg-[#181e29]">
+                        <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
+                            Joints: <span class="ur3AngleReadout text-sky-300">0° | -80° | 100° | -110° | -90° | 0°</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Execution Live Terminal -->
+                <div class="h-72 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
+                    <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Terminal</span>
+                            <!-- View / Filter Modes -->
+                            <div class="inline-flex rounded-lg bg-slate-800 p-0.5 border border-slate-700 text-[11px]">
+                                <button id="termTabAll" onclick="setTerminalFilter('all')" class="px-2 py-0.5 rounded font-medium bg-blue-600 text-white transition">All</button>
+                                <button id="termTabPrints" onclick="setTerminalFilter('prints')" class="px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition flex items-center space-x-1">
+                                    <span>💬 Printf Output</span>
+                                    <span id="printCountBadge" class="hidden ml-1 px-1 bg-sky-500/20 text-sky-300 rounded text-[9px]">0</span>
+                                </button>
+                                <button id="termTabCodePrints" onclick="scanCodePrintCommands()" class="px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition flex items-center space-x-1">
+                                    <span>🔍 Printf in Code</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="clearAdminTerminal()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
+                        </div>
+                    </div>
+                    <div id="adminTerminal" class="flex-1 p-3 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
+[Supervisor] Ready. Select a program and click 'Simulate in 3D' or 'Execute on Robot'.
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Monaco Loader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <script>
+        let viewer;
+        let selectedSubId = null;
+        let activeLogSocket = null;
+        let submissionsList = [];
+        let isRobotReady = false;
+        let isExecuting = false;
+        let activeSubId = null;
+        let activeRobotModel = 'ur'; // 'ur' | 'niryo'
+        let urIp = '10.0.10.60';
+        let niryoIp = '10.0.10.70';
+        let configuredIp = '10.0.10.60';
+        let adminUr3Vis = null;
+        let editorMode = 'inspect'; // 'inspect' | 'create'
+        let isEditorExpanded = false;
+
+        const CREATOR_TEMPLATES = {
+            default: (ip) => `import numpy as np
+from rtde_control import RTDEControlInterface as RTDEControl
+from rtde_receive import RTDEReceiveInterface as RTDEReceive
+
+ROBOT_IP = "${ip}"
+rtde_c = RTDEControl(ROBOT_IP)
+rtde_r = RTDEReceive(ROBOT_IP)
+
+# Move to safe home configuration (joint space)
+# Angles [rad]: base, shoulder, elbow, wrist1, wrist2, wrist3
+home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+printf("Moving to home joint configuration...")
+rtde_c.moveJ(home_q, 0.5, 0.5)
+
+# Read current TCP Cartesian pose at home
+tcp_pose = rtde_r.getActualTCPPose()
+printf("Current TCP Pose: %s", [round(x, 3) for x in tcp_pose[:3]])
+
+# Linear Cartesian motion: descend 10 cm in Z
+target_pose = tcp_pose[:]
+target_pose[2] -= 0.10
+printf("Descending 10cm in Z...")
+rtde_c.moveL(target_pose, 0.25, 0.5)
+
+# Return to home pose
+rtde_c.moveL(tcp_pose, 0.25, 0.5)
+rtde_c.moveJ(home_q, 0.5, 0.5)
+
+rtde_c.stopScript()
+printf("Routine completed successfully!")
+`,
+            cartesian: (ip) => `import numpy as np
+from rtde_control import RTDEControlInterface as RTDEControl
+from rtde_receive import RTDEReceiveInterface as RTDEReceive
+
+ROBOT_IP = "${ip}"
+rtde_c = RTDEControl(ROBOT_IP)
+rtde_r = RTDEReceive(ROBOT_IP)
+
+home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+printf("Moving to home configuration...")
+rtde_c.moveJ(home_q, 0.5, 0.5)
+
+tcp_pose = rtde_r.getActualTCPPose()
+printf("TCP pose at home: %s", [round(x, 3) for x in tcp_pose[:3]])
+
+# Move 15 cm down in Z
+pose_down = tcp_pose[:]
+pose_down[2] -= 0.15
+rtde_c.moveL(pose_down, 0.25, 0.5)
+
+# Move 10 cm in X
+pose_side = pose_down[:]
+pose_side[0] += 0.10
+rtde_c.moveL(pose_side, 0.25, 0.5)
+
+# Return home
+rtde_c.moveL(tcp_pose, 0.25, 0.5)
+rtde_c.moveJ(home_q, 0.5, 0.5)
+
+rtde_c.stopScript()
+printf("Cartesian probe routine completed!")
+`,
+            square: (ip) => `import numpy as np
+from rtde_control import RTDEControlInterface as RTDEControl
+from rtde_receive import RTDEReceiveInterface as RTDEReceive
+
+ROBOT_IP = "${ip}"
+rtde_c = RTDEControl(ROBOT_IP)
+rtde_r = RTDEReceive(ROBOT_IP)
+
+home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+rtde_c.moveJ(home_q, 0.5, 0.5)
+
+start_pose = rtde_r.getActualTCPPose()
+printf("Starting 10cm square contour at: %s", [round(x, 3) for x in start_pose[:3]])
+
+box_size = 0.10  # 10 cm box
+p1 = start_pose[:]; p1[0] += box_size
+rtde_c.moveL(p1, 0.20, 0.4)
+
+p2 = p1[:]; p2[1] -= box_size
+rtde_c.moveL(p2, 0.20, 0.4)
+
+p3 = p2[:]; p3[0] -= box_size
+rtde_c.moveL(p3, 0.20, 0.4)
+
+rtde_c.moveL(start_pose, 0.20, 0.4)
+rtde_c.moveJ(home_q, 0.5, 0.5)
+rtde_c.stopScript()
+printf("Square contour path completed successfully!")
+`,
+            joint: (ip) => `import numpy as np
+import time
+from rtde_control import RTDEControlInterface as RTDEControl
+
+ROBOT_IP = "${ip}"
+rtde_c = RTDEControl(ROBOT_IP)
+
+q_home = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+printf("Pose 1: Home")
+rtde_c.moveJ(q_home, 0.5, 0.5)
+time.sleep(0.5)
+
+q_reach = [-np.pi/2, -np.pi/3, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+printf("Pose 2: Forward Reach")
+rtde_c.moveJ(q_reach, 0.4, 0.4)
+time.sleep(0.5)
+
+q_side = [-np.pi/3, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+printf("Pose 3: Side Inspection")
+rtde_c.moveJ(q_side, 0.4, 0.4)
+time.sleep(0.5)
+
+rtde_c.moveJ(q_home, 0.5, 0.5)
+rtde_c.stopScript()
+printf("Joint articulation routine finished!")
+`,
+            gripper: (ip) => `import numpy as np
+import time
+from rtde_control import RTDEControlInterface as RTDEControl
+from rtde_receive import RTDEReceiveInterface as RTDEReceive
+
+ROBOT_IP = "${ip}"
+rtde_c = RTDEControl(ROBOT_IP)
+rtde_r = RTDEReceive(ROBOT_IP)
+
+home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+rtde_c.moveJ(home_q, 0.5, 0.5)
+
+tcp = rtde_r.getActualTCPPose()
+pick_pose = tcp[:]
+pick_pose[2] -= 0.12
+rtde_c.moveL(pick_pose, 0.20, 0.4)
+
+printf("Actuating Gripper: PIN 0 -> HIGH (Grip)")
+rtde_c.setStandardDigitalOut(0, True)
+time.sleep(1.0)
+
+rtde_c.moveL(tcp, 0.20, 0.4)
+
+printf("Releasing Gripper: PIN 0 -> LOW (Release)")
+rtde_c.setStandardDigitalOut(0, False)
+time.sleep(0.5)
+
+rtde_c.moveJ(home_q, 0.5, 0.5)
+rtde_c.stopScript()
+printf("Gripper sequence completed successfully!")
+`,
+            niryo_default: (ip) => `import time
+try:
+    from pyniryo import NiryoRobot
+except ImportError:
+    print("Warning: pyniryo is not installed locally. Run pip install pyniryo")
+    NiryoRobot = None
+
+ROBOT_IP = "${ip}"
+if NiryoRobot:
+    robot = NiryoRobot(ROBOT_IP)
+    robot.calibrate_auto()
+    print("Niryo One connected and calibrated!")
+    
+    # Ready pose [j1, j2, j3, j4, j5, j6] (rad)
+    ready_joints = [0.0, 0.5, -1.25, 0.0, 0.0, 0.0]
+    robot.move_joints(ready_joints)
+    time.sleep(0.5)
+    
+    # Return to sleep pose
+    robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    robot.close_connection()
+    print("Niryo routine completed successfully!")
+`,
+            niryo_pick: (ip) => `import time
+from pyniryo import NiryoRobot
+
+ROBOT_IP = "${ip}"
+robot = NiryoRobot(ROBOT_IP)
+robot.calibrate_auto()
+
+# 1. Approach position
+robot.move_joints([0.0, 0.5, -1.25, 0.0, 0.0, 0.0])
+print("Approaching pick location...")
+
+# 2. Descend and grasp
+robot.move_pose([0.20, 0.0, 0.15, 0.0, 1.57, 0.0])
+robot.grasp_with_tool()
+time.sleep(0.8)
+
+# 3. Lift
+robot.move_pose([0.20, 0.0, 0.28, 0.0, 1.57, 0.0])
+
+# 4. Place
+robot.move_pose([0.0, 0.20, 0.15, 0.0, 1.57, 1.57])
+robot.release_with_tool()
+time.sleep(0.8)
+
+robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+robot.close_connection()
+print("Pick & place sequence completed!")
+`,
+            niryo_joint: (ip) => `import time
+from pyniryo import NiryoRobot
+
+ROBOT_IP = "${ip}"
+robot = NiryoRobot(ROBOT_IP)
+robot.calibrate_auto()
+
+# Articulate all 6 joints smoothly
+poses = [
+    [0.0, 0.4, -1.0, 0.0, 0.0, 0.0],
+    [-0.5, 0.3, -0.8, 0.5, -0.3, 0.2],
+    [0.5, 0.3, -0.8, -0.5, 0.3, -0.2],
+    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+]
+
+for idx, q in enumerate(poses):
+    print(f"Moving to waypoint {idx+1}/{len(poses)}...")
+    robot.move_joints(q)
+    time.sleep(0.5)
+
+robot.close_connection()
+print("Joint trajectory completed!")
+`,
+            niryo_gripper: (ip) => `import time
+from pyniryo import NiryoRobot
+
+ROBOT_IP = "${ip}"
+robot = NiryoRobot(ROBOT_IP)
+robot.calibrate_auto()
+
+print("Testing Niryo Gripper Tool...")
+robot.open_gripper(500)
+time.sleep(1.0)
+robot.close_gripper(500)
+time.sleep(1.0)
+robot.open_gripper(500)
+time.sleep(0.5)
+
+robot.close_connection()
+print("Gripper test finished!")
+`
+        };
+
+        // Initialize 3D UR3 visualizer on admin page
+        window.addEventListener("DOMContentLoaded", () => {
+            adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
+        });
+
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+        require(['vs/editor/editor.main'], function () {
+            viewer = monaco.editor.create(document.getElementById('inspectEditorContainer'), {
+                value: "# Select a program to preview code or click 'Create Code'",
+                language: 'python',
+                theme: 'vs-dark',
+                readOnly: true,
+                automaticLayout: true,
+                minimap: { enabled: false },
+                fontSize: 12,
+                lineNumbers: "on"
+            });
+
+            viewer.onDidChangeModelContent(() => {
+                if (editorMode === 'create') {
+                    saveCreatorDraftLocally();
+                }
+            });
+
+            viewer.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
+                if (editorMode === 'create') {
+                    checkCreatorSyntax();
+                }
+            });
+
+            viewer.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function() {
+                if (editorMode === 'create') {
+                    sendCreatorCode(true);
+                }
+            });
+
+            checkAdminAuth();
+            setInterval(checkRobotPing, 3000);
+            setInterval(fetchSubmissions, 2000);
+            setInterval(fetchAdminUsers, 4000);
+        });
+
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/config');
+                const data = await res.json();
+                activeRobotModel = data.robot_model || 'ur';
+                urIp = data.ur_ip || data.robot_ip || '10.0.10.60';
+                niryoIp = data.niryo_ip || '10.0.10.70';
+                configuredIp = (activeRobotModel === 'niryo') ? niryoIp : urIp;
+                updateRobotModelUI(activeRobotModel, true);
+            } catch (e) {
+                console.error("Failed to load config:", e);
+            }
+        }
+
+        async function selectRobotModel(model) {
+            if (model !== 'ur' && model !== 'niryo') return;
+            activeRobotModel = model;
+            configuredIp = (activeRobotModel === 'niryo') ? niryoIp : urIp;
+            updateRobotModelUI(activeRobotModel, true);
+
+            try {
+                await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        robot_model: activeRobotModel,
+                        ur_ip: urIp,
+                        niryo_ip: niryoIp
+                    })
+                });
+            } catch (e) {
+                console.error("Failed to update robot model config:", e);
+            }
+            checkRobotPing();
+        }
+
+        function updateRobotModelUI(model, updateVisualizer = true) {
+            const btnUR = document.getElementById("btnModelUR");
+            const btnNiryo = document.getElementById("btnModelNiryo");
+            const lblIp = document.getElementById("lblRobotIp");
+            const inputIp = document.getElementById("inputRobotIp");
+            const visTitle = document.getElementById("visModelTitle");
+            const visDot = document.getElementById("visModelDot");
+
+            if (model === 'niryo') {
+                if (btnUR) {
+                    btnUR.className = "px-2.5 py-1 text-xs font-bold rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1";
+                    const d = btnUR.querySelector("span");
+                    if (d) d.className = "w-2 h-2 rounded-full bg-sky-300 mr-1 opacity-40";
+                }
+                if (btnNiryo) {
+                    btnNiryo.className = "px-2.5 py-1 text-xs font-bold rounded-md bg-cyan-600 text-white shadow transition flex items-center space-x-1";
+                    const d = btnNiryo.querySelector("span");
+                    if (d) d.className = "w-2 h-2 rounded-full bg-cyan-200 mr-1";
+                }
+                if (lblIp) lblIp.innerText = "Niryo IP:";
+                if (inputIp && inputIp.dataset.dirty !== "true") {
+                    inputIp.value = niryoIp;
+                    inputIp.placeholder = "10.0.10.70";
+                }
+                if (visTitle) visTitle.innerText = "3D Simulator (Niryo One)";
+                if (visDot) visDot.className = "w-2.5 h-2.5 rounded-full bg-cyan-400";
+            } else {
+                if (btnUR) {
+                    btnUR.className = "px-2.5 py-1 text-xs font-bold rounded-md bg-indigo-600 text-white shadow transition flex items-center space-x-1";
+                    const d = btnUR.querySelector("span");
+                    if (d) d.className = "w-2 h-2 rounded-full bg-sky-300 mr-1";
+                }
+                if (btnNiryo) {
+                    btnNiryo.className = "px-2.5 py-1 text-xs font-bold rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1";
+                    const d = btnNiryo.querySelector("span");
+                    if (d) d.className = "w-2 h-2 rounded-full bg-cyan-400 mr-1 opacity-40";
+                }
+                if (lblIp) lblIp.innerText = "UR IP:";
+                if (inputIp && inputIp.dataset.dirty !== "true") {
+                    inputIp.value = urIp;
+                    inputIp.placeholder = "10.0.10.60";
+                }
+                if (visTitle) visTitle.innerText = "3D Simulator (UR3)";
+                if (visDot) visDot.className = "w-2.5 h-2.5 rounded-full bg-sky-400";
+            }
+
+            if (adminUr3Vis && updateVisualizer) {
+                adminUr3Vis.setRobotModel(model);
+            }
+        }
+
+        async function saveRobotConfig() {
+            const input = document.getElementById("inputRobotIp");
+            const btn = document.getElementById("btnSaveIp");
+            const newIp = input.value.trim();
+            if (!newIp) {
+                alert("Please enter a valid IP address.");
+                return;
+            }
+
+            if (activeRobotModel === 'niryo') {
+                niryoIp = newIp;
+            } else {
+                urIp = newIp;
+            }
+            configuredIp = newIp;
+
+            if (btn) btn.innerText = "Saving...";
+            try {
+                const payload = {
+                    robot_model: activeRobotModel,
+                    ur_ip: urIp,
+                    niryo_ip: niryoIp
+                };
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    input.dataset.dirty = "false";
+                    if (btn) {
+                        btn.innerText = "✓ Saved";
+                        setTimeout(() => { btn.innerText = "Save IP"; }, 1500);
+                    }
+                    checkRobotPing();
+                } else {
+                    const err = await res.json();
+                    alert("Error updating config: " + err.detail);
+                    if (btn) btn.innerText = "Save IP";
+                }
+            } catch (e) {
+                alert("Network error updating config: " + e.message);
+                if (btn) btn.innerText = "Save IP";
+            }
+        }
+
+        async function checkRobotPing() {
+            try {
+                const res = await fetch('/api/robot-status');
+                const data = await res.json();
+                isRobotReady = data.is_ready;
+                configuredIp = data.ip;
+
+                // Only update input value if the user is NOT actively typing into it
+                const ipInput = document.getElementById("inputRobotIp");
+                if (ipInput && document.activeElement !== ipInput && ipInput.dataset.dirty !== "true") {
+                    ipInput.value = configuredIp;
+                }
+
+                updateStatusBadge();
+                updateInspectorButtons();
+            } catch (e) {
+                isRobotReady = false;
+                updateStatusBadge();
+                updateInspectorButtons();
+            }
+        }
+
+        function updateStatusBadge() {
+            const badge = document.getElementById("robotStatusBadge");
+            const dot = document.getElementById("robotStatusDot");
+            const text = document.getElementById("robotStatusText");
+            const modelLabel = (activeRobotModel === 'niryo') ? 'NIRYO ONE' : 'UR ARM';
+
+            if (!isRobotReady) {
+                // NEVER show idle if offline / not pinging!
+                badge.className = "flex items-center space-x-2 text-xs bg-rose-950/70 border border-rose-800 text-rose-400 px-3 py-1.5 rounded-lg transition-all";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+                text.innerText = `${modelLabel} OFFLINE (${configuredIp} - NO PING)`;
+            } else if (isExecuting) {
+                badge.className = "flex items-center space-x-2 text-xs bg-blue-950/70 border border-blue-800 text-blue-400 px-3 py-1.5 rounded-lg transition-all";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping";
+                text.innerText = `EXECUTING PROGRAM #${activeSubId} (${modelLabel})`;
+            } else {
+                badge.className = "flex items-center space-x-2 text-xs bg-emerald-950/70 border border-emerald-800 text-emerald-400 px-3 py-1.5 rounded-lg transition-all";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
+                text.innerText = `${modelLabel} IDLE & READY (${configuredIp})`;
+            }
+        }
+
+        async function fetchSubmissions() {
+            try {
+                const res = await fetch('/api/submissions');
+                const data = await res.json();
+                submissionsList = data.submissions;
+                isExecuting = data.is_executing;
+                activeSubId = data.active_submission_id;
+                renderSubmissionsTable(data.submissions);
+                updateStatusBadge();
+                updateInspectorButtons();
+            } catch (e) {
+                console.error("Failed to fetch submissions:", e);
+            }
+        }
+
+        function renderSubmissionsTable(subs) {
+            const tbody = document.getElementById("submissionsTable");
+            if (!subs || subs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-slate-500">No programs in queue.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = subs.map(sub => {
+                const isSelected = sub.id === selectedSubId;
+                const statusBadge = getStatusBadge(sub.status);
+                const timeStr = new Date(sub.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const isAdmin = sub.task_id === 'Admin' || (sub.student_name && sub.student_name.toLowerCase().startsWith('admin'));
+                const adminBadge = isAdmin ? '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">ADMIN</span>' : '';
+                
+                const progName = (sub.task_id && sub.task_id !== 'Standard' && sub.task_id !== 'Main') ? sub.task_id : (sub.student_name || 'Program');
+                const studentName = sub.student_name || 'Anonymous';
+
+                return `
+                    <tr onclick="selectSubmission(${sub.id})" class="cursor-pointer hover:bg-slate-800/80 transition ${isSelected ? 'bg-slate-800 border-l-4 border-blue-500' : ''}">
+                        <td class="p-3 font-mono text-slate-400">#${sub.id}</td>
+                        <td class="p-3 font-bold text-slate-200">${escapeHtml(progName)}${adminBadge}</td>
+                        <td class="p-3 font-medium text-sky-400">${escapeHtml(studentName)}</td>
+                        <td class="p-3">${statusBadge}</td>
+                        <td class="p-3 text-slate-400">${timeStr}</td>
+                        <td class="p-3 text-right">
+                            <button onclick="deleteSubmission(${sub.id}, event)" title="Delete #${sub.id}" class="inline-flex items-center justify-center p-1.5 px-2.5 rounded bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-800 text-xs transition">
+                                <span>🗑️</span>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
+        }
+
+
+        function getStatusBadge(status) {
+            const styles = {
+                pending: "bg-amber-500/20 text-amber-400 border border-amber-500/40",
+                running: "bg-blue-500/20 text-blue-400 border border-blue-500/40 animate-pulse",
+                completed: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40",
+                failed: "bg-rose-500/20 text-rose-400 border border-rose-500/40",
+                aborted: "bg-red-600 text-white font-bold",
+                rejected: "bg-slate-700 text-slate-400"
+            };
+            return `<span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${styles[status] || 'bg-slate-700'}">${status}</span>`;
+        }
+
+        function selectSubmission(id) {
+            if (editorMode === 'create') {
+                saveCreatorDraftLocally();
+                editorMode = 'inspect';
+                document.getElementById("creatorHeader").classList.add("hidden");
+                document.getElementById("inspectorHeader").classList.remove("hidden");
+                document.getElementById("creatorStatusBanner").classList.add("hidden");
+                if (viewer) viewer.updateOptions({ readOnly: true });
+            }
+
+            selectedSubId = id;
+            const sub = submissionsList.find(s => s.id === id);
+            if (!sub) return;
+
+            const isAdmin = sub.task_id === 'Admin' || (sub.student_name && sub.student_name.toLowerCase().startsWith('admin'));
+            const adminTag = isAdmin ? " [ADMIN]" : "";
+            const progName = (sub.task_id && sub.task_id !== 'Standard' && sub.task_id !== 'Main') ? sub.task_id : (sub.student_name || 'Program');
+            document.getElementById("inspectTitle").innerText = `#${sub.id} - ${progName} (by ${sub.student_name})${adminTag}`;
+            document.getElementById("inspectSub").innerText = `Status: ${sub.status.toUpperCase()} | Submitted: ${new Date(sub.submitted_at).toLocaleTimeString()}`;
+            document.getElementById("inspectorActions").classList.remove("hidden");
+            const btnQuick = document.getElementById("btnQuickCreate");
+            if (btnQuick) btnQuick.classList.add("hidden");
+
+            viewer.setValue(sub.code);
+            renderSubmissionsTable(submissionsList);
+            attachLogStream(id, sub.logs || "");
+            updateInspectorButtons();
+            if (terminalFilter === 'code_prints') {
+                renderCodePrintCommands();
+            }
+        }
+
+        function updateInspectorButtons() {
+            if (!selectedSubId) return;
+            const sub = submissionsList.find(s => s.id === selectedSubId);
+            if (!sub) return;
+
+            const btnApprove = document.getElementById("btnApprove");
+            const isThisSubRunning = (isExecuting && activeSubId === sub.id) || sub.status === 'running';
+
+            // Student code can be received, but physical execution is strictly blocked if robot is offline
+            if (!isRobotReady) {
+                btnApprove.disabled = true;
+                btnApprove.className = "px-5 py-1.5 bg-slate-800 text-slate-500 text-xs font-bold rounded-lg cursor-not-allowed border border-slate-700";
+                btnApprove.innerHTML = "<span>🚫 Robot Offline (Cannot Execute)</span>";
+            } else if (isExecuting) {
+                btnApprove.disabled = true;
+                btnApprove.className = "px-5 py-1.5 bg-slate-700 text-slate-400 text-xs font-bold rounded-lg cursor-not-allowed";
+                btnApprove.innerHTML = isThisSubRunning ? "<span>⏳ Executing on Robot...</span>" : "<span>⏳ Robot Busy</span>";
+            } else {
+                btnApprove.disabled = false;
+                btnApprove.className = "px-5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center space-x-1.5 cursor-pointer";
+                const isReExec = sub.status === 'completed' || sub.status === 'failed' || sub.status === 'aborted';
+                btnApprove.innerHTML = isReExec ? "<span>🔄 Re-Execute on Robot</span>" : "<span>▶ Execute on Robot</span>";
+            }
+        }
+
+        async function simulateSelected() {
+            if (!selectedSubId) return;
+            const sub = submissionsList.find(s => s.id === selectedSubId);
+            if (!sub) return;
+
+            const btn = document.getElementById("btnSimulateAdmin");
+            btn.disabled = true;
+            btn.innerHTML = "<span>⏳ Simulating...</span>";
+
+            appendLog(`\n[SIMULATOR] Analyzing program #${sub.id} ("${sub.student_name}") in 3D simulator...\n`);
+
+            try {
+                const res = await fetch('/api/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: sub.code })
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    appendLog(`[SIMULATOR ERROR] ${data.error || "Simulation failed"}\n`);
+                    alert("Simulation Error: " + (data.error || "Check code"));
+                    return;
+                }
+
+                if (!data.waypoints || data.waypoints.length === 0) {
+                    appendLog("[SIMULATOR] No motion waypoints (moveJ/moveL) detected in program.\n");
+                    return;
+                }
+
+                appendLog(`[SIMULATOR] Loaded ${data.waypoints.length} motion waypoints. Playing 3D animation...\n`);
+                if (data.logs && data.logs.length > 0) {
+                    data.logs.forEach(l => appendLog(`[PRINT] ${l}\n`, true));
+                }
+
+                // Switch 3D model to match detected robot type
+                if (data.robot_model && adminUr3Vis.currentModel !== data.robot_model) {
+                    adminUr3Vis.setRobotModel(data.robot_model);
+                }
+
+                adminUr3Vis.playTrajectory(
+                    data.waypoints,
+                    (step, idx, total) => {
+                        appendLog(`[SIMULATOR] (${idx}/${total}) ${step.label}\n`, false);
+                    },
+                    () => {
+                        appendLog("[SIMULATOR] 3D simulation trajectory completed successfully!\n", false);
+                    }
+                );
+            } catch (e) {
+                appendLog(`[SIMULATOR ERROR] ${e.message}\n`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "<span>🎮 Simulate in 3D</span>";
+            }
+        }
+
+        async function approveSelected() {
+            if (!selectedSubId) return;
+            if (!isRobotReady) {
+                alert(`Cannot execute: Robot at ${configuredIp} is offline or not responding to ping.`);
+                return;
+            }
+            const btnApprove = document.getElementById("btnApprove");
+            if (btnApprove) {
+                btnApprove.disabled = true;
+                btnApprove.innerHTML = "<span>⏳ Launching...</span>";
+            }
+            appendLog(`\n[Supervisor] Launching execution for program #${selectedSubId} on robot (${configuredIp})...\n`);
+            try {
+                const res = await fetch(`/api/submissions/${selectedSubId}/approve`, { method: 'POST' });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert(err.detail || "Could not launch execution");
+                }
+                fetchSubmissions();
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
+        }
+
+        async function rejectSelected() {
+            if (!selectedSubId) return;
+            await fetch(`/api/submissions/${selectedSubId}/reject`, { method: 'POST' });
+            fetchSubmissions();
+        }
+
+        async function deleteSubmission(id, event) {
+            if (event) {
+                event.stopPropagation();
+            }
+            if (!confirm(`Permanently delete program #${id}?`)) return;
+
+            try {
+                const res = await fetch(`/api/submissions/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    if (selectedSubId === id) {
+                        selectedSubId = null;
+                        document.getElementById("inspectTitle").innerText = "No Program Selected";
+                        document.getElementById("inspectSub").innerText = "Select a program from the execution queue or click 'Create & Send Code'";
+                        document.getElementById("inspectorActions").classList.add("hidden");
+                        const btnQuick = document.getElementById("btnQuickCreate");
+                        if (btnQuick) btnQuick.classList.remove("hidden");
+                        viewer.setValue("# Select a program to preview code or click 'Create Code'");
+                    }
+                    fetchSubmissions();
+                } else {
+                    const err = await res.json();
+                    alert("Error deleting: " + err.detail);
+                }
+            } catch (e) {
+                alert("Network error: " + e.message);
+            }
+        }
+
+        async function deleteSelected() {
+            if (!selectedSubId) return;
+            deleteSubmission(selectedSubId);
+        }
+
+        async function clearAllSubmissions() {
+            if (!confirm("DELETE ALL submitted programs? This action cannot be undone.")) return;
+            try {
+                const res = await fetch('/api/submissions', { method: 'DELETE' });
+                if (res.ok) {
+                    selectedSubId = null;
+                    document.getElementById("inspectTitle").innerText = "No Program Selected";
+                    document.getElementById("inspectSub").innerText = "Select a program from the execution queue or click 'Create & Send Code'";
+                    document.getElementById("inspectorActions").classList.add("hidden");
+                    const btnQuick = document.getElementById("btnQuickCreate");
+                    if (btnQuick) btnQuick.classList.remove("hidden");
+                    viewer.setValue("# Select a program to preview code or click 'Create Code'");
+                    fetchSubmissions();
+                } else {
+                    alert("Failed to clear submissions.");
+                }
+            } catch (e) {
+                alert("Network error: " + e.message);
+            }
+        }
+
+        async function abortRobot() {
+            try {
+                await fetch('/api/abort', { method: 'POST' });
+                appendLog("\n[SUPERVISOR] EMERGENCY ABORT SENT TO ENGINE!\n");
+                fetchSubmissions();
+            } catch (e) {
+                alert("Abort failed: " + e.message);
+            }
+        }
+
+        async function clearQueue() {
+            if (!confirm("Clear all pending programs?")) return;
+            await fetch('/api/clear-queue', { method: 'POST' });
+            fetchSubmissions();
+        }
+
+        // ==========================================
+        // --- Admin Code Studio (Create & Send) ---
+        // ==========================================
+
+        function activateCodeCreator(options = {}) {
+            editorMode = 'create';
+            selectedSubId = null;
+
+            document.getElementById("inspectorHeader").classList.add("hidden");
+            document.getElementById("creatorHeader").classList.remove("hidden");
+            const btnQuick = document.getElementById("btnQuickCreate");
+            if (btnQuick) btnQuick.classList.add("hidden");
+            document.getElementById("creatorStatusBanner").classList.add("hidden");
+
+            if (viewer) viewer.updateOptions({ readOnly: false });
+
+            const progNameInput = document.getElementById("creatorProgName");
+            if (options.name) {
+                progNameInput.value = options.name;
+            } else {
+                const savedName = localStorage.getItem("ur_admin_prog_name");
+                progNameInput.value = savedName || "Admin Routine";
+            }
+
+            if (options.code) {
+                viewer.setValue(options.code);
+            } else {
+                const savedDraft = localStorage.getItem("ur_admin_code_draft");
+                if (savedDraft && savedDraft.trim().length > 0) {
+                    viewer.setValue(savedDraft);
+                } else {
+                    if (activeRobotModel === 'niryo') {
+                        viewer.setValue(CREATOR_TEMPLATES.niryo_default(configuredIp));
+                    } else {
+                        viewer.setValue(CREATOR_TEMPLATES.default(configuredIp));
+                    }
+                }
+            }
+
+            viewer.focus();
+            const robotLang = activeRobotModel === 'niryo' ? 'Python pyniryo (Niryo Ned)' : 'Python UR_RTDE (UR3)';
+            appendLog(`\n[Code Studio] Admin Creator active (${robotLang}). You can now write or edit routines.\n`, false);
+        }
+
+        function exitCodeCreator() {
+            saveCreatorDraftLocally();
+            editorMode = 'inspect';
+            document.getElementById("creatorHeader").classList.add("hidden");
+            document.getElementById("inspectorHeader").classList.remove("hidden");
+            document.getElementById("creatorStatusBanner").classList.add("hidden");
+            if (viewer) viewer.updateOptions({ readOnly: true });
+
+            if (selectedSubId) {
+                selectSubmission(selectedSubId);
+            } else {
+                document.getElementById("inspectTitle").innerText = "No Program Selected";
+                document.getElementById("inspectSub").innerText = "Select a program from the execution queue or click 'Create & Send Code'";
+                document.getElementById("inspectorActions").classList.add("hidden");
+                const btnQuick = document.getElementById("btnQuickCreate");
+                if (btnQuick) btnQuick.classList.remove("hidden");
+                viewer.setValue("# Select a program to preview code or click 'Create Code'");
+            }
+        }
+
+        function editCurrentInCreator() {
+            if (!selectedSubId) {
+                activateCodeCreator();
+                return;
+            }
+            const sub = submissionsList.find(s => s.id === selectedSubId);
+            const code = viewer ? viewer.getValue() : (sub ? sub.code : "");
+            const name = sub ? `${sub.student_name} (Copy)` : "Admin Routine";
+            activateCodeCreator({ code, name });
+        }
+
+        function saveCreatorDraftLocally() {
+            if (editorMode !== 'create' || !viewer) return;
+            try {
+                localStorage.setItem("ur_admin_code_draft", viewer.getValue());
+                const nameInput = document.getElementById("creatorProgName");
+                if (nameInput) {
+                    localStorage.setItem("ur_admin_prog_name", nameInput.value.trim());
+                }
+            } catch(e) {}
+        }
+
+        function toggleCreatorTemplatesMenu(event) {
+            if (event) event.stopPropagation();
+            const dd = document.getElementById("creatorTemplatesDropdown");
+            if (dd) dd.classList.toggle("hidden");
+        }
+
+        window.addEventListener("click", () => {
+            const dd = document.getElementById("creatorTemplatesDropdown");
+            if (dd && !dd.classList.contains("hidden")) {
+                dd.classList.add("hidden");
+            }
+        });
+
+        function loadCreatorTemplate(key) {
+            const dd = document.getElementById("creatorTemplatesDropdown");
+            if (dd) dd.classList.add("hidden");
+
+            if (CREATOR_TEMPLATES[key]) {
+                const code = CREATOR_TEMPLATES[key](configuredIp);
+                viewer.setValue(code);
+                saveCreatorDraftLocally();
+                showCreatorStatus("✓ Template loaded into editor.", "success");
+            }
+        }
+
+        function handleCreatorFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                viewer.setValue(e.target.result);
+                let name = file.name;
+                if (name.endsWith(".py")) name = name.slice(0, -3);
+                document.getElementById("creatorProgName").value = name;
+                saveCreatorDraftLocally();
+                showCreatorStatus(`✓ Imported "${file.name}"`, "success");
+            };
+            reader.readAsText(file);
+            event.target.value = "";
+        }
+
+        function showCreatorStatus(msg, type = "info") {
+            const banner = document.getElementById("creatorStatusBanner");
+            const text = document.getElementById("creatorStatusText");
+            if (!banner || !text) return;
+
+            banner.className = "px-4 py-2 text-xs font-mono border-b flex items-center justify-between";
+
+            if (type === "success") {
+                banner.classList.add("bg-emerald-950/80", "border-emerald-700", "text-emerald-300");
+            } else if (type === "error") {
+                banner.classList.add("bg-rose-950/80", "border-rose-700", "text-rose-300");
+            } else {
+                banner.classList.add("bg-slate-800", "border-slate-700", "text-slate-300");
+            }
+
+            text.innerHTML = msg;
+        }
+
+        async function checkCreatorSyntax() {
+            const code = viewer.getValue();
+            showCreatorStatus("Analyzing syntax & safety rules...", "info");
+            try {
+                const res = await fetch('/api/check-syntax', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+                const data = await res.json();
+                if (data.valid) {
+                    showCreatorStatus("✅ Syntax & Safety check PASSED! Code is safe to execute.", "success");
+                    appendLog("[Syntax Checker] ✅ Code syntax & safety validation passed.\n", false);
+                } else {
+                    const errList = data.errors.map(e => `• ${escapeHtml(e)}`).join("<br>");
+                    showCreatorStatus(`❌ Violations Detected:<br>${errList}`, "error");
+                    appendLog(`[Syntax Checker] ❌ Safety violations:\n${data.errors.join("\n")}\n`, false);
+                }
+            } catch(err) {
+                showCreatorStatus("Syntax check error: " + err.message, "error");
+            }
+        }
+
+        async function simulateCreatorCode() {
+            const code = viewer.getValue();
+            const btn = document.getElementById("btnSimulateCreator");
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = "<span>⏳ Simulating...</span>";
+            }
+
+            const progName = document.getElementById("creatorProgName").value.trim() || "Admin Routine";
+            appendLog(`\n[SIMULATOR] Analyzing "${progName}" in 3D simulator...\n`);
+
+            try {
+                const res = await fetch('/api/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    const errMsg = data.error || (data.errors ? data.errors.join(", ") : "Simulation failed");
+                    appendLog(`[SIMULATOR ERROR] ${errMsg}\n`);
+                    showCreatorStatus(`❌ Simulation Failed: ${escapeHtml(errMsg)}`, "error");
+                    return;
+                }
+
+                if (!data.waypoints || data.waypoints.length === 0) {
+                    appendLog("[SIMULATOR] No motion waypoints (moveJ/moveL) detected in program.\n");
+                    showCreatorStatus("⚠️ No motion waypoints found in code.", "info");
+                    return;
+                }
+
+                appendLog(`[SIMULATOR] Loaded ${data.waypoints.length} motion waypoints. Playing 3D animation...\n`);
+                showCreatorStatus(`▶ Playing 3D simulation (${data.waypoints.length} waypoints)...`, "success");
+
+                if (data.logs && data.logs.length > 0) {
+                    data.logs.forEach(l => appendLog(`[PRINT] ${l}\n`, true));
+                }
+
+                // Switch 3D model to match detected robot type
+                if (data.robot_model && adminUr3Vis.currentModel !== data.robot_model) {
+                    adminUr3Vis.setRobotModel(data.robot_model);
+                }
+
+                adminUr3Vis.playTrajectory(
+                    data.waypoints,
+                    (step, idx, total) => {
+                        appendLog(`[SIMULATOR] (${idx}/${total}) ${step.label}\n`, false);
+                    },
+                    () => {
+                        appendLog("[SIMULATOR] 3D simulation trajectory completed successfully!\n", false);
+                        showCreatorStatus("✓ 3D simulation finished successfully.", "success");
+                    }
+                );
+            } catch(e) {
+                appendLog(`[SIMULATOR ERROR] ${e.message}\n`);
+                showCreatorStatus("Simulation error: " + e.message, "error");
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = "<span>🎮 Simulate</span>";
+                }
+            }
+        }
+
+        async function sendCreatorCode(executeNow) {
+            const progName = document.getElementById("creatorProgName").value.trim() || "Admin Routine";
+            const code = viewer.getValue().trim();
+
+            if (!code) {
+                alert("Please enter code before sending.");
+                return;
+            }
+
+            const btn = executeNow ? document.getElementById("btnSendExecute") : document.getElementById("btnSendQueue");
+            const origHtml = btn ? btn.innerHTML : "";
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = "<span>⏳ Sending...</span>";
+            }
+
+            try {
+                const res = await fetch('/api/admin/send-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        program_name: progName,
+                        code: code,
+                        execute_now: executeNow,
+                        task_id: "Admin"
+                    })
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    const errDetail = data.errors ? data.errors.join("\n") : (data.detail || "Submission failed");
+                    alert("Send Failed: " + errDetail);
+                    showCreatorStatus("❌ Failed: " + errDetail, "error");
+                    return;
+                }
+
+                appendLog(`\n[Supervisor] Program #${data.submission_id} ("${progName}") sent. ${data.message}\n`);
+
+                // Refresh queue
+                await fetchSubmissions();
+
+                // Switch to inspect mode for this newly sent program
+                exitCodeCreator();
+                selectSubmission(data.submission_id);
+
+                if (executeNow && data.executed) {
+                    showCreatorStatus(`✓ Launched execution for #${data.submission_id} on robot!`, "success");
+                } else if (executeNow && !data.executed) {
+                    alert(data.message);
+                }
+            } catch(err) {
+                alert("Network error sending code: " + err.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                }
+            }
+        }
+
+        function toggleEditorExpand() {
+            isEditorExpanded = !isEditorExpanded;
+            const container = document.getElementById("inspectEditorContainer");
+            const btn = document.getElementById("btnToggleExpand");
+            if (isEditorExpanded) {
+                container.className = "h-[540px] transition-all duration-200";
+                if (btn) btn.innerHTML = "<span>⛶ Normal</span>";
+            } else {
+                container.className = "min-h-[260px] max-h-[340px] transition-all duration-200";
+                if (btn) btn.innerHTML = "<span>⛶</span>";
+            }
+            setTimeout(() => {
+                if (viewer) viewer.layout();
+            }, 250);
+        }
+
+
+        let terminalLogs = [];
+        let terminalFilter = 'all';
+        let initialLogsLoaded = false;
+
+        function attachLogStream(subId, initialLogs = "") {
+            if (activeLogSocket) {
+                try { activeLogSocket.close(); } catch(e) {}
+            }
+            terminalLogs = [];
+            
+            if (initialLogs && initialLogs.trim().length > 0) {
+                initialLogsLoaded = true;
+                appendLog(initialLogs);
+            } else {
+                initialLogsLoaded = false;
+                appendLog(`[Supervisor] Connected to stream for #${subId}...\n`, false);
+            }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            activeLogSocket = new WebSocket(`${protocol}//${window.location.host}/ws/logs/${subId}`);
+            
+            activeLogSocket.onmessage = (e) => {
+                const incoming = e.data;
+                // If initial logs from DB were already loaded and the server sends identical full log dump on connect, don't duplicate
+                if (initialLogsLoaded && incoming.trim() === initialLogs.trim()) {
+                    return;
+                }
+                appendLog(incoming);
+            };
+            activeLogSocket.onerror = (err) => {
+                console.warn("Log socket error for #" + subId, err);
+            };
+        }
+
+        function appendLog(msg, isExplicitPrint = null) {
+            if (!msg) return;
+            // Break chunks by lines to tag individual print messages
+            const lines = msg.split("\n");
+            lines.forEach((line, idx) => {
+                if (idx === lines.length - 1 && line === "") return;
+                const fullLine = line + "\n";
+                let isPrint = isExplicitPrint;
+                if (isPrint === null) {
+                    const trimmed = line.trim();
+                    if (trimmed.startsWith("[PRINT]")) {
+                        isPrint = true;
+                    } else if (
+                        !trimmed.startsWith("[Supervisor") &&
+                        !trimmed.startsWith("[SIMULATOR") &&
+                        trimmed.length > 0
+                    ) {
+                        isPrint = true;
+                    } else {
+                        isPrint = false;
+                    }
+                }
+                terminalLogs.push({ text: fullLine, isPrint: !!isPrint });
+            });
+
+            updatePrintCountBadge();
+            renderTerminal();
+        }
+
+        function updatePrintCountBadge() {
+            const printCount = terminalLogs.filter(l => l.isPrint).length;
+            const badge = document.getElementById("printCountBadge");
+            if (badge) {
+                if (printCount > 0) {
+                    badge.innerText = printCount;
+                    badge.classList.remove("hidden");
+                } else {
+                    badge.classList.add("hidden");
+                }
+            }
+        }
+
+        function clearAdminTerminal() {
+            terminalLogs = [];
+            updatePrintCountBadge();
+            const t = document.getElementById("adminTerminal");
+            if (t) t.innerText = "";
+        }
+
+        function setTerminalFilter(filter) {
+            terminalFilter = filter;
+            const tabAll = document.getElementById("termTabAll");
+            const tabPrints = document.getElementById("termTabPrints");
+            const tabCodePrints = document.getElementById("termTabCodePrints");
+
+            const activeClass = "px-2 py-0.5 rounded font-medium bg-blue-600 text-white transition";
+            const inactiveClass = "px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition";
+
+            if (tabAll) tabAll.className = filter === 'all' ? activeClass : inactiveClass;
+            if (tabPrints) tabPrints.className = filter === 'prints' ? activeClass : inactiveClass;
+            if (tabCodePrints) tabCodePrints.className = filter === 'code_prints' ? activeClass : inactiveClass;
+
+            renderTerminal();
+        }
+
+        function scanCodePrintCommands() {
+            setTerminalFilter('code_prints');
+        }
+
+        function renderCodePrintCommands() {
+            const t = document.getElementById("adminTerminal");
+            if (!t) return;
+            const sub = submissionsList.find(s => s.id === selectedSubId);
+            const code = viewer ? viewer.getValue() : (sub ? sub.code : "");
+            if (!code) {
+                t.innerText = "[Code Printf Scanner] No program selected. Select a program from the queue on the left to inspect its print() statements.\n";
+                return;
+            }
+
+            const lines = code.split("\n");
+            const printMatches = [];
+            lines.forEach((lineText, idx) => {
+                const trimmed = lineText.trim();
+                if (/print\s*\(/.test(trimmed) || /printf\s*\(/.test(trimmed)) {
+                    printMatches.push({ lineNo: idx + 1, text: trimmed });
+                }
+            });
+
+            let out = `====================================================\n`;
+            out += ` PRINTF / PRINT STATEMENTS IN PROGRAM SCRIPT\n`;
+            if (sub) {
+                out += ` Program #${sub.id} ("${sub.student_name}")\n`;
+            }
+            out += `====================================================\n\n`;
+
+            if (printMatches.length === 0) {
+                out += `(No print() or printf() commands found in this script.)\n\n`;
+                out += `Tip: Add print("...") statements in Python to output live feedback during execution!\n`;
+            } else {
+                printMatches.forEach(m => {
+                    out += `[Line ${String(m.lineNo).padStart(3, ' ')}]  ${m.text}\n`;
+                });
+                out += `\nTotal: ${printMatches.length} print statement(s) found in code.\n`;
+                out += `Click "💬 Printf Output" to view terminal outputs.\n`;
+            }
+
+            t.innerText = out;
+        }
+
+        function renderTerminal() {
+            const t = document.getElementById("adminTerminal");
+            if (!t) return;
+
+            if (terminalFilter === 'code_prints') {
+                renderCodePrintCommands();
+                return;
+            }
+
+            if (terminalLogs.length === 0) {
+                if (terminalFilter === 'prints') {
+                    if (selectedSubId) {
+                        t.innerText = `[Printf Filter] No print outputs captured yet for Program #${selectedSubId}.\nClick 'Execute on Robot' or 'Simulate in 3D' to run the script and view outputs.\n`;
+                    } else {
+                        t.innerText = "[Printf Filter] No program selected. Select a program from the execution queue on the left to inspect its print outputs.\n";
+                    }
+                } else {
+                    t.innerText = "[Supervisor] Ready. Select a program and click 'Simulate in 3D' or 'Execute on Robot'.\n";
+                }
+                return;
+            }
+
+            let filtered = terminalLogs;
+            if (terminalFilter === 'prints') {
+                filtered = terminalLogs.filter(item => item.isPrint);
+                if (filtered.length === 0) {
+                    t.innerText = `[Printf Filter] No print / stdout outputs captured yet for Program #${selectedSubId || 'selected'}.\nClick 'Simulate in 3D' or 'Execute on Robot' to execute code, or click '🔍 Printf in Code' to view print statements in the code.\n`;
+                    return;
+                }
+            }
+
+            t.innerText = filtered.map(item => item.text).join("");
+            t.scrollTop = t.scrollHeight;
+        }
+
+        function connectAdminSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${protocol}//${window.location.host}/ws/admin`);
+            ws.onmessage = (e) => {
+                fetchSubmissions();
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'examples_updated') {
+                        fetchAdminExamples();
+                    }
+                    if (data.type === 'new_user_registered' || data.type === 'user_status_changed' || data.type === 'user_deleted') {
+                        fetchAdminUsers();
+                    }
+                } catch(_) {}
+            };
+            ws.onclose = () => {
+                setTimeout(connectAdminSocket, 2000);
+            };
+            ws.onerror = () => {
+                try { ws.close(); } catch(e) {}
+            };
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // --- Shared Examples Management ---
+        let adminExamples = [];
+        let adminExampleFilter = 'all';
+
+        function setAdminExampleFilter(filter) {
+            adminExampleFilter = filter;
+            const tabs = {
+                all: document.getElementById("tabExFilterAll"),
+                ur: document.getElementById("tabExFilterUR"),
+                niryo: document.getElementById("tabExFilterNiryo")
+            };
+            for (const [key, btn] of Object.entries(tabs)) {
+                if (!btn) continue;
+                if (key === filter) {
+                    btn.className = "px-2.5 py-1 rounded-md font-semibold text-white bg-indigo-600 transition shadow";
+                } else {
+                    btn.className = "px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-white transition";
+                }
+            }
+            fetchAdminExamples();
+        }
+
+        async function fetchAdminExamples() {
+            try {
+                const res = await fetch(`/api/examples?model=${adminExampleFilter}`);
+                const data = await res.json();
+                adminExamples = data.examples || [];
+                renderAdminExamplesList();
+            } catch (e) {
+                console.error("Failed to fetch admin examples:", e);
+            }
+        }
+
+        function renderAdminExamplesList() {
+            const container = document.getElementById("adminExamplesList");
+            if (!container) return;
+
+            if (adminExamples.length === 0) {
+                container.innerHTML = '<div class="p-4 text-xs text-slate-500 text-center">No examples stored for this filter.</div>';
+                return;
+            }
+
+            container.innerHTML = adminExamples.map(ex => {
+                const isNiryo = (ex.robot_model === 'niryo');
+                const modelBadge = isNiryo
+                    ? '<span class="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/40 font-semibold">Niryo Ned</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[10px] bg-sky-500/20 text-sky-400 border border-sky-500/40 font-semibold">UR3 (RTDE)</span>';
+
+                const presetBadge = ex.is_builtin
+                    ? '<span class="px-2 py-0.5 rounded text-[10px] bg-slate-800 text-slate-400 border border-slate-700 font-normal">Lab Preset</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-semibold">Custom</span>';
+
+                const deleteBtn = `<button onclick="deleteAdminExample(${ex.id}, '${escapeHtml(ex.title)}')" title="Delete example" class="p-1 px-2.5 rounded bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-800 text-xs transition">🗑️ Delete</button>`;
+
+                return `
+                    <div class="p-3 flex items-center justify-between gap-3 hover:bg-slate-900/60 transition">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                                <span class="text-xs font-bold text-slate-200 break-words">${escapeHtml(ex.title)}</span>
+                                ${modelBadge}
+                                ${presetBadge}
+                            </div>
+                            <p class="text-[11px] text-slate-400 break-words mt-0.5">${escapeHtml(ex.description || "(No description)")}</p>
+                        </div>
+                        <div class="flex items-center space-x-2 shrink-0">
+                            <button onclick="previewExampleInViewer(${ex.id})" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs rounded border border-slate-700 transition">View Code</button>
+                            ${deleteBtn}
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function openExampleModal() {
+            document.getElementById("exampleModal").classList.remove("hidden");
+            const modelSelect = document.getElementById("newExModel");
+            if (modelSelect) {
+                modelSelect.value = activeRobotModel || 'ur';
+            }
+            fetchAdminExamples();
+        }
+
+        function closeExampleModal() {
+            document.getElementById("exampleModal").classList.add("hidden");
+        }
+
+        function handleExampleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const titleInput = document.getElementById("newExTitle");
+            if (!titleInput.value.trim()) {
+                let name = file.name;
+                if (name.endsWith(".py")) name = name.slice(0, -3);
+                titleInput.value = name;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                document.getElementById("newExCode").value = content;
+                // Auto-detect model from code content if pyniryo is imported
+                const modelSelect = document.getElementById("newExModel");
+                if (modelSelect) {
+                    if (content.includes("pyniryo") || content.includes("NiryoRobot")) {
+                        modelSelect.value = "niryo";
+                    } else if (content.includes("rtde_control") || content.includes("RTDEControl")) {
+                        modelSelect.value = "ur";
+                    }
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        async function submitNewExample() {
+            const title = document.getElementById("newExTitle").value.trim();
+            const desc = document.getElementById("newExDesc").value.trim();
+            const code = document.getElementById("newExCode").value.trim();
+            const robot_model = document.getElementById("newExModel") ? document.getElementById("newExModel").value : activeRobotModel;
+
+            if (!title) {
+                alert("Please enter an Example Title.");
+                return;
+            }
+            if (!code) {
+                alert("Please upload a .py file or paste python code.");
+                return;
+            }
+
+            const btn = document.getElementById("btnSubmitExample");
+            btn.disabled = true;
+            btn.innerText = "Uploading...";
+
+            try {
+                const res = await fetch('/api/examples', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, description: desc, code, robot_model })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    const modelName = robot_model === 'niryo' ? 'Niryo Ned' : 'UR3';
+                    alert(`✓ Example "${title}" (${modelName}) uploaded and shared with students!`);
+                    document.getElementById("newExTitle").value = "";
+                    document.getElementById("newExDesc").value = "";
+                    document.getElementById("newExCode").value = "";
+                    document.getElementById("newExFile").value = "";
+                    fetchAdminExamples();
+                } else {
+                    alert("Error: " + (data.errors ? data.errors.join("\n") : data.detail));
+                }
+            } catch (err) {
+                alert("Upload failed: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "<span>➕ Add to Shared Examples</span>";
+            }
+        }
+
+        async function saveCurrentAsExample() {
+            if (!selectedSubId) {
+                alert("Please select a program from the left queue first.");
+                return;
+            }
+            const sub = submissionsList.find(s => s.id === selectedSubId);
+            const code = viewer ? viewer.getValue() : (sub ? sub.code : "");
+            if (!code) return;
+
+            const defaultTitle = sub ? sub.student_name : "Example";
+            const title = prompt("Enter title for this new shared example:", defaultTitle);
+            if (!title || !title.trim()) return;
+
+            const desc = prompt("Enter short description:", "Uploaded from Program #" + (sub ? sub.id : ""));
+            const targetModel = activeRobotModel || 'ur';
+
+            try {
+                const res = await fetch('/api/examples', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: title.trim(), description: desc || "", code, robot_model: targetModel })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(`✓ Saved "${title}" as shared example for ${targetModel === 'niryo' ? 'Niryo Ned' : 'UR3'}! Students can now open it from the Examples dropdown.`);
+                    fetchAdminExamples();
+                } else {
+                    alert("Failed to save: " + (data.errors ? data.errors.join("\n") : data.detail));
+                }
+            } catch (e) {
+                alert("Network error: " + e.message);
+            }
+        }
+
+        function previewExampleInViewer(id) {
+            const ex = adminExamples.find(e => e.id === id);
+            if (!ex) return;
+            closeExampleModal();
+            if (editorMode === 'create') {
+                exitCodeCreator();
+            }
+            selectedSubId = null;
+            document.getElementById("inspectTitle").innerText = `[Example] ${ex.title}`;
+            document.getElementById("inspectSub").innerText = `${ex.description || 'Shared lab example'} | Builtin: ${ex.is_builtin ? 'Yes' : 'No'}`;
+            viewer.setValue(ex.code);
+            document.getElementById("inspectorActions").classList.remove("hidden");
+            const btnQuick = document.getElementById("btnQuickCreate");
+            if (btnQuick) btnQuick.classList.add("hidden");
+            appendLog(`\n[Example Preview] Loaded "${ex.title}" into viewer.\n`, false);
+        }
+
+        async function deleteAdminExample(id, title) {
+            if (!confirm(`Permanently delete example "${title}"?`)) return;
+            try {
+                const res = await fetch(`/api/examples/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    fetchAdminExamples();
+                } else {
+                    const err = await res.json();
+                    alert("Error: " + err.detail);
+                }
+            } catch (e) {
+                alert("Network error: " + e.message);
+            }
+        }
+
+        // ==========================================
+        // Admin Authentication & User Approvals
+        // ==========================================
+
+        let currentAdminToken = localStorage.getItem("ur_admin_token");
+        let adminUsersList = [];
+        let currentUsersTab = 'pending';
+
+        async function checkAdminAuth() {
+            if (currentAdminToken) {
+                try {
+                    const res = await fetch('/api/auth/me', {
+                        headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                    });
+                    const data = await res.json();
+                    if (data.authenticated && data.user && data.user.role === 'admin') {
+                        onAdminLoggedIn();
+                        return;
+                    }
+                } catch(e) {}
+            }
+            showAdminLoginModal();
+        }
+
+        function showAdminLoginModal() {
+            document.getElementById("adminLoginModal").classList.remove("hidden");
+            document.getElementById("adminLoginPassword").focus();
+        }
+
+        async function submitAdminLogin() {
+            const username = document.getElementById("adminLoginUsername").value.trim();
+            const password = document.getElementById("adminLoginPassword").value.trim();
+            const alertEl = document.getElementById("adminLoginAlert");
+            const btn = document.getElementById("btnAdminLoginSubmit");
+
+            if (!username || !password) {
+                alertEl.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-800 text-rose-300";
+                alertEl.innerText = "Please enter username and password.";
+                alertEl.classList.remove("hidden");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = "Verifying...";
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    alertEl.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-800 text-rose-300";
+                    alertEl.innerText = data.detail || "Authentication failed.";
+                    alertEl.classList.remove("hidden");
+                    btn.disabled = false;
+                    btn.innerText = "Unlock Dispatcher";
+                    return;
+                }
+
+                if (data.user.role !== 'admin') {
+                    alertEl.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-800 text-rose-300";
+                    alertEl.innerText = "Access denied: Account is not an administrator.";
+                    alertEl.classList.remove("hidden");
+                    btn.disabled = false;
+                    btn.innerText = "Unlock Dispatcher";
+                    return;
+                }
+
+                currentAdminToken = data.token;
+                localStorage.setItem("ur_admin_token", currentAdminToken);
+                onAdminLoggedIn();
+            } catch (e) {
+                alertEl.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-800 text-rose-300";
+                alertEl.innerText = "Network error: " + e.message;
+                alertEl.classList.remove("hidden");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Unlock Dispatcher";
+            }
+        }
+
+        function onAdminLoggedIn() {
+            document.getElementById("adminLoginModal").classList.add("hidden");
+            loadConfig();
+            checkRobotPing();
+            fetchSubmissions();
+            fetchAdminExamples();
+            fetchAdminUsers();
+            connectAdminSocket();
+        }
+
+        function logoutAdmin() {
+            if (currentAdminToken) {
+                fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                }).catch(() => {});
+            }
+            currentAdminToken = null;
+            localStorage.removeItem("ur_admin_token");
+            showAdminLoginModal();
+        }
+
+        function openUsersModal() {
+            document.getElementById("usersModal").classList.remove("hidden");
+            fetchAdminUsers();
+        }
+
+        function closeUsersModal() {
+            document.getElementById("usersModal").classList.add("hidden");
+        }
+
+        function switchUsersTab(tab) {
+            currentUsersTab = tab;
+            const btnP = document.getElementById("tabBtnPending");
+            const btnA = document.getElementById("tabBtnApproved");
+            const conP = document.getElementById("usersPendingContainer");
+            const conA = document.getElementById("usersApprovedContainer");
+
+            if (tab === 'pending') {
+                btnP.className = "pb-2.5 text-xs font-bold text-indigo-400 border-b-2 border-indigo-500 transition flex items-center space-x-1.5";
+                btnA.className = "pb-2.5 text-xs font-bold text-slate-400 hover:text-slate-200 transition";
+                conP.classList.remove("hidden");
+                conA.classList.add("hidden");
+            } else {
+                btnA.className = "pb-2.5 text-xs font-bold text-indigo-400 border-b-2 border-indigo-500 transition flex items-center space-x-1.5";
+                btnP.className = "pb-2.5 text-xs font-bold text-slate-400 hover:text-slate-200 transition";
+                conA.classList.remove("hidden");
+                conP.classList.add("hidden");
+            }
+            renderAdminUsers();
+        }
+
+        async function fetchAdminUsers() {
+            if (!currentAdminToken) return;
+            try {
+                const res = await fetch('/api/admin/users', {
+                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                adminUsersList = data.users || [];
+                renderAdminUsers();
+            } catch (e) {
+                console.error("Failed to fetch admin users:", e);
+            }
+        }
+
+        function renderAdminUsers() {
+            const pending = adminUsersList.filter(u => u.role === 'student' && u.status === 'pending');
+            const approved = adminUsersList.filter(u => u.role === 'student' && u.status === 'approved');
+
+            // Update badge counters
+            const pBadge = document.getElementById("pendingUsersBadge");
+            const tabCount = document.getElementById("tabPendingCount");
+            if (pBadge) {
+                if (pending.length > 0) {
+                    pBadge.innerText = pending.length;
+                    pBadge.classList.remove("hidden");
+                } else {
+                    pBadge.classList.add("hidden");
+                }
+            }
+            if (tabCount) tabCount.innerText = pending.length;
+
+            // Render Pending list
+            const conP = document.getElementById("usersPendingContainer");
+            if (conP) {
+                if (pending.length === 0) {
+                    conP.innerHTML = '<div class="p-6 text-xs text-slate-500 text-center bg-slate-950/40 rounded-xl border border-slate-800">✓ No pending registrations. All students are approved.</div>';
+                } else {
+                    conP.innerHTML = pending.map(u => {
+                        const dateStr = new Date(u.created_at).toLocaleString();
+                        return `
+                            <div class="p-3.5 bg-slate-850 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
+                                <div>
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-xs font-bold text-white">${escapeHtml(u.username)}</span>
+                                        <span class="px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">Pending Approval</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 mt-0.5">Registered: ${dateStr}</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <button onclick="setUserStatus(${u.id}, 'approved')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
+                                        <span>✓ Approve</span>
+                                    </button>
+                                    <button onclick="setUserStatus(${u.id}, 'rejected')" class="px-3 py-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 text-xs font-bold rounded-lg border border-slate-700 hover:border-rose-800 transition">
+                                        <span>✗ Reject</span>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join("");
+                }
+            }
+
+            // Render Approved list
+            const conA = document.getElementById("usersApprovedContainer");
+            if (conA) {
+                if (approved.length === 0) {
+                    conA.innerHTML = '<div class="p-6 text-xs text-slate-500 text-center bg-slate-950/40 rounded-xl border border-slate-800">No approved students yet.</div>';
+                } else {
+                    conA.innerHTML = approved.map(u => {
+                        const dateStr = new Date(u.created_at).toLocaleDateString();
+                        return `
+                            <div class="p-3.5 bg-slate-850 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
+                                <div>
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-xs font-bold text-white">${escapeHtml(u.username)}</span>
+                                        <span class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">Active Student</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 mt-0.5">Member since: ${dateStr}</p>
+                                </div>
+                                <div>
+                                    <button onclick="deleteAdminUser(${u.id}, '${escapeHtml(u.username)}')" class="px-2.5 py-1 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 text-xs font-medium rounded border border-slate-700 hover:border-rose-800 transition">
+                                        🗑️ Revoke Access
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join("");
+                }
+            }
+        }
+
+        async function setUserStatus(userId, status) {
+            try {
+                const res = await fetch(`/api/admin/users/${userId}/status`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAdminToken}`
+                    },
+                    body: JSON.stringify({ status })
+                });
+                if (res.ok) {
+                    fetchAdminUsers();
+                } else {
+                    const err = await res.json();
+                    alert("Error updating status: " + err.detail);
+                }
+            } catch (e) {
+                alert("Network error: " + e.message);
+            }
+        }
+
+        async function deleteAdminUser(userId, username) {
+            if (!confirm(`Revoke and delete account for student "${username}"?`)) return;
+            try {
+                const res = await fetch(`/api/admin/users/${userId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                });
+                if (res.ok) {
+                    fetchAdminUsers();
+                } else {
+                    const err = await res.json();
+                    alert("Error deleting user: " + err.detail);
+                }
+            } catch (e) {
+                alert("Network error: " + e.message);
+            }
+        }
+
+    </script>
+
+    
+    <!-- Admin Login Screen / Gate -->
+    <div id="adminLoginModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl p-6 space-y-5">
+            <div class="text-center space-y-1">
+                <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 text-2xl mb-1">🔐</div>
+                <h2 class="text-lg font-bold text-white">Instructor Access</h2>
+                <p class="text-xs text-slate-400">Enter admin credentials to access execution dispatcher</p>
+            </div>
+
+            <div id="adminLoginAlert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Username</label>
+                <input id="adminLoginUsername" type="text" value="admin" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition font-mono">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
+                <input id="adminLoginPassword" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter') submitAdminLogin()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 transition font-mono">
+            </div>
+
+            <button id="btnAdminLoginSubmit" onclick="submitAdminLogin()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-1.5">
+                <span>Unlock Dispatcher</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- User Management & Pending Approvals Modal -->
+    <div id="usersModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+            <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-850">
+                <div class="flex items-center space-x-2">
+                    <span class="text-lg">👥</span>
+                    <h3 class="text-sm font-bold text-white">Student Accounts &amp; Access Approvals</h3>
+                </div>
+                <button onclick="closeUsersModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
+            </div>
+
+            <!-- Tabs: Pending Approvals / Approved Students -->
+            <div class="flex border-b border-slate-800 bg-slate-900 px-5 pt-3 space-x-4">
+                <button id="tabBtnPending" onclick="switchUsersTab('pending')" class="pb-2.5 text-xs font-bold text-indigo-400 border-b-2 border-indigo-500 transition flex items-center space-x-1.5">
+                    <span>Pending Approvals</span>
+                    <span id="tabPendingCount" class="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500 text-white font-bold">0</span>
+                </button>
+                <button id="tabBtnApproved" onclick="switchUsersTab('approved')" class="pb-2.5 text-xs font-bold text-slate-400 hover:text-slate-200 transition">
+                    <span>Approved Students</span>
+                </button>
+            </div>
+
+            <div class="p-5 overflow-y-auto space-y-4 flex-1 min-h-0">
+                <!-- Pending List -->
+                <div id="usersPendingContainer" class="space-y-2">
+                    <div class="p-4 text-xs text-slate-500 text-center">Loading pending users...</div>
+                </div>
+
+                <!-- Approved List -->
+                <div id="usersApprovedContainer" class="hidden space-y-2">
+                    <div class="p-4 text-xs text-slate-500 text-center">Loading approved users...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Example Management Modal -->
+    <div id="exampleModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+            <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-850">
+                <div class="flex items-center space-x-2">
+                    <span class="text-lg">📚</span>
+                    <h3 class="text-sm font-bold text-white">Shared Lab Examples Manager</h3>
+                </div>
+                <button onclick="closeExampleModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
+            </div>
+
+            <div class="p-5 overflow-y-auto space-y-5 flex-1 min-h-0">
+                <!-- Upload / Create Form -->
+                <div class="bg-slate-850 p-4 rounded-xl border border-slate-700/80 space-y-3">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-400">Upload New Example for Students</h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-300 mb-1">Example Title</label>
+                            <input id="newExTitle" type="text" placeholder="e.g., 5. Spiral Palletizing Path" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-300 mb-1">Target Robot Model</label>
+                            <select id="newExModel" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium">
+                                <option value="ur">Universal Robots UR3 (rtde_control / rtde_receive)</option>
+                                <option value="niryo">Niryo One / Ned (pyniryo)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 mb-1">Description</label>
+                        <input id="newExDesc" type="text" placeholder="Brief explanation of what this example does..." class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    
+                    <!-- File Upload Option -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-300 mb-1">Upload Python Script (.py)</label>
+                            <input id="newExFile" type="file" accept=".py" onchange="handleExampleFileSelect(event)" class="w-full text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer">
+                        </div>
+                        <div class="flex items-end justify-end">
+                            <button onclick="submitNewExample()" id="btnSubmitExample" class="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center justify-center space-x-1">
+                                <span>➕ Add to Shared Examples</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Code Preview / Editor Textarea -->
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-300 mb-1">Script Code (Python)</label>
+                        <textarea id="newExCode" rows="6" placeholder="# Paste Python code here or choose a .py file above" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-xs font-mono text-emerald-400 focus:outline-none focus:border-indigo-500 resize-y"></textarea>
+                    </div>
+                </div>
+
+                <!-- Existing Examples List -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center space-x-2">
+                            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Current Shared Examples</h4>
+                            <div class="inline-flex rounded-lg bg-slate-900 p-0.5 border border-slate-700 text-[11px]">
+                                <button id="tabExFilterAll" onclick="setAdminExampleFilter('all')" class="px-2.5 py-1 rounded-md font-semibold text-white bg-indigo-600 transition shadow">All</button>
+                                <button id="tabExFilterUR" onclick="setAdminExampleFilter('ur')" class="px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-white transition">UR3</button>
+                                <button id="tabExFilterNiryo" onclick="setAdminExampleFilter('niryo')" class="px-2.5 py-1 rounded-md font-medium text-slate-400 hover:text-white transition">Niryo Ned</button>
+                            </div>
+                        </div>
+                        <button onclick="fetchAdminExamples()" class="text-xs text-blue-400 hover:underline">Refresh</button>
+                    </div>
+                    <div id="adminExamplesList" class="divide-y divide-slate-800 rounded-xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+                        <div class="p-4 text-xs text-slate-500 text-center">Loading examples...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
