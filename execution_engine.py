@@ -34,12 +34,18 @@ class ExecutionEngine:
         submission_id: int,
         code_str: str,
         log_callback: Optional[Callable[[str], None]] = None,
-        timeout_sec: float = DEFAULT_TIMEOUT_SEC
+        timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+        robot_model: Optional[str] = None
     ) -> bool:
         """
         Executes a student Python script in an isolated subprocess.
         Returns True if completed successfully, False otherwise.
         """
+        if robot_model in ("ur", "niryo"):
+            config.ROBOT_MODEL = robot_model
+            config.ROBOT_IP = config.NIRYO_IP if robot_model == "niryo" else config.UR_IP
+        self.current_robot_model = getattr(config, "ROBOT_MODEL", "ur")
+
         async with self._lock:
             if self.is_executing:
                 raise RuntimeError("Another script is currently executing on the robot.")
@@ -157,35 +163,33 @@ class ExecutionEngine:
             except Exception as e:
                 print(f"[EMERGENCY STOP] Error killing process group: {e}")
 
-        # 2. Hardware Emergency Halt — depends on active robot model
-        robot_model = getattr(config, "ROBOT_MODEL", "ur")
-        active_ip = config.ROBOT_IP
-
-        if robot_model == "niryo":
-            # Niryo One: send stop_move via pyniryo
-            try:
-                import pyniryo
-                niryo = pyniryo.NiryoRobot(active_ip)
-                niryo.stop_move()
-                niryo.end()
-                print("[EMERGENCY STOP] Sent stop_move() to Niryo One.")
-            except ImportError:
-                print("[EMERGENCY STOP] pyniryo not installed — cannot send hardware stop to Niryo One.")
-            except Exception as e:
-                print(f"[EMERGENCY STOP] Niryo halt attempt failed: {e}")
-        else:
-            # UR: send stopj via Secondary Socket
-            robot_port = config.ROBOT_SECONDARY_PORT
+        # 2. Hardware Emergency Halt — Send immediate halt to both UR and Niryo arms
+        # UR Robot Halt (Secondary socket stopj with 5.0 rad/s^2 emergency deceleration)
+        ur_target = config.UR_IP
+        if ur_target:
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(0.5)
-                s.connect((active_ip, robot_port))
-                # stopj with emergency deceleration (5.0 rad/s^2)
+                s.connect((ur_target, config.ROBOT_SECONDARY_PORT))
                 s.sendall(b"stopj(5.0)\n")
                 s.close()
-                print("[EMERGENCY STOP] Sent stopj(5.0) to UR controller.")
+                print(f"[EMERGENCY STOP] Sent stopj(5.0) to UR controller at {ur_target}.")
             except Exception as e:
-                print(f"[EMERGENCY STOP] Secondary socket UR halt attempt: {e}")
+                print(f"[EMERGENCY STOP] UR halt attempt ({ur_target}): {e}")
+
+        # Niryo Robot Halt (pyniryo stop_move)
+        niryo_target = config.NIRYO_IP
+        if niryo_target:
+            try:
+                import pyniryo
+                niryo = pyniryo.NiryoRobot(niryo_target)
+                niryo.stop_move()
+                niryo.end()
+                print(f"[EMERGENCY STOP] Sent stop_move() to Niryo at {niryo_target}.")
+            except ImportError:
+                pass
+            except Exception as e:
+                print(f"[EMERGENCY STOP] Niryo halt attempt ({niryo_target}): {e}")
 
         if self.current_submission_id:
             await append_logs(

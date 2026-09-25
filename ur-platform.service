@@ -1,0 +1,15 @@
+[Unit]
+Description=Universal Robots & Niryo Educational Platform Server
+After=network.target
+
+[Service]
+Type=simple
+User=itis
+WorkingDirectory=/home/itis/ur_platform
+ExecStart=/home/itis/ur_platform/.venv/bin/python -m uvicorn app:app --host 0.0.0.0 --port 8000 --workers 1
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

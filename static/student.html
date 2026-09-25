@@ -28,20 +28,39 @@
             </div>
         </div>
 
+        <!-- Robot Selection Switcher (Student Model Selector) -->
+        <div class="flex items-center space-x-1.5 bg-slate-950/90 border border-slate-700/80 p-1 rounded-xl shadow-inner">
+            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 px-2 hidden sm:inline">Active Robot:</span>
+            <button id="studentBtnModelUR" onclick="selectStudentRobotModel('ur')" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-1 ring-indigo-400/50">
+                <span id="studentDotUR" class="w-2 h-2 rounded-full bg-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.8)]"></span>
+                <span>🦾 UR3 Arm</span>
+            </button>
+            <button id="studentBtnModelNiryo" onclick="selectStudentRobotModel('niryo')" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
+                <span id="studentDotNiryo" class="w-2 h-2 rounded-full bg-slate-500 opacity-40"></span>
+                <span>🤖 Niryo Ned</span>
+            </button>
+        </div>
+
         <div class="flex items-center flex-wrap gap-3">
             <!-- Documentation & Examples Link -->
-            <a href="https://sdurobotics.gitlab.io/ur_rtde" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition">
+            <a id="docsLink" href="https://sdurobotics.gitlab.io/ur_rtde" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition" title="Robot Library Documentation">
                 <span>📚 Docs</span>
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                 </svg>
             </a>
 
-            <!-- Live Robot Readiness Badge (Pings Robot) -->
+            <!-- Live Robot Readiness Badge (Pings Chosen Robot) -->
             <div id="connectionStatus" class="flex items-center space-x-2 text-xs text-rose-400 bg-rose-950/60 border border-rose-800 px-3 py-1.5 rounded-full transition-all">
                 <span id="pingDot" class="w-2 h-2 rounded-full bg-rose-500"></span>
                 <span id="pingText">Checking Robot Ping...</span>
             </div>
+
+            <!-- Emergency Abort Button (SPACE Key) -->
+            <button id="btnStudentEmergencyAbort" onclick="abortStudentRobot('Emergency Button')" class="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-xs font-extrabold tracking-wider uppercase rounded-lg shadow-lg shadow-red-600/30 flex items-center space-x-1.5 transition animate-pulse" title="Press SPACE bar anytime to trigger Emergency Stop immediately">
+                <span>🛑 E-STOP</span>
+                <span class="bg-red-950/80 text-[10px] px-1 py-0.5 rounded font-mono text-red-200 border border-red-500/40">[SPACE]</span>
+            </button>
 
             <!-- Student User Badge / Logout -->
             <div id="userHeaderBadge" class="flex items-center space-x-2 bg-slate-850 border border-slate-700 px-3 py-1.5 rounded-lg text-xs shadow-inner">
@@ -53,6 +72,17 @@
             </div>
         </div>
     </header>
+
+    <!-- Emergency Toast Notification -->
+    <div id="studentEmergencyToast" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 pointer-events-none opacity-0 -translate-y-4">
+        <div class="flex items-center space-x-3 px-5 py-3 rounded-xl bg-red-600/95 text-white shadow-2xl backdrop-blur-md border border-red-400">
+            <span class="text-xl">🛑</span>
+            <div>
+                <p class="text-xs font-black uppercase tracking-wider">Emergency Stop Activated</p>
+                <p class="text-[11px] text-red-100">Physical robot &amp; simulation halted immediately.</p>
+            </div>
+        </div>
+    </div>
 
     <!-- Main Content -->
     <main class="flex-1 p-6 grid grid-cols-1 xl:grid-cols-12 gap-6">
@@ -79,7 +109,10 @@
                     <span class="font-mono text-slate-300">main.py</span>
                     <button onclick="resetEditorToDefault()" class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline">Reset to Template</button>
                 </div>
-                <span id="robotIpNotice">Target: Loading...</span>
+                <div class="flex items-center space-x-2">
+                    <span id="robotSelectedBadge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3 ARM</span>
+                    <span id="robotIpNotice">Target: Loading...</span>
+                </div>
             </div>
 
             <!-- Monaco Container -->
@@ -286,7 +319,9 @@ Write your Python script, click "Save Code", and click "Send for Execution" to q
         let logSocket = null;
         let isRobotReady = false;
         let configuredIp = "10.0.10.60";
-        let currentRobotModel = "ur";
+        let allRobotIps = { ur: "10.0.10.60", niryo: "10.0.130.49" };
+        const STORAGE_ROBOT_KEY = "ur_student_selected_robot";
+        let currentRobotModel = localStorage.getItem(STORAGE_ROBOT_KEY) || "ur";
         let ur3Vis = null;
         let currentStudentUser = null;
         let currentAuthToken = null;
@@ -363,9 +398,109 @@ print("Routine completed successfully!")
 `;
         }
 
+        // Robot Selection Handlers (UR3 vs Niryo Ned)
+        function selectStudentRobotModel(model, confirmCodeSwitch = true) {
+            if (model !== 'ur' && model !== 'niryo') return;
+            if (currentRobotModel === model) return;
+
+            const prevModel = currentRobotModel;
+            currentRobotModel = model;
+            localStorage.setItem(STORAGE_ROBOT_KEY, model);
+            configuredIp = allRobotIps[model] || (model === 'niryo' ? '10.0.130.49' : '10.0.10.60');
+
+            updateStudentRobotUI(model);
+
+            if (ur3Vis) {
+                ur3Vis.setRobotModel(model);
+            }
+
+            fetchExamples();
+            checkRobotStatus();
+
+            // Smart template loader
+            if (editor) {
+                const currentCode = editor.getValue().trim();
+                const prevDefault = buildDefaultCode(allRobotIps[prevModel] || '', prevModel).trim();
+                const isCurrentDefault = !currentCode || (currentCode === prevDefault);
+
+                if (isCurrentDefault) {
+                    editor.setValue(buildDefaultCode(configuredIp, model));
+                    saveCodeLocally();
+                    appendStudentLog(`\n[ROBOT] Switched to ${model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}. Starter template loaded.\n`);
+                } else if (confirmCodeSwitch) {
+                    const modelName = model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3';
+                    if (confirm(`You switched active robot to ${modelName}.\n\nWould you like to load the starter template for ${modelName} into the editor?\n(Click Cancel to keep your current code)`)) {
+                        editor.setValue(buildDefaultCode(configuredIp, model));
+                        saveCodeLocally();
+                        appendStudentLog(`\n[ROBOT] Switched to ${modelName}. Starter template loaded.\n`);
+                    } else {
+                        appendStudentLog(`\n[ROBOT] Switched target robot to ${modelName}. Keeping your current code.\n`);
+                    }
+                }
+            }
+        }
+
+        function updateStudentRobotUI(model) {
+            const btnUR = document.getElementById("studentBtnModelUR");
+            const btnNiryo = document.getElementById("studentBtnModelNiryo");
+            const dotUR = document.getElementById("studentDotUR");
+            const dotNiryo = document.getElementById("studentDotNiryo");
+            const badge = document.getElementById("robotSelectedBadge");
+            const docsLink = document.getElementById("docsLink");
+
+            if (model === 'niryo') {
+                if (btnUR) {
+                    btnUR.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-800/60";
+                }
+                if (dotUR) {
+                    dotUR.className = "w-2 h-2 rounded-full bg-slate-500 opacity-40";
+                }
+                if (btnNiryo) {
+                    btnNiryo.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-cyan-600 text-white shadow-md shadow-cyan-600/30 ring-1 ring-cyan-400/50";
+                }
+                if (dotNiryo) {
+                    dotNiryo.className = "w-2 h-2 rounded-full bg-cyan-200 shadow-[0_0_8px_rgba(34,211,238,0.8)]";
+                }
+                if (badge) {
+                    badge.innerText = "NIRYO NED";
+                    badge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
+                }
+                if (docsLink) {
+                    docsLink.href = "https://niryorobotics.github.io/pyniryo/v1.2.5/index.html";
+                    docsLink.title = "PyNiryo v1.2.5 Documentation";
+                }
+            } else {
+                if (btnUR) {
+                    btnUR.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-1 ring-indigo-400/50";
+                }
+                if (dotUR) {
+                    dotUR.className = "w-2 h-2 rounded-full bg-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.8)]";
+                }
+                if (btnNiryo) {
+                    btnNiryo.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-800/60";
+                }
+                if (dotNiryo) {
+                    dotNiryo.className = "w-2 h-2 rounded-full bg-slate-500 opacity-40";
+                }
+                if (badge) {
+                    badge.innerText = "UR3 ARM";
+                    badge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+                }
+                if (docsLink) {
+                    docsLink.href = "https://sdurobotics.gitlab.io/ur_rtde";
+                    docsLink.title = "Universal Robots RTDE Documentation";
+                }
+            }
+
+            updateTargetNotice();
+        }
+
         // Initialize on DOM load
         window.addEventListener("DOMContentLoaded", () => {
             ur3Vis = new UR3Visualizer("ur3CanvasContainer");
+            if (currentRobotModel) {
+                ur3Vis.setRobotModel(currentRobotModel);
+            }
             
             const savedName = localStorage.getItem(STORAGE_PROG_KEY);
             if (savedName) {
@@ -651,6 +786,10 @@ print("Routine completed successfully!")
                     rejected: "bg-slate-700 text-slate-300"
                 };
                 const badge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${statusColors[p.status] || 'bg-slate-700'}">${p.status}</span>`;
+                const projModel = p.robot_model || ((p.code && p.code.includes('pyniryo')) ? 'niryo' : 'ur');
+                const modelBadge = projModel === 'niryo'
+                    ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Niryo</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>';
                 const codeSnippet = p.code ? p.code.split('\n').slice(0, 3).join('\n') : '';
 
                 return `
@@ -658,6 +797,7 @@ print("Routine completed successfully!")
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center space-x-2">
                                 <span class="text-xs font-bold text-white">${escapeHtml(p.task_id)}</span>
+                                ${modelBadge}
                                 ${badge}
                                 <span class="text-[10px] text-slate-500 font-mono">#${p.id}</span>
                             </div>
@@ -678,11 +818,15 @@ print("Routine completed successfully!")
             const proj = myProjectsData.find(p => p.id === id);
             if (!proj) return;
             if (confirm(`Load project "${proj.task_id}" into editor? This replaces current editor code.`)) {
+                const projModel = proj.robot_model || ((proj.code && proj.code.includes('pyniryo')) ? 'niryo' : 'ur');
+                if (projModel !== currentRobotModel) {
+                    selectStudentRobotModel(projModel, false);
+                }
                 editor.setValue(proj.code);
                 document.getElementById("programName").value = proj.task_id;
                 saveCodeLocally();
                 closeMyProjectsModal();
-                appendStudentLog(`\n[PROJECTS] Loaded project #${proj.id} ("${proj.task_id}") into editor.\n`);
+                appendStudentLog(`\n[PROJECTS] Loaded project #${proj.id} ("${proj.task_id}") [${projModel.toUpperCase()}] into editor.\n`);
             }
         }
 
@@ -695,12 +839,22 @@ print("Routine completed successfully!")
             try {
                 const confRes = await fetch('/api/config');
                 const confData = await confRes.json();
-                configuredIp = confData.robot_ip;
-                currentRobotModel = confData.robot_model || 'ur';
+                allRobotIps.ur = confData.ur_ip || confData.robot_ip || '10.0.10.60';
+                allRobotIps.niryo = confData.niryo_ip || '10.0.130.49';
+
+                // Check saved user choice in localStorage, fallback to server config
+                const savedModel = localStorage.getItem(STORAGE_ROBOT_KEY);
+                if (savedModel && (savedModel === 'ur' || savedModel === 'niryo')) {
+                    currentRobotModel = savedModel;
+                } else if (confData.robot_model && (confData.robot_model === 'ur' || confData.robot_model === 'niryo')) {
+                    currentRobotModel = confData.robot_model;
+                }
+
+                configuredIp = allRobotIps[currentRobotModel] || confData.robot_ip;
+                updateStudentRobotUI(currentRobotModel);
                 if (ur3Vis) {
                     ur3Vis.setRobotModel(currentRobotModel);
                 }
-                updateTargetNotice();
             } catch (e) {
                 console.error("Config fetch error:", e);
             }
@@ -738,6 +892,14 @@ print("Routine completed successfully!")
                 submitCode();
             });
 
+            editor.addCommand(monaco.KeyCode.Space, function() {
+                if (isStudentExecuting) {
+                    abortStudentRobot("SPACE Key (inside Code Editor)");
+                } else {
+                    editor.trigger('keyboard', 'type', { text: ' ' });
+                }
+            });
+
             checkRobotStatus();
             fetchExamples();
             setInterval(checkRobotStatus, 3000);
@@ -758,7 +920,8 @@ print("Routine completed successfully!")
         }
 
         function resetEditorToDefault() {
-            if (confirm("Reset editor to default starting template? Any unsaved edits will be lost.")) {
+            const modelLabel = (currentRobotModel === 'niryo') ? 'Niryo Ned' : 'Universal Robots UR3';
+            if (confirm(`Reset editor to default ${modelLabel} starting template? Any unsaved edits will be lost.`)) {
                 editor.setValue(buildDefaultCode(configuredIp, currentRobotModel));
                 saveCodeLocally();
             }
@@ -782,19 +945,13 @@ print("Routine completed successfully!")
             const notice = document.getElementById("robotOfflineNotice");
 
             try {
-                const res = await fetch('/api/robot-status');
+                const res = await fetch(`/api/robot-status?model=${currentRobotModel}`);
                 const data = await res.json();
                 isRobotReady = data.is_ready;
                 configuredIp = data.ip;
-                const model = data.robot_model || 'ur';
-                if (currentRobotModel !== model) {
-                    currentRobotModel = model;
-                    if (ur3Vis) ur3Vis.setRobotModel(model);
-                    fetchExamples();
-                }
                 updateTargetNotice();
 
-                const modelLabel = (model === 'niryo') ? 'Niryo Ned' : 'UR3 Arm';
+                const modelLabel = (currentRobotModel === 'niryo') ? 'Niryo Ned' : 'UR3 Arm';
 
                 if (isRobotReady) {
                     statusDiv.className = "flex items-center space-x-2 text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-3 py-1.5 rounded-full transition-all";
@@ -859,7 +1016,7 @@ print("Routine completed successfully!")
                 const res = await fetch('/api/simulate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code })
+                    body: JSON.stringify({ code, robot_model: currentRobotModel })
                 });
 
                 const data = await res.json();
@@ -871,8 +1028,10 @@ print("Routine completed successfully!")
                 }
 
                 // Auto-switch visualizer if robot model detected in code
-                if (data.robot_model && ur3Vis && ur3Vis.currentModel !== data.robot_model) {
-                    ur3Vis.setRobotModel(data.robot_model);
+                if (data.robot_model && data.robot_model !== currentRobotModel) {
+                    selectStudentRobotModel(data.robot_model, false);
+                } else if (ur3Vis && ur3Vis.currentModel !== currentRobotModel) {
+                    ur3Vis.setRobotModel(currentRobotModel);
                 }
 
                 clearTerminal();
@@ -938,7 +1097,8 @@ print("Routine completed successfully!")
                         student_name: currentStudentUser.username,
                         program_name: programName, 
                         task_id: programName, 
-                        code 
+                        code,
+                        robot_model: currentRobotModel
                     })
                 });
 
@@ -1023,9 +1183,22 @@ print("Routine completed successfully!")
 
             logSocket.onmessage = (event) => {
                 appendStudentLog(event.data);
-                if (event.data.includes("[COMPLETED]")) updateBadge("completed");
-                if (event.data.includes("[FAILED]")) updateBadge("failed");
-                if (event.data.includes("[ABORTED]")) updateBadge("aborted");
+                if (event.data.includes("Executing submission") || event.data.includes("[RUNNING]")) {
+                    isStudentExecuting = true;
+                    updateBadge("running");
+                }
+                if (event.data.includes("[COMPLETED]")) {
+                    isStudentExecuting = false;
+                    updateBadge("completed");
+                }
+                if (event.data.includes("[FAILED]")) {
+                    isStudentExecuting = false;
+                    updateBadge("failed");
+                }
+                if (event.data.includes("[ABORTED]")) {
+                    isStudentExecuting = false;
+                    updateBadge("aborted");
+                }
             };
 
             logSocket.onclose = () => {
@@ -1090,6 +1263,9 @@ print("Routine completed successfully!")
                 const ex = await res.json();
                 if (ex && ex.code) {
                     if (confirm(`Load example "${ex.title}" into editor? This replaces current editor code.`)) {
+                        if (ex.robot_model && ex.robot_model !== currentRobotModel) {
+                            selectStudentRobotModel(ex.robot_model, false);
+                        }
                         editor.setValue(ex.code);
                         saveCodeLocally();
                         appendStudentLog(`[INFO] Loaded example: ${ex.title}\n`);
@@ -1111,6 +1287,77 @@ print("Routine completed successfully!")
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
         }
+
+        // ==========================================
+        // Student Emergency Stop & SPACE Shortcut
+        // ==========================================
+
+        let isStudentExecuting = false;
+
+        async function abortStudentRobot(triggerSource = "Emergency Button") {
+            const btn = document.getElementById("btnStudentEmergencyAbort");
+            if (btn) {
+                btn.classList.add("ring-4", "ring-white", "scale-105");
+                setTimeout(() => btn.classList.remove("ring-4", "ring-white", "scale-105"), 800);
+            }
+            showStudentEmergencyToast();
+
+            if (ur3Vis) {
+                ur3Vis.stopSimulation();
+            }
+            updateBadge("aborted");
+            appendStudentLog(`\n[EMERGENCY STOP] Triggered by ${triggerSource}! Halting robot and simulation immediately.\n`);
+
+            try {
+                await fetch('/api/abort', { method: 'POST' });
+            } catch (e) {
+                console.error("Emergency abort error:", e);
+            }
+        }
+
+        function showStudentEmergencyToast() {
+            const toast = document.getElementById("studentEmergencyToast");
+            if (!toast) return;
+            toast.classList.remove("opacity-0", "-translate-y-4");
+            toast.classList.add("opacity-100", "translate-y-0");
+            setTimeout(() => {
+                toast.classList.remove("opacity-100", "translate-y-0");
+                toast.classList.add("opacity-0", "-translate-y-4");
+            }, 3500);
+        }
+
+        function handleStudentSpacebarEmergency(e) {
+            const isSpace = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
+            if (!isSpace) return;
+
+            // Allow typing space in standard form text inputs and textareas
+            const activeEl = document.activeElement;
+            if (activeEl) {
+                const tag = activeEl.tagName ? activeEl.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || activeEl.isContentEditable) {
+                    return;
+                }
+            }
+
+            // In Monaco editor: if NOT running, allow typing space. If running, trigger emergency stop!
+            if (typeof editor !== 'undefined' && editor && !isStudentExecuting) {
+                if (typeof editor.hasTextFocus === 'function' && editor.hasTextFocus()) {
+                    return; // Normal typing in editor
+                }
+            }
+
+            // PREVENT DEFAULT ALWAYS so pressing Spacebar NEVER scrolls the page down!
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
+
+            abortStudentRobot("SPACE Key");
+        }
+
+        window.addEventListener('keydown', handleStudentSpacebarEmergency, { capture: true, passive: false });
+        document.addEventListener('keydown', handleStudentSpacebarEmergency, { capture: true, passive: false });
     </script>
 </body>
 </html>

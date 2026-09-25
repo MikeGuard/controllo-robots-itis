@@ -52,6 +52,7 @@ admin_sockets: Set[WebSocket] = set()
 
 class SyntaxCheckRequest(BaseModel):
     code: str
+    robot_model: Optional[str] = None
 
 
 class SubmissionRequest(BaseModel):
@@ -59,6 +60,7 @@ class SubmissionRequest(BaseModel):
     student_name: Optional[str] = None
     task_id: Optional[str] = ""
     code: str
+    robot_model: Optional[str] = "ur"
 
 
 class CreateExampleRequest(BaseModel):
@@ -115,12 +117,26 @@ async def get_instructor_dashboard():
 
 # --- Helper Functions ---
 
-async def check_robot_reachability(ip: Optional[str] = None):
-    target_ip = ip or config.ROBOT_IP
+async def check_robot_reachability(ip: Optional[str] = None, model: Optional[str] = None):
+    target_ip = (ip or "").strip()
+    target_model = (model or "").strip().lower()
+
+    if not target_ip:
+        if target_model == "niryo":
+            target_ip = config.NIRYO_IP
+        elif target_model == "ur":
+            target_ip = config.UR_IP
+        else:
+            target_ip = config.ROBOT_IP
+
+    if not target_model:
+        target_model = "niryo" if target_ip == config.NIRYO_IP else "ur"
+
     ping_ok = False
     try:
+        ping_timeout = "1000" if sys.platform == "darwin" else "1"
         proc = await asyncio.create_subprocess_exec(
-            "ping", "-c", "1", "-W", "1", target_ip,
+            "ping", "-c", "1", "-W", ping_timeout, target_ip,
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL
         )
@@ -129,10 +145,11 @@ async def check_robot_reachability(ip: Optional[str] = None):
     except Exception:
         ping_ok = False
 
-    # Also check UR ports (30004 RTDE, 30002 secondary)
+    # Check ports: Niryo 9090 vs UR 30004/30002
     port_ok = False
     if not ping_ok:
-        for port in (config.ROBOT_RTDE_PORT, config.ROBOT_SECONDARY_PORT):
+        ports = [config.NIRYO_PORT] if target_model == "niryo" else [config.ROBOT_RTDE_PORT, config.ROBOT_SECONDARY_PORT]
+        for port in ports:
             try:
                 _, writer = await asyncio.wait_for(asyncio.open_connection(target_ip, port), timeout=0.5)
                 writer.close()
@@ -356,21 +373,35 @@ async def get_config():
 
 
 @app.get("/api/robot-status")
-async def get_robot_status(ip: Optional[str] = None):
+async def get_robot_status(ip: Optional[str] = None, model: Optional[str] = None):
     """
-    Pings the active robot IP and checks connectivity.
+    Pings the requested or active robot IP and checks connectivity.
     If ping or port probe fails, robot is NOT ready.
     """
-    target_ip = ip or config.ROBOT_IP
-    is_ready, ping_ok, port_ok = await check_robot_reachability(target_ip)
+    target_model = (model or "").strip().lower()
+    if target_model not in ("ur", "niryo"):
+        target_model = None
+
+    if ip:
+        target_ip = ip.strip()
+        target_model = target_model or ("niryo" if target_ip == config.NIRYO_IP else "ur")
+    elif target_model == "niryo":
+        target_ip = config.NIRYO_IP
+    elif target_model == "ur":
+        target_ip = config.UR_IP
+    else:
+        target_ip = config.ROBOT_IP
+        target_model = config.ROBOT_MODEL
+
+    is_ready, ping_ok, port_ok = await check_robot_reachability(target_ip, model=target_model)
     return {
         "ip": target_ip,
-        "robot_model": config.ROBOT_MODEL,
+        "robot_model": target_model,
         "is_ready": is_ready,
         "ping_ok": ping_ok,
         "port_ok": port_ok,
         "status_text": "READY" if is_ready else "NOT READY",
-        "message": f"Robot at {target_ip} is online and ready." if is_ready else f"Robot at {target_ip} did not respond to ping. Not ready."
+        "message": f"Robot ({target_model.upper()}) at {target_ip} is online and ready." if is_ready else f"Robot ({target_model.upper()}) at {target_ip} did not respond to ping. Not ready."
     }
 
 
@@ -395,7 +426,7 @@ async def simulate_code(payload: SyntaxCheckRequest):
             content={"success": False, "detail": "Safety check failed.", "errors": errors}
         )
 
-    res = simulate_script(payload.code)
+    res = simulate_script(payload.code, robot_model=payload.robot_model)
     return res
 
 
@@ -430,20 +461,33 @@ async def submit_code(payload: SubmissionRequest):
             content={"detail": "Safety or syntax check failed.", "errors": errors}
         )
 
+    # Determine robot model
+    model = (payload.robot_model or "").strip().lower()
+    if model not in ("ur", "niryo"):
+        model = "niryo" if ("pyniryo" in payload.code or "NiryoRobot" in payload.code) else "ur"
+
     sub_id = await database.create_submission(
         student_name=student_name,
         task_id=program_name,
-        code=payload.code
+        code=payload.code,
+        robot_model=model
     )
 
     # Notify instructor dashboard of new submission
-    await broadcast_to_admins({"type": "new_submission", "id": sub_id, "student": student_name, "program": program_name})
+    await broadcast_to_admins({
+        "type": "new_submission",
+        "id": sub_id,
+        "student": student_name,
+        "program": program_name,
+        "robot_model": model
+    })
     return {
         "submission_id": sub_id,
         "status": "pending",
         "student_name": student_name,
         "program_name": program_name,
-        "message": f"Program '{program_name}' sent for execution."
+        "robot_model": model,
+        "message": f"Program '{program_name}' ({model.upper()}) sent for execution."
     }
 
 
@@ -488,7 +532,12 @@ async def get_student_saved_projects(
     return {"student": target_student, "projects": projects}
 
 
-async def launch_submission_execution(sub_id: int, code_str: str):
+async def launch_submission_execution(sub_id: int, code_str: str, robot_model: Optional[str] = None):
+    # Ensure config targets the robot specified for this submission
+    if robot_model in ("ur", "niryo"):
+        config.ROBOT_MODEL = robot_model
+        config.ROBOT_IP = config.NIRYO_IP if robot_model == "niryo" else config.UR_IP
+
     async def log_broadcaster(msg: str):
         # Broadcast to any student or instructor listening to this submission
         if sub_id in active_log_sockets:
@@ -500,18 +549,20 @@ async def launch_submission_execution(sub_id: int, code_str: str):
 
     # Launch execution in background task
     async def run_task():
-        await broadcast_to_admins({"type": "execution_started", "id": sub_id})
+        active_model = robot_model or getattr(config, "ROBOT_MODEL", "ur")
+        await broadcast_to_admins({"type": "execution_started", "id": sub_id, "robot_model": active_model})
         try:
             await engine.execute_submission(
                 submission_id=sub_id,
                 code_str=code_str,
-                log_callback=log_broadcaster
+                log_callback=log_broadcaster,
+                robot_model=active_model
             )
         except Exception as e:
             print(f"[Execution Task Exception] sub #{sub_id}: {e}")
             await database.update_status(sub_id, "failed", f"\n[Supervisor ERROR] Execution failed: {e}\n")
         finally:
-            await broadcast_to_admins({"type": "execution_finished", "id": sub_id})
+            await broadcast_to_admins({"type": "execution_finished", "id": sub_id, "robot_model": active_model})
 
     asyncio.create_task(run_task())
 
@@ -525,15 +576,30 @@ async def approve_submission(sub_id: int):
     if engine.is_executing:
         raise HTTPException(status_code=409, detail="A script is already running on the robot.")
 
-    is_ready, _, _ = await check_robot_reachability()
+    sub_model = sub.get("robot_model") or ("niryo" if ("pyniryo" in sub["code"] or "NiryoRobot" in sub["code"]) else "ur")
+    target_ip = config.NIRYO_IP if sub_model == "niryo" else config.UR_IP
+
+    is_ready, _, _ = await check_robot_reachability(target_ip, model=sub_model)
     if not is_ready:
+        model_name = "Niryo Ned" if sub_model == "niryo" else "UR3"
         raise HTTPException(
             status_code=503,
-            detail=f"Robot at {config.ROBOT_IP} is offline (no ping). Cannot execute."
+            detail=f"{model_name} at {target_ip} is offline (no ping). Cannot execute."
         )
 
-    await launch_submission_execution(sub_id, sub["code"])
-    return {"status": "started", "message": f"Execution launched for submission #{sub_id}"}
+    # Update active robot model and config so top selector and supervisor reflect it!
+    config.ROBOT_MODEL = sub_model
+    config.ROBOT_IP = target_ip
+    await broadcast_to_admins({
+        "type": "config_updated",
+        "robot_model": sub_model,
+        "robot_ip": target_ip,
+        "ur_ip": config.UR_IP,
+        "niryo_ip": config.NIRYO_IP
+    })
+
+    await launch_submission_execution(sub_id, sub["code"], robot_model=sub_model)
+    return {"status": "started", "message": f"Execution launched for submission #{sub_id} on {sub_model.upper()}"}
 
 
 @app.post("/api/admin/send-code")
@@ -549,35 +615,57 @@ async def admin_send_code(payload: AdminSendCodeRequest):
             content={"detail": "Safety check failed on custom code.", "errors": errors}
         )
 
+    # Detect robot model from code
+    detected_model = "niryo" if ("pyniryo" in payload.code or "NiryoRobot" in payload.code) else "ur"
+    target_ip = config.NIRYO_IP if detected_model == "niryo" else config.UR_IP
+
     sub_id = await database.create_submission(
         student_name=f"Admin ({prog_name})",
         task_id="Admin",
-        code=payload.code
+        code=payload.code,
+        robot_model=detected_model
     )
 
     if payload.execute_now:
-        is_ready, _, _ = await check_robot_reachability()
+        is_ready, _, _ = await check_robot_reachability(target_ip, model=detected_model)
         if not is_ready:
+            model_name = "Niryo Ned" if detected_model == "niryo" else "UR3"
             raise HTTPException(
                 status_code=503,
-                detail=f"Robot at {config.ROBOT_IP} is offline. Script added to queue as #{sub_id} but not started."
+                detail=f"{model_name} at {target_ip} is offline. Script added to queue as #{sub_id} but not started."
             )
         if engine.is_executing:
             raise HTTPException(
                 status_code=409,
                 detail=f"Another script is currently executing. Added as #{sub_id}."
             )
-        await launch_submission_execution(sub_id, payload.code)
+
+        # Update active robot model and config
+        config.ROBOT_MODEL = detected_model
+        config.ROBOT_IP = target_ip
+        await broadcast_to_admins({
+            "type": "config_updated",
+            "robot_model": detected_model,
+            "robot_ip": target_ip,
+            "ur_ip": config.UR_IP,
+            "niryo_ip": config.NIRYO_IP
+        })
+
+        await launch_submission_execution(sub_id, payload.code, robot_model=detected_model)
         return {
             "status": "started",
             "submission_id": sub_id,
-            "message": f"Execution started for #{sub_id}"
+            "robot_model": detected_model,
+            "executed": True,
+            "message": f"Execution started for #{sub_id} on {detected_model.upper()}"
         }
 
-    await broadcast_to_admins({"type": "new_submission", "id": sub_id})
+    await broadcast_to_admins({"type": "new_submission", "id": sub_id, "robot_model": detected_model})
     return {
         "status": "pending",
         "submission_id": sub_id,
+        "robot_model": detected_model,
+        "executed": False,
         "message": f"Custom code saved to queue as #{sub_id}"
     }
 

@@ -346,7 +346,7 @@ print("Velocity control routine completed!")
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
-        # Submissions table
+        # Submissions table with robot_model support
         await db.execute("""
             CREATE TABLE IF NOT EXISTS submissions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -357,9 +357,16 @@ async def init_db():
                 logs TEXT DEFAULT '',
                 submitted_at TEXT NOT NULL,
                 executed_at TEXT,
-                completed_at TEXT
+                completed_at TEXT,
+                robot_model TEXT NOT NULL DEFAULT 'ur'
             )
         """)
+
+        # Check if robot_model column exists in submissions (migration)
+        async with db.execute("PRAGMA table_info(submissions)") as cursor:
+            sub_cols = [row[1] for row in await cursor.fetchall()]
+            if "robot_model" not in sub_cols:
+                await db.execute("ALTER TABLE submissions ADD COLUMN robot_model TEXT NOT NULL DEFAULT 'ur'")
 
         # Examples table with robot_model support
         await db.execute("""
@@ -374,7 +381,7 @@ async def init_db():
             )
         """)
 
-        # Check if robot_model column exists (for backward compatibility migration)
+        # Check if robot_model column exists in examples (for backward compatibility migration)
         async with db.execute("PRAGMA table_info(examples)") as cursor:
             cols = [row[1] for row in await cursor.fetchall()]
             if "robot_model" not in cols:
@@ -536,15 +543,18 @@ async def is_program_name_duplicate(student_name: str, program_name: str) -> boo
 
 # --- Submissions CRUD & Project History ---
 
-async def create_submission(student_name: str, task_id: str, code: str) -> int:
+async def create_submission(student_name: str, task_id: str, code: str, robot_model: str = "ur") -> int:
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    norm_model = (robot_model or "ur").strip().lower()
+    if norm_model not in ("ur", "niryo"):
+        norm_model = "ur"
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             """
-            INSERT INTO submissions (student_name, task_id, code, status, logs, submitted_at)
-            VALUES (?, ?, ?, 'pending', '', ?)
+            INSERT INTO submissions (student_name, task_id, code, status, logs, submitted_at, robot_model)
+            VALUES (?, ?, ?, 'pending', '', ?, ?)
             """,
-            (student_name, task_id, code, now)
+            (student_name, task_id, code, now, norm_model)
         )
         await db.commit()
         return cursor.lastrowid
@@ -574,7 +584,7 @@ async def get_student_submissions(student_name: str, limit: int = 100) -> List[D
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
-            SELECT id, student_name, task_id, code, status, logs, submitted_at, executed_at, completed_at
+            SELECT id, student_name, task_id, code, status, logs, submitted_at, executed_at, completed_at, robot_model
             FROM submissions 
             WHERE LOWER(student_name) = LOWER(?) 
             ORDER BY id DESC LIMIT ?

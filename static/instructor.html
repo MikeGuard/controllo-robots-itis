@@ -18,6 +18,17 @@
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
 
+    <!-- Emergency Stop Overlay / Toast Alert -->
+    <div id="emergencyToast" class="pointer-events-none fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 opacity-0 -translate-y-4">
+        <div class="bg-red-600 border-2 border-white text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center space-x-3 text-sm font-extrabold uppercase tracking-wider animate-pulse">
+            <span class="text-2xl">🛑</span>
+            <div>
+                <div class="text-base font-black">EMERGENCY STOP ACTIVATED</div>
+                <div class="text-[11px] font-normal tracking-normal text-red-100">Halting commands sent to physical arm and execution engine.</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Top Navigation / Physical Safety Control Bar -->
     <header class="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-2xl">
         <div class="flex items-center space-x-3">
@@ -58,6 +69,14 @@
                 <span id="robotStatusText" class="font-bold">ROBOT OFFLINE (NO PING)</span>
             </div>
 
+            <!-- Documentation Link -->
+            <a id="adminDocsLink" href="https://sdurobotics.gitlab.io/ur_rtde" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition" title="Robot Library Documentation">
+                <span>📚 Docs</span>
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                </svg>
+            </a>
+
             <!-- Create & Send Code Button -->
             <button onclick="activateCodeCreator()" class="px-3.5 py-1.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center space-x-1.5">
                 <span>✍️ Create &amp; Send Code</span>
@@ -85,11 +104,12 @@
             </button>
 
             <!-- Physical Emergency Stop / Abort Button -->
-            <button onclick="abortRobot()" class="px-5 py-2 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-xs font-extrabold tracking-wider uppercase rounded-lg shadow-lg shadow-red-600/30 flex items-center space-x-2 transition animate-pulse">
+            <button id="btnEmergencyAbort" onclick="abortRobot('Emergency Button')" class="px-5 py-2 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-xs font-extrabold tracking-wider uppercase rounded-lg shadow-lg shadow-red-600/30 flex items-center space-x-2 transition animate-pulse" title="Press SPACE bar anytime to trigger Emergency Stop immediately">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 4.243a9 9 0 01-12.728 0m0 0l2.829-2.829m-2.829 2.829L3 21m2.829-5.464a5 5 0 010-7.072m0 0l2.829 2.829"></path>
                 </svg>
                 <span>EMERGENCY ABORT</span>
+                <span class="px-1.5 py-0.5 rounded bg-black/40 text-[10px] font-mono tracking-normal border border-white/20 font-bold">SPACE</span>
             </button>
         </div>
     </header>
@@ -622,6 +642,15 @@ print("Gripper test finished!")
                 }
             });
 
+            // If user has focused the code inspector and presses SPACE, trigger emergency stop
+            viewer.addCommand(monaco.KeyCode.Space, function() {
+                if (editorMode === 'inspect' || isExecuting) {
+                    abortRobot("SPACE Key (inside Code Inspector)");
+                } else {
+                    viewer.trigger('keyboard', 'type', { text: ' ' });
+                }
+            });
+
             checkAdminAuth();
             setInterval(checkRobotPing, 3000);
             setInterval(fetchSubmissions, 2000);
@@ -672,6 +701,7 @@ print("Gripper test finished!")
             const visTitle = document.getElementById("visModelTitle");
             const visDot = document.getElementById("visModelDot");
 
+            const docsLink = document.getElementById("adminDocsLink");
             if (model === 'niryo') {
                 if (btnUR) {
                     btnUR.className = "px-2.5 py-1 text-xs font-bold rounded-md text-slate-400 hover:text-white transition flex items-center space-x-1";
@@ -690,6 +720,10 @@ print("Gripper test finished!")
                 }
                 if (visTitle) visTitle.innerText = "3D Simulator (Niryo One)";
                 if (visDot) visDot.className = "w-2.5 h-2.5 rounded-full bg-cyan-400";
+                if (docsLink) {
+                    docsLink.href = "https://niryorobotics.github.io/pyniryo/v1.2.5/index.html";
+                    docsLink.title = "PyNiryo v1.2.5 Documentation";
+                }
             } else {
                 if (btnUR) {
                     btnUR.className = "px-2.5 py-1 text-xs font-bold rounded-md bg-indigo-600 text-white shadow transition flex items-center space-x-1";
@@ -708,6 +742,10 @@ print("Gripper test finished!")
                 }
                 if (visTitle) visTitle.innerText = "3D Simulator (UR3)";
                 if (visDot) visDot.className = "w-2.5 h-2.5 rounded-full bg-sky-400";
+                if (docsLink) {
+                    docsLink.href = "https://sdurobotics.gitlab.io/ur_rtde";
+                    docsLink.title = "Universal Robots RTDE Documentation";
+                }
             }
 
             if (adminUr3Vis && updateVisualizer) {
@@ -833,6 +871,10 @@ print("Gripper test finished!")
                 const timeStr = new Date(sub.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 const isAdmin = sub.task_id === 'Admin' || (sub.student_name && sub.student_name.toLowerCase().startsWith('admin'));
                 const adminBadge = isAdmin ? '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">ADMIN</span>' : '';
+                const subModel = sub.robot_model || ((sub.code && sub.code.includes('pyniryo')) ? 'niryo' : 'ur');
+                const modelBadge = subModel === 'niryo'
+                    ? '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">NIRYO</span>'
+                    : '<span class="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>';
                 
                 const progName = (sub.task_id && sub.task_id !== 'Standard' && sub.task_id !== 'Main') ? sub.task_id : (sub.student_name || 'Program');
                 const studentName = sub.student_name || 'Anonymous';
@@ -840,7 +882,7 @@ print("Gripper test finished!")
                 return `
                     <tr onclick="selectSubmission(${sub.id})" class="cursor-pointer hover:bg-slate-800/80 transition ${isSelected ? 'bg-slate-800 border-l-4 border-blue-500' : ''}">
                         <td class="p-3 font-mono text-slate-400">#${sub.id}</td>
-                        <td class="p-3 font-bold text-slate-200">${escapeHtml(progName)}${adminBadge}</td>
+                        <td class="p-3 font-bold text-slate-200">${escapeHtml(progName)}${modelBadge}${adminBadge}</td>
                         <td class="p-3 font-medium text-sky-400">${escapeHtml(studentName)}</td>
                         <td class="p-3">${statusBadge}</td>
                         <td class="p-3 text-slate-400">${timeStr}</td>
@@ -884,11 +926,18 @@ print("Gripper test finished!")
             const isAdmin = sub.task_id === 'Admin' || (sub.student_name && sub.student_name.toLowerCase().startsWith('admin'));
             const adminTag = isAdmin ? " [ADMIN]" : "";
             const progName = (sub.task_id && sub.task_id !== 'Standard' && sub.task_id !== 'Main') ? sub.task_id : (sub.student_name || 'Program');
+            const subModel = sub.robot_model || ((sub.code && sub.code.includes('pyniryo')) ? 'niryo' : 'ur');
+            const modelLabel = subModel === 'niryo' ? 'Niryo Ned' : 'UR3 Arm';
             document.getElementById("inspectTitle").innerText = `#${sub.id} - ${progName} (by ${sub.student_name})${adminTag}`;
-            document.getElementById("inspectSub").innerText = `Status: ${sub.status.toUpperCase()} | Submitted: ${new Date(sub.submitted_at).toLocaleTimeString()}`;
+            document.getElementById("inspectSub").innerText = `Status: ${sub.status.toUpperCase()} | Target: ${modelLabel} | Submitted: ${new Date(sub.submitted_at).toLocaleTimeString()}`;
             document.getElementById("inspectorActions").classList.remove("hidden");
             const btnQuick = document.getElementById("btnQuickCreate");
             if (btnQuick) btnQuick.classList.add("hidden");
+
+            // Sync top selector with this submission's robot model
+            if (activeRobotModel !== subModel) {
+                selectRobotModel(subModel);
+            }
 
             viewer.setValue(sub.code);
             renderSubmissionsTable(submissionsList);
@@ -982,16 +1031,22 @@ print("Gripper test finished!")
 
         async function approveSelected() {
             if (!selectedSubId) return;
-            if (!isRobotReady) {
-                alert(`Cannot execute: Robot at ${configuredIp} is offline or not responding to ping.`);
-                return;
+            const sub = submissionsList.find(s => s.id === selectedSubId);
+            const subModel = sub ? (sub.robot_model || ((sub.code && sub.code.includes('pyniryo')) ? 'niryo' : 'ur')) : activeRobotModel;
+            const targetIp = (subModel === 'niryo') ? niryoIp : urIp;
+            const modelName = (subModel === 'niryo') ? 'Niryo Ned' : 'UR3';
+
+            // Ensure top selector reflects the robot being executed
+            if (activeRobotModel !== subModel) {
+                await selectRobotModel(subModel);
             }
+
             const btnApprove = document.getElementById("btnApprove");
             if (btnApprove) {
                 btnApprove.disabled = true;
                 btnApprove.innerHTML = "<span>⏳ Launching...</span>";
             }
-            appendLog(`\n[Supervisor] Launching execution for program #${selectedSubId} on robot (${configuredIp})...\n`);
+            appendLog(`\n[Supervisor] Launching execution for program #${selectedSubId} on ${modelName} (${targetIp})...\n`);
             try {
                 const res = await fetch(`/api/submissions/${selectedSubId}/approve`, { method: 'POST' });
                 if (!res.ok) {
@@ -1064,15 +1119,86 @@ print("Gripper test finished!")
             }
         }
 
-        async function abortRobot() {
+        async function abortRobot(triggerSource = "Emergency Button") {
+            const btn = document.getElementById("btnEmergencyAbort");
+            if (btn) {
+                btn.classList.add("ring-4", "ring-white", "scale-105");
+                setTimeout(() => btn.classList.remove("ring-4", "ring-white", "scale-105"), 800);
+            }
+            showEmergencyToast();
+
+            // Stop 3D simulation immediately
+            if (adminUr3Vis) {
+                adminUr3Vis.stopSimulation();
+            }
+
+            // Immediately reflect Emergency Stop on the status badge
+            const statusBadge = document.getElementById("robotStatusBadge");
+            const statusDot = document.getElementById("robotStatusDot");
+            const statusText = document.getElementById("robotStatusText");
+            if (statusBadge) {
+                statusBadge.className = "flex items-center space-x-2 text-xs bg-red-950/90 border border-red-700 text-red-300 px-3 py-1.5 rounded-lg transition-all animate-pulse";
+            }
+            if (statusDot) {
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-red-500 animate-ping";
+            }
+            if (statusText) {
+                statusText.innerText = "EMERGENCY STOPPED (HALTED)";
+            }
+
             try {
                 await fetch('/api/abort', { method: 'POST' });
-                appendLog("\n[SUPERVISOR] EMERGENCY ABORT SENT TO ENGINE!\n");
+                appendLog(`\n[SUPERVISOR] EMERGENCY ABORT SENT TO ENGINE! (Triggered by: ${triggerSource})\n`);
                 fetchSubmissions();
             } catch (e) {
                 alert("Abort failed: " + e.message);
             }
         }
+
+        function showEmergencyToast() {
+            const toast = document.getElementById("emergencyToast");
+            if (!toast) return;
+            toast.classList.remove("opacity-0", "-translate-y-4");
+            toast.classList.add("opacity-100", "translate-y-0");
+            setTimeout(() => {
+                toast.classList.remove("opacity-100", "translate-y-0");
+                toast.classList.add("opacity-0", "-translate-y-4");
+            }, 3500);
+        }
+
+        // Global Emergency Stop Shortcut: SPACE Bar
+        function handleGlobalSpacebarEmergency(e) {
+            const isSpace = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
+            if (!isSpace) return;
+
+            // Don't trigger if user is actively typing in a standard text input or textarea
+            const activeEl = document.activeElement;
+            if (activeEl) {
+                const tag = activeEl.tagName ? activeEl.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || activeEl.isContentEditable) {
+                    return; // Allow typing space in text fields
+                }
+            }
+
+            // Don't trigger if user is in Code Studio editing code, NOT running
+            if (typeof viewer !== 'undefined' && viewer && editorMode === 'create' && !isExecuting) {
+                if (typeof viewer.hasTextFocus === 'function' && viewer.hasTextFocus()) {
+                    return; // Allow typing space in Monaco editor when creating code
+                }
+            }
+
+            // Prevent default browser scrolling caused by spacebar unconditionally!
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
+
+            abortRobot("SPACE Key");
+        }
+
+        window.addEventListener('keydown', handleGlobalSpacebarEmergency, { capture: true, passive: false });
+        document.addEventListener('keydown', handleGlobalSpacebarEmergency, { capture: true, passive: false });
 
         async function clearQueue() {
             if (!confirm("Clear all pending programs?")) return;
@@ -1320,6 +1446,12 @@ print("Gripper test finished!")
             if (!code) {
                 alert("Please enter code before sending.");
                 return;
+            }
+
+            // Detect robot model and sync top selector
+            const detectedModel = (code.includes('pyniryo') || code.includes('NiryoRobot')) ? 'niryo' : 'ur';
+            if (activeRobotModel !== detectedModel) {
+                await selectRobotModel(detectedModel);
             }
 
             const btn = executeNow ? document.getElementById("btnSendExecute") : document.getElementById("btnSendQueue");
@@ -1575,6 +1707,21 @@ print("Gripper test finished!")
                 fetchSubmissions();
                 try {
                     const data = JSON.parse(e.data);
+                    if (data.type === 'config_updated' || data.type === 'execution_started' || data.robot_model) {
+                        const targetModel = data.robot_model;
+                        if (targetModel && (targetModel === 'ur' || targetModel === 'niryo') && targetModel !== activeRobotModel) {
+                            activeRobotModel = targetModel;
+                            if (data.ur_ip) urIp = data.ur_ip;
+                            if (data.niryo_ip) niryoIp = data.niryo_ip;
+                            configuredIp = (activeRobotModel === 'niryo') ? niryoIp : urIp;
+                            updateRobotModelUI(activeRobotModel, true);
+                            checkRobotPing();
+                        }
+                    }
+                    if (data.type === 'aborted') {
+                        showEmergencyToast();
+                        checkRobotPing();
+                    }
                     if (data.type === 'examples_updated') {
                         fetchAdminExamples();
                     }

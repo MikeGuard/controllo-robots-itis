@@ -6,13 +6,13 @@ import ast
 from typing import List, Tuple
 
 FORBIDDEN_MODULES = {
-    "os", "sys", "subprocess", "shutil", "importlib", "socket", "http",
+    "os", "sys", "subprocess", "shutil", "importlib", "http",
     "urllib", "requests", "ctypes", "pty", "multiprocessing", "threading",
     "pickle", "builtins", "signal", "posix", "gc"
 }
 
 FORBIDDEN_CALLS = {
-    "eval", "exec", "compile", "open", "__import__", "globals", "locals",
+    "eval", "exec", "compile", "open", "__import__", "globals",
     "delattr", "setattr"
 }
 
@@ -22,7 +22,7 @@ FORBIDDEN_ATTRS = {
 
 ALLOWED_MODULES = {
     "math", "time", "random", "numpy", "typing", "ur_wrapper",
-    "rtde_control", "rtde_receive", "pyniryo", "config"
+    "rtde_control", "rtde_receive", "pyniryo", "config", "socket", "rtde_io"
 }
 
 

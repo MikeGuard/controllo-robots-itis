@@ -541,7 +541,7 @@ class MockNiryoRobot:
         return lambda *a, **kw: True
 
 
-def simulate_script(code_str: str) -> Dict[str, Any]:
+def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[str, Any]:
     """
     Simulates Python code in an isolated scope with accurate UR3 & Niryo mock kinematics.
     Returns generated trajectory waypoints and captured output logs.
@@ -632,8 +632,15 @@ def simulate_script(code_str: str) -> Dict[str, Any]:
         "printf": mock_printf,
     }
 
-    # Detect robot model from code content
-    detected_model = "niryo" if ("pyniryo" in code_str or "NiryoRobot" in code_str) else "ur"
+    # Detect robot model from code content or explicit model hint
+    if "pyniryo" in code_str or "NiryoRobot" in code_str:
+        detected_model = "niryo"
+    elif "rtde_control" in code_str or "rtde_receive" in code_str or "RTDEControl" in code_str or "ur_wrapper" in code_str:
+        detected_model = "ur"
+    elif robot_model in ("ur", "niryo"):
+        detected_model = robot_model
+    else:
+        detected_model = "ur"
 
     try:
         exec(code_str, sim_globals)
