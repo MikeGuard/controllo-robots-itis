@@ -22,11 +22,11 @@ cd ur_platform
 bash setup_rpi.sh
 ```
 
-### What `setup_rpi.sh` does automatically:
-1. **Expands Swap Space to 2GB:** Critical for Raspberry Pi 3's 1GB RAM to prevent Out-Of-Memory (OOM) crashes during package compilation.
-2. **Installs System Dependencies:** `cmake`, `libboost-all-dev`, `python3-venv`, `python3-dev`, `build-essential`.
-3. **Sets up Virtual Environment (`.venv`):** Isolates all dependencies.
-4. **Installs Optimized Headless Packages:** Installs `opencv-python-headless` and robotics SDKs (`ur_rtde`, `pyniryo`).
+### What `setup_rpi.sh` does automatically (Zero Compilation):
+1. **Uses Pre-compiled APT System Packages:** Installs `python3-numpy`, `python3-opencv`, `python3-pydantic`, `python3-websockets`, and `python3-aiosqlite` via Debian APT. This avoids compiling them from source and saves ~2-4 hours.
+2. **Creates Virtual Environment with `--system-site-packages`:** Inherits the pre-compiled packages in 1 second.
+3. **Installs Lightweight Packages via PiWheels / PyPI:** Uses `--prefer-binary` to download pre-built ARM `.whl` wheels for FastAPI, Uvicorn, and PyNiryo.
+4. **No Forced C++ Compiles:** Skips slow C++ source compilation for `ur_rtde` unless you explicitly run with `--compile-ur`.
 5. **Generates Systemd Service:** Generates a custom `ur-platform.service` tuned to your user and directory.
 
 ---

@@ -20,9 +20,9 @@ echo "Instructor Dashboard: http://localhost:8000/admin"
 echo ""
 echo "Share one of these URLs with your students on the LAN:"
 if command -v ip >/dev/null 2>&1; then
-    ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' | awk '{print " -> http://" $1 ":8000"}'
+    ip -4 addr show 2>/dev/null | awk '/inet / && !/127.0.0.1/ {sub(/\/.*/, "", $2); print " -> http://" $2 ":8000"}'
 elif command -v ifconfig >/dev/null 2>&1; then
-    ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print " -> http://" $2 ":8000"}'
+    ifconfig 2>/dev/null | awk '/inet / && !/127.0.0.1/ {print " -> http://" $2 ":8000"}'
 fi
 echo "========================================================"
 
