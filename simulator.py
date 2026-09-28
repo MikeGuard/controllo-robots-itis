@@ -8,7 +8,7 @@ physically accurate, linear, and orientation-consistent trajectories.
 import math
 import sys
 import types
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 import numpy as np
 
 # Standard UR3 DH parameters [a, d, alpha]

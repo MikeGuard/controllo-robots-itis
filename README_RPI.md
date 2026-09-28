@@ -15,49 +15,52 @@ This guide covers deploying the **UR & Niryo Educational Robotics Platform** on 
 
 ## 2. Automated One-Command Installation
 
-On your Raspberry Pi 3, navigate to the cloned folder and run the installer:
+On your Raspberry Pi or Linux machine, navigate to the cloned folder and run the installer:
 
 ```bash
-cd ur_platform
-bash setup_rpi.sh
+cd controllo-robots-itis
+./setup_rpi.sh
 ```
 
-### What `setup_rpi.sh` does automatically (Zero Compilation):
-1. **Uses Pre-compiled APT System Packages:** Installs `python3-numpy`, `python3-opencv`, `python3-pydantic`, `python3-websockets`, and `python3-aiosqlite` via Debian APT. This avoids compiling them from source and saves ~2-4 hours.
-2. **Creates Virtual Environment with `--system-site-packages`:** Inherits the pre-compiled packages in 1 second.
-3. **Installs Lightweight Packages via PiWheels / PyPI:** Uses `--prefer-binary` to download pre-built ARM `.whl` wheels for FastAPI, Uvicorn, and PyNiryo.
-4. **No Forced C++ Compiles:** Skips slow C++ source compilation for `ur_rtde` unless you explicitly run with `--compile-ur`.
-5. **Generates Systemd Service:** Generates a custom `ur-platform.service` tuned to your user and directory.
+> **Tip:** If you want to automatically register and start the server as a background service on boot, simply run:
+> ```bash
+> ./setup_rpi.sh --service
+> ```
+
+### What `setup_rpi.sh` does automatically:
+1. **Handles User Ownership Correctly:** Safely detects the real user (even when invoked via `sudo`) ensuring `.venv` and project files have correct non-root permissions.
+2. **Uses Pre-compiled APT System Packages:** Installs `python3-numpy`, `python3-opencv`, `python3-pydantic`, `python3-websockets`, and `python3-aiosqlite` via Debian APT to save hours of compilation.
+3. **Creates Virtual Environment with `--system-site-packages`:** Inherits the pre-compiled packages instantly.
+4. **Installs Clean Dependencies:** Uses pre-built wheels and explicitly avoids the obsolete `enum34` conflict on Python 3.
+5. **Configures & Installs Systemd Service:** Generates `ur-platform.service` and automatically enables and starts it if `--service` (or interactive confirmation) is chosen.
 
 ---
 
 ## 3. Running the Server
 
-### Option A: Manual / Terminal Run
+### Option A: Automatic Background Service (Recommended)
+If you ran `./setup_rpi.sh --service`, the server is already active and will automatically launch on every reboot!
+
+- Check service status:
+  ```bash
+  sudo systemctl status ur-platform
+  ```
+- View live console logs:
+  ```bash
+  sudo journalctl -u ur-platform -f
+  ```
+- Restart or stop the service:
+  ```bash
+  sudo systemctl restart ur-platform
+  sudo systemctl stop ur-platform
+  ```
+
+### Option B: Manual / Foreground Run
 ```bash
 ./run.sh
 ```
 The script will display the local IP address for students to connect to (e.g. `http://10.0.10.62:8000`).
 
-### Option B: Automatic Startup on Boot (Recommended for Lab Server)
-To run the server continuously in the background as a systemd service:
-
-```bash
-sudo cp ur-platform.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now ur-platform
-```
-
-To view live logs:
-```bash
-sudo journalctl -u ur-platform -f
-```
-
-To stop or restart:
-```bash
-sudo systemctl stop ur-platform
-sudo systemctl restart ur-platform
-```
 
 ---
 
