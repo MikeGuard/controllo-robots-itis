@@ -724,7 +724,15 @@ async def clear_all_submissions_endpoint():
 
 
 @app.post("/api/abort")
-async def abort_robot():
+async def abort_robot(authorization: Optional[str] = Header(default=None)):
+    if authorization:
+        token = authorization.replace("Bearer ", "").strip()
+        session = active_sessions.get(token)
+        if session and session.get("role") == "student":
+            raise HTTPException(
+                status_code=403,
+                detail="Emergency Stop is disabled for students. Only instructors can trigger E-Stop."
+            )
     await engine.abort_current("Instructor pressed Emergency Abort button.")
     await broadcast_to_admins({"type": "aborted"})
     return {"status": "aborted", "message": "Emergency Stop sent to execution engine and robot."}

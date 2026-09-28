@@ -19,8 +19,8 @@
 class UR3Visualizer {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
-        // Safe home pose: [-90°, -90°, -90°, -90°, 90°, 0°]
-        this.homePose = [-Math.PI / 2, -Math.PI / 2, -Math.PI / 2, -Math.PI / 2, Math.PI / 2, 0.0];
+        // Safe home pose: [0°, -90°, 90°, -90°, -90°, 0°]
+        this.homePose = [0.0, -Math.PI / 2, Math.PI / 2, -Math.PI / 2, -Math.PI / 2, 0.0];
         // Photo pose matching the uploaded image
         this.photoPose = [-0.61, -1.31, 1.83, -2.09, -1.57, 0.0];
 
@@ -509,11 +509,7 @@ class UR3Visualizer {
     setJointAngles(q) {
         if (!q || q.length !== 6) return;
         for (let i = 0; i < 6; i++) {
-            let target = q[i];
-            // Normalize angular difference to [-pi, pi] to take shortest angular path
-            let diff = target - this.currentQ[i];
-            diff = ((diff + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-            this.targetQ[i] = this.currentQ[i] + diff;
+            this.targetQ[i] = q[i];
         }
     }
 
@@ -631,13 +627,13 @@ class UR3Visualizer {
         }
 
         if (this.currentModel === 'niryo') {
-            this.homePose = [0.0, 0.5, -1.25, 0.0, 0.0, 0.0];
+            this.homePose = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0];
             this.photoPose = [0.0, 0.35, -0.9, 0.0, 0.5, 0.0];
             this.zeroPose = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
             this.buildNiryoMaterials();
             this.buildNiryoModel();
         } else {
-            this.homePose = [-Math.PI / 2, -Math.PI / 2, -Math.PI / 2, -Math.PI / 2, Math.PI / 2, 0.0];
+            this.homePose = [0.0, -Math.PI / 2, Math.PI / 2, -Math.PI / 2, -Math.PI / 2, 0.0];
             this.photoPose = [-0.61, -1.31, 1.83, -2.09, -1.57, 0.0];
             this.zeroPose = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
             this.buildMaterials();

@@ -51,7 +51,7 @@ rtde_r = RTDEReceive(ROBOT_IP)
 
 # Move to safe home position using moveJ (joint space)
 # Arguments: joint angles [rad], speed [rad/s], accel [rad/s^2]
-home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+home_q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 print(f"Moving to home joint configuration: {home_q}")
 rtde_c.moveJ(home_q, 0.5, 0.5)
 
@@ -93,7 +93,7 @@ ROBOT_IP = config.ROBOT_IP
 rtde_c = RTDEControl(ROBOT_IP)
 rtde_r = RTDEReceive(ROBOT_IP)
 
-home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+home_q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 rtde_c.moveJ(home_q, 0.5, 0.5)
 
 start_pose = rtde_r.getActualTCPPose()
@@ -138,19 +138,19 @@ ROBOT_IP = config.ROBOT_IP
 rtde_c = RTDEControl(ROBOT_IP)
 
 # Pose 1: Standard Home
-q_home = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+q_home = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 print("Moving to Pose 1: Home")
 rtde_c.moveJ(q_home, 0.5, 0.5)
 time.sleep(1.0)
 
 # Pose 2: Forward Reach Inspection
-q_reach = [-np.pi/2, -np.pi/3, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+q_reach = [0.0, -np.pi/3, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 print("Moving to Pose 2: Forward Reach")
 rtde_c.moveJ(q_reach, 0.4, 0.4)
 time.sleep(1.0)
 
 # Pose 3: Side Inspection
-q_side = [-np.pi/3, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+q_side = [np.pi/4, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 print("Moving to Pose 3: Side Inspection")
 rtde_c.moveJ(q_side, 0.4, 0.4)
 time.sleep(1.0)
@@ -176,7 +176,7 @@ ROBOT_IP = config.ROBOT_IP
 rtde_c = RTDEControl(ROBOT_IP)
 rtde_r = RTDEReceive(ROBOT_IP)
 
-home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+home_q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 rtde_c.moveJ(home_q, 0.5, 0.5)
 
 tcp = rtde_r.getActualTCPPose()
@@ -220,20 +220,20 @@ robot = NiryoRobot(ROBOT_IP)
 
 # Auto-calibrate and move to ready pose
 robot.calibrate_auto()
-robot.move_joints([0.0, 0.5, -1.25, 0.0, 0.0, 0.0])
-print("Niryo Ned reached ready joint pose.")
+robot.move_to_home_pose()
+print("Niryo Ned reached home pose.")
 
 # Read current Cartesian pose
 current_pose = robot.get_pose()
 print(f"Current TCP Pose: {current_pose}")
 
 # Perform linear move down and forward
-target_pose = [0.25, 0.0, 0.15, 0.0, 1.57, 0.0]
+target_pose = [0.20, 0.0, 0.20, 0.0, 1.57, 0.0]
 robot.move_pose(target_pose)
 time.sleep(1.0)
 
-# Return to sleep / park position
-robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+# Return to home position
+robot.move_to_home_pose()
 robot.close_connection()
 print("Niryo Ned Cartesian routine completed successfully!")
 """
@@ -250,13 +250,16 @@ ROBOT_IP = config.ROBOT_IP
 robot = NiryoRobot(ROBOT_IP)
 robot.calibrate_auto()
 
-# Approach Pick Pose
-print("Approaching pick area...")
-robot.move_pose([0.20, -0.10, 0.25, 0.0, 1.57, -0.78])
+# Move to start home position
+robot.move_to_home_pose()
+
+# Approach Pick Pose (Left side: +Y)
+print("Approaching pick area (Left)...")
+robot.move_pose([0.20, 0.10, 0.25, 0.0, 1.57, 0.78])
 
 # Open Gripper & Descend
 robot.open_gripper(500)
-robot.move_pose([0.20, -0.10, 0.12, 0.0, 1.57, -0.78])
+robot.move_pose([0.20, 0.10, 0.12, 0.0, 1.57, 0.78])
 
 # Grasp
 print("Grasping object...")
@@ -264,12 +267,12 @@ robot.close_gripper(500)
 time.sleep(1.0)
 
 # Lift
-robot.move_pose([0.20, -0.10, 0.25, 0.0, 1.57, -0.78])
-
-# Move to Place Area
-print("Moving to place area...")
 robot.move_pose([0.20, 0.10, 0.25, 0.0, 1.57, 0.78])
-robot.move_pose([0.20, 0.10, 0.12, 0.0, 1.57, 0.78])
+
+# Move to Place Area (Right side: -Y)
+print("Moving to place area (Right)...")
+robot.move_pose([0.20, -0.10, 0.25, 0.0, 1.57, -0.78])
+robot.move_pose([0.20, -0.10, 0.12, 0.0, 1.57, -0.78])
 
 # Release
 print("Releasing object...")
@@ -277,8 +280,8 @@ robot.open_gripper(500)
 time.sleep(0.8)
 
 # Retract and Return
-robot.move_pose([0.20, 0.10, 0.25, 0.0, 1.57, 0.78])
-robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+robot.move_pose([0.20, -0.10, 0.25, 0.0, 1.57, -0.78])
+robot.move_to_home_pose()
 robot.close_connection()
 print("Niryo Ned Pick & Place routine completed!")
 """
@@ -300,7 +303,7 @@ waypoints = [
     [-0.6, 0.3, -0.8, 0.4, -0.2, 0.3],
     [0.0, 0.6, -1.3, 0.0, 0.3, 0.0],
     [0.6, 0.3, -0.8, -0.4, 0.2, -0.3],
-    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    [0.0, 0.3, -1.3, 0.0, 0.0, 0.0]
 ]
 
 for idx, q in enumerate(waypoints):
@@ -328,15 +331,15 @@ robot.calibrate_auto()
 robot.set_arm_max_velocity(60)
 
 print("Moving with controlled 60% velocity...")
-robot.move_joints([0.0, 0.5, -1.25, 0.0, 0.0, 0.0])
+robot.move_to_home_pose()
 
 # Move across working area
-robot.move_pose([0.25, -0.15, 0.20, 0.0, 1.57, 0.0])
 robot.move_pose([0.25, 0.15, 0.20, 0.0, 1.57, 0.0])
+robot.move_pose([0.25, -0.15, 0.20, 0.0, 1.57, 0.0])
 
 # Reset speed and park
 robot.set_arm_max_velocity(100)
-robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+robot.move_to_home_pose()
 robot.close_connection()
 print("Velocity control routine completed!")
 """
@@ -426,6 +429,24 @@ async def init_db():
                         """,
                         (ex["title"], ex["description"], ex["code"], now)
                     )
+
+        # Sync builtin examples in existing databases
+        for ex in DEFAULT_UR_EXAMPLES:
+            await db.execute(
+                """
+                UPDATE examples SET description = ?, code = ?
+                WHERE title = ? AND is_builtin = 1 AND robot_model = 'ur'
+                """,
+                (ex["description"], ex["code"], ex["title"])
+            )
+        for ex in DEFAULT_NIRYO_EXAMPLES:
+            await db.execute(
+                """
+                UPDATE examples SET description = ?, code = ?
+                WHERE title = ? AND is_builtin = 1 AND robot_model = 'niryo'
+                """,
+                (ex["description"], ex["code"], ex["title"])
+            )
 
         # Ensure default admin account exists (username: admin, password: mike2088)
         async with db.execute("SELECT id FROM users WHERE username = 'admin'") as cursor:

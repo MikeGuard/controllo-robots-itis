@@ -79,12 +79,19 @@ class ExecutionEngine:
         try:
             # Use current Python interpreter (from virtualenv)
             # unbuffered (-u) to guarantee real-time log output
+            extra_kwargs = {}
+            if sys.platform != "win32":
+                extra_kwargs["preexec_fn"] = os.setsid  # Put in new process group on POSIX
+            else:
+                import subprocess
+                extra_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
             proc = await asyncio.create_subprocess_exec(
                 sys.executable, "-u", temp_path,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=work_dir,
-                preexec_fn=os.setsid  # Put in new process group for clean abort/kill
+                **extra_kwargs
             )
             self.current_process = proc
 
@@ -156,8 +163,24 @@ class ExecutionEngine:
         # 1. Kill the subprocess group immediately
         if self.current_process and self.current_process.pid:
             try:
-                pgid = os.getpgid(self.current_process.pid)
-                os.killpg(pgid, signal.SIGKILL)
+                if sys.platform == "win32":
+                    try:
+                        self.current_process.kill()
+                    except ProcessLookupError:
+                        pass
+                    try:
+                        import subprocess
+                        subprocess.run(
+                            ["taskkill", "/F", "/T", "/PID", str(self.current_process.pid)],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            check=False
+                        )
+                    except Exception:
+                        pass
+                else:
+                    pgid = os.getpgid(self.current_process.pid)
+                    os.killpg(pgid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             except Exception as e:

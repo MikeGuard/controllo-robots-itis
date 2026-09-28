@@ -56,11 +56,6 @@
                 <span id="pingText">Checking Robot Ping...</span>
             </div>
 
-            <!-- Emergency Abort Button (SPACE Key) -->
-            <button id="btnStudentEmergencyAbort" onclick="abortStudentRobot('Emergency Button')" class="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-xs font-extrabold tracking-wider uppercase rounded-lg shadow-lg shadow-red-600/30 flex items-center space-x-1.5 transition animate-pulse" title="Press SPACE bar anytime to trigger Emergency Stop immediately">
-                <span>🛑 E-STOP</span>
-                <span class="bg-red-950/80 text-[10px] px-1 py-0.5 rounded font-mono text-red-200 border border-red-500/40">[SPACE]</span>
-            </button>
 
             <!-- Student User Badge / Logout -->
             <div id="userHeaderBadge" class="flex items-center space-x-2 bg-slate-850 border border-slate-700 px-3 py-1.5 rounded-lg text-xs shadow-inner">
@@ -73,16 +68,6 @@
         </div>
     </header>
 
-    <!-- Emergency Toast Notification -->
-    <div id="studentEmergencyToast" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 pointer-events-none opacity-0 -translate-y-4">
-        <div class="flex items-center space-x-3 px-5 py-3 rounded-xl bg-red-600/95 text-white shadow-2xl backdrop-blur-md border border-red-400">
-            <span class="text-xl">🛑</span>
-            <div>
-                <p class="text-xs font-black uppercase tracking-wider">Emergency Stop Activated</p>
-                <p class="text-[11px] text-red-100">Physical robot &amp; simulation halted immediately.</p>
-            </div>
-        </div>
-    </div>
 
     <!-- Main Content -->
     <main class="flex-1 p-6 grid grid-cols-1 xl:grid-cols-12 gap-6">
@@ -342,17 +327,16 @@ robot = NiryoRobot(ROBOT_IP)
 robot.calibrate_auto()
 print("Niryo Ned arm calibrated and ready.")
 
-# Ready pose [j1, j2, j3, j4, j5, j6] (rad)
-ready_joints = [0.0, 0.5, -1.25, 0.0, 0.0, 0.0]
-robot.move_joints(ready_joints)
+# Move to start home position
+robot.move_to_home_pose()
 time.sleep(0.5)
 
 # Move pose (Cartesian [x, y, z, roll, pitch, yaw])
 robot.move_pose([0.20, 0.0, 0.20, 0.0, 1.57, 0.0])
 time.sleep(1.0)
 
-# Return to sleep
-robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+# Return to home pose
+robot.move_to_home_pose()
 robot.close_connection()
 print("Routine completed successfully!")
 `;
@@ -368,7 +352,7 @@ rtde_r = RTDEReceive(ROBOT_IP)
 
 # Move to a safe home position using moveJ (joint space)
 # Arguments: joint positions [rad], speed [rad/s], acceleration [rad/s^2]
-home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+home_q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 rtde_c.moveJ(home_q, 0.5, 0.5)
 
 # Read the TCP pose after arriving at home so moveL targets are always valid
@@ -1288,76 +1272,7 @@ print("Routine completed successfully!")
                 .replace(/'/g, '&#039;');
         }
 
-        // ==========================================
-        // Student Emergency Stop & SPACE Shortcut
-        // ==========================================
-
         let isStudentExecuting = false;
-
-        async function abortStudentRobot(triggerSource = "Emergency Button") {
-            const btn = document.getElementById("btnStudentEmergencyAbort");
-            if (btn) {
-                btn.classList.add("ring-4", "ring-white", "scale-105");
-                setTimeout(() => btn.classList.remove("ring-4", "ring-white", "scale-105"), 800);
-            }
-            showStudentEmergencyToast();
-
-            if (ur3Vis) {
-                ur3Vis.stopSimulation();
-            }
-            updateBadge("aborted");
-            appendStudentLog(`\n[EMERGENCY STOP] Triggered by ${triggerSource}! Halting robot and simulation immediately.\n`);
-
-            try {
-                await fetch('/api/abort', { method: 'POST' });
-            } catch (e) {
-                console.error("Emergency abort error:", e);
-            }
-        }
-
-        function showStudentEmergencyToast() {
-            const toast = document.getElementById("studentEmergencyToast");
-            if (!toast) return;
-            toast.classList.remove("opacity-0", "-translate-y-4");
-            toast.classList.add("opacity-100", "translate-y-0");
-            setTimeout(() => {
-                toast.classList.remove("opacity-100", "translate-y-0");
-                toast.classList.add("opacity-0", "-translate-y-4");
-            }, 3500);
-        }
-
-        function handleStudentSpacebarEmergency(e) {
-            const isSpace = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
-            if (!isSpace) return;
-
-            // Allow typing space in standard form text inputs and textareas
-            const activeEl = document.activeElement;
-            if (activeEl) {
-                const tag = activeEl.tagName ? activeEl.tagName.toLowerCase() : '';
-                if (tag === 'input' || tag === 'textarea' || activeEl.isContentEditable) {
-                    return;
-                }
-            }
-
-            // In Monaco editor: if NOT running, allow typing space. If running, trigger emergency stop!
-            if (typeof editor !== 'undefined' && editor && !isStudentExecuting) {
-                if (typeof editor.hasTextFocus === 'function' && editor.hasTextFocus()) {
-                    return; // Normal typing in editor
-                }
-            }
-
-            // PREVENT DEFAULT ALWAYS so pressing Spacebar NEVER scrolls the page down!
-            e.preventDefault();
-            e.stopPropagation();
-            if (typeof e.stopImmediatePropagation === 'function') {
-                e.stopImmediatePropagation();
-            }
-
-            abortStudentRobot("SPACE Key");
-        }
-
-        window.addEventListener('keydown', handleStudentSpacebarEmergency, { capture: true, passive: false });
-        document.addEventListener('keydown', handleStudentSpacebarEmergency, { capture: true, passive: false });
     </script>
 </body>
 </html>

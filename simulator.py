@@ -37,11 +37,23 @@ def rotvec_to_matrix(rotvec: np.ndarray) -> np.ndarray:
 
 
 def matrix_to_rotvec(R: np.ndarray) -> np.ndarray:
-    """Converts a 3x3 rotation matrix to an axis-angle rotation vector."""
+    """Converts a 3x3 rotation matrix to an axis-angle rotation vector with robust pi handling."""
     trace_val = (np.trace(R) - 1.0) / 2.0
     angle = np.arccos(np.clip(trace_val, -1.0, 1.0))
     if angle < 1e-6:
         return np.zeros(3)
+    if angle > np.pi - 1e-4:
+        diag = np.diag(R)
+        k = int(np.argmax(diag))
+        v = np.zeros(3)
+        v[k] = np.sqrt(max(0.0, (diag[k] + 1.0) / 2.0))
+        for j in range(3):
+            if j != k and v[k] > 1e-6:
+                v[j] = (R[j, k] + R[k, j]) / (4.0 * v[k])
+        norm = np.linalg.norm(v)
+        if norm > 1e-6:
+            v = v / norm
+        return angle * v
     v = np.array([R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]])
     return (angle / (2.0 * np.sin(angle))) * v
 
@@ -109,6 +121,16 @@ def inverse_kinematics_6dof(q_seed: List[float], target_pose: List[float], max_i
         angle = np.arccos(np.clip(trace_val, -1.0, 1.0))
         if angle < 1e-6:
             rot_err = np.zeros(3)
+        elif angle > np.pi - 1e-4:
+            diag = np.diag(R_err)
+            k = int(np.argmax(diag))
+            v = np.zeros(3)
+            v[k] = np.sqrt(max(0.0, (diag[k] + 1.0) / 2.0))
+            for j in range(3):
+                if j != k and v[k] > 1e-6:
+                    v[j] = (R_err[j, k] + R_err[k, j]) / (4.0 * v[k])
+            norm = np.linalg.norm(v)
+            rot_err = (angle * (v / norm)) if norm > 1e-6 else np.zeros(3)
         else:
             v = np.array([R_err[2, 1] - R_err[1, 2], R_err[0, 2] - R_err[2, 0], R_err[1, 0] - R_err[0, 1]])
             rot_err = (angle / (2.0 * np.sin(angle))) * v
@@ -156,8 +178,8 @@ def inverse_kinematics_6dof(q_seed: List[float], target_pose: List[float], max_i
 class MockRTDEReceive:
     def __init__(self, ip: str = "192.168.56.101"):
         self.ip = ip
-        # Safe default home pose: [-pi/2, -pi/2, -pi/2, -pi/2, pi/2, 0.0]
-        self.current_q = [-math.pi / 2, -math.pi / 2, -math.pi / 2, -math.pi / 2, math.pi / 2, 0.0]
+        # Safe canonical home pose: [0°, -90°, 90°, -90°, -90°, 0°]
+        self.current_q = [0.0, -math.pi / 2, math.pi / 2, -math.pi / 2, -math.pi / 2, 0.0]
 
     def getActualTCPPose(self) -> List[float]:
         return get_tcp_pose_list(self.current_q)
@@ -445,8 +467,8 @@ class MockNiryoRobot:
     def __init__(self, tracker: List[Dict[str, Any]], ip: str = "127.0.0.1"):
         self.tracker = tracker
         self.ip = ip
-        # Ready pose [j1, j2, j3, j4, j5, j6] (rad)
-        self.current_q = [0.0, 0.5, -1.25, 0.0, 0.0, 0.0]
+        # Home pose [j1, j2, j3, j4, j5, j6] (rad)
+        self.current_q = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0]
         self.is_calibrated = False
 
     def calibrate_auto(self):
@@ -456,6 +478,13 @@ class MockNiryoRobot:
     def calibrate_manual(self):
         self.is_calibrated = True
         return True
+
+    def move_to_home_pose(self):
+        home_q = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0]
+        return self.move_joints(home_q)
+
+    def go_to_sleep(self):
+        return self.move_to_home_pose()
 
     def move_joints(self, joints: Any):
         q_target = [float(x) for x in joints]

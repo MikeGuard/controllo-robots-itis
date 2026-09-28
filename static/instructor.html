@@ -402,7 +402,7 @@ ROBOT_IP = "${ip}"
 rtde_c = RTDEControl(ROBOT_IP)
 rtde_r = RTDEReceive(ROBOT_IP)
 
-home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+home_q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 printf("Moving to home configuration...")
 rtde_c.moveJ(home_q, 0.5, 0.5)
 
@@ -434,7 +434,7 @@ ROBOT_IP = "${ip}"
 rtde_c = RTDEControl(ROBOT_IP)
 rtde_r = RTDEReceive(ROBOT_IP)
 
-home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+home_q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 rtde_c.moveJ(home_q, 0.5, 0.5)
 
 start_pose = rtde_r.getActualTCPPose()
@@ -462,17 +462,17 @@ from rtde_control import RTDEControlInterface as RTDEControl
 ROBOT_IP = "${ip}"
 rtde_c = RTDEControl(ROBOT_IP)
 
-q_home = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+q_home = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 printf("Pose 1: Home")
 rtde_c.moveJ(q_home, 0.5, 0.5)
 time.sleep(0.5)
 
-q_reach = [-np.pi/2, -np.pi/3, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+q_reach = [0.0, -np.pi/3, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 printf("Pose 2: Forward Reach")
 rtde_c.moveJ(q_reach, 0.4, 0.4)
 time.sleep(0.5)
 
-q_side = [-np.pi/3, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+q_side = [np.pi/4, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 printf("Pose 3: Side Inspection")
 rtde_c.moveJ(q_side, 0.4, 0.4)
 time.sleep(0.5)
@@ -490,7 +490,7 @@ ROBOT_IP = "${ip}"
 rtde_c = RTDEControl(ROBOT_IP)
 rtde_r = RTDEReceive(ROBOT_IP)
 
-home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+home_q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
 rtde_c.moveJ(home_q, 0.5, 0.5)
 
 tcp = rtde_r.getActualTCPPose()
@@ -525,13 +525,12 @@ if NiryoRobot:
     robot.calibrate_auto()
     print("Niryo One connected and calibrated!")
     
-    # Ready pose [j1, j2, j3, j4, j5, j6] (rad)
-    ready_joints = [0.0, 0.5, -1.25, 0.0, 0.0, 0.0]
-    robot.move_joints(ready_joints)
+    # Ready pose
+    robot.move_to_home_pose()
     time.sleep(0.5)
     
     # Return to sleep pose
-    robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    robot.move_to_home_pose()
     robot.close_connection()
     print("Niryo routine completed successfully!")
 `,
@@ -542,24 +541,29 @@ ROBOT_IP = "${ip}"
 robot = NiryoRobot(ROBOT_IP)
 robot.calibrate_auto()
 
-# 1. Approach position
-robot.move_joints([0.0, 0.5, -1.25, 0.0, 0.0, 0.0])
-print("Approaching pick location...")
+# 1. Approach position (Home / Ready)
+robot.move_to_home_pose()
+print("Approaching pick location (Left)...")
 
-# 2. Descend and grasp
-robot.move_pose([0.20, 0.0, 0.15, 0.0, 1.57, 0.0])
-robot.grasp_with_tool()
+# 2. Descend and grasp (Left side: +Y)
+robot.open_gripper(500)
+robot.move_pose([0.20, 0.10, 0.12, 0.0, 1.57, 0.78])
+robot.close_gripper(500)
 time.sleep(0.8)
 
 # 3. Lift
-robot.move_pose([0.20, 0.0, 0.28, 0.0, 1.57, 0.0])
+robot.move_pose([0.20, 0.10, 0.25, 0.0, 1.57, 0.78])
 
-# 4. Place
-robot.move_pose([0.0, 0.20, 0.15, 0.0, 1.57, 1.57])
-robot.release_with_tool()
+# 4. Place (Right side: -Y)
+print("Moving to place location (Right)...")
+robot.move_pose([0.20, -0.10, 0.25, 0.0, 1.57, -0.78])
+robot.move_pose([0.20, -0.10, 0.12, 0.0, 1.57, -0.78])
+robot.open_gripper(500)
 time.sleep(0.8)
 
-robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+# 5. Return Home
+robot.move_pose([0.20, -0.10, 0.25, 0.0, 1.57, -0.78])
+robot.move_to_home_pose()
 robot.close_connection()
 print("Pick & place sequence completed!")
 `,
@@ -575,7 +579,7 @@ poses = [
     [0.0, 0.4, -1.0, 0.0, 0.0, 0.0],
     [-0.5, 0.3, -0.8, 0.5, -0.3, 0.2],
     [0.5, 0.3, -0.8, -0.5, 0.3, -0.2],
-    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    [0.0, 0.3, -1.3, 0.0, 0.0, 0.0]
 ]
 
 for idx, q in enumerate(poses):
