@@ -467,8 +467,8 @@ class MockNiryoRobot:
     def __init__(self, tracker: List[Dict[str, Any]], ip: str = "127.0.0.1"):
         self.tracker = tracker
         self.ip = ip
-        # Home pose [j1, j2, j3, j4, j5, j6] (rad)
-        self.current_q = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0]
+        # Default starting home/ready pose [j1, j2, j3, j4, j5, j6] (rad)
+        self.current_q = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.is_calibrated = False
 
     def calibrate_auto(self):
@@ -480,11 +480,12 @@ class MockNiryoRobot:
         return True
 
     def move_to_home_pose(self):
-        home_q = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0]
+        home_q = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         return self.move_joints(home_q)
 
     def go_to_sleep(self):
-        return self.move_to_home_pose()
+        sleep_q = [0.0, 0.35, -1.3, 0.0, 0.0, 0.0]
+        return self.move_joints(sleep_q)
 
     def move_joints(self, joints: Any):
         q_target = [float(x) for x in joints]

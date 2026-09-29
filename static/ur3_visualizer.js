@@ -498,10 +498,25 @@ class UR3Visualizer {
 
     applyJointAngles(q) {
         if (!q || q.length !== 6 || !this.joints) return;
-        // Direct Denavit-Hartenberg rotation around joint Z-axis:
-        for (let i = 0; i < 6; i++) {
-            if (this.joints[i]) {
-                this.joints[i].rotation.z = q[i];
+
+        if (this.currentModel === 'niryo') {
+            // Niryo Ned kinematic joint rotation mapping:
+            //   j0: base pan         → rotation.y = q[0]  (world vertical yaw)
+            //   j1: shoulder pitch   → rotation.x = q[1]  (horizontal pitch: forward/back)
+            //   j2: elbow pitch      → rotation.x = -q[2] (horizontal pitch: negative folds down to table/sleep)
+            //   j3: forearm roll     → rotation.y = q[3]  (roll around forearm axis)
+            //   j4: wrist pitch      → rotation.x = -q[4] (horizontal pitch: tilts gripper up/down)
+            //   j5: tool flange roll → rotation.y = q[5]  (spin around tool axis)
+            if (this.joints[0]) this.joints[0].rotation.y = q[0];
+            if (this.joints[1]) this.joints[1].rotation.x = q[1];
+            if (this.joints[2]) this.joints[2].rotation.x = -q[2];
+            if (this.joints[3]) this.joints[3].rotation.y = q[3];
+            if (this.joints[4]) this.joints[4].rotation.x = -q[4];
+            if (this.joints[5]) this.joints[5].rotation.y = q[5];
+        } else {
+            // UR3: Direct DH rotation around each joint's local Z-axis
+            for (let i = 0; i < 6; i++) {
+                if (this.joints[i]) this.joints[i].rotation.z = q[i];
             }
         }
     }
@@ -555,8 +570,14 @@ class UR3Visualizer {
             const wp = waypoints[index];
             index++;
 
+            // Handle normal joint motion
             if (wp.q && wp.q.length === 6) {
                 this.setJointAngles(wp.q);
+            }
+
+            // Handle Niryo gripper open/close animation
+            if (wp.type === 'gripper' && this.currentModel === 'niryo') {
+                this.setGripperState(wp.state); // 'open' | 'closed'
             }
 
             if (onStep) {
@@ -565,7 +586,8 @@ class UR3Visualizer {
 
             // Intermediate trajectory steps run smoothly at ~45ms;
             // Final command goals pause slightly (~250ms) for clear visual feedback.
-            const delay = wp.is_final ? 250 : 45;
+            // Gripper actions get a longer pause so the animation is clearly visible.
+            const delay = (wp.type === 'gripper') ? 600 : (wp.is_final ? 250 : 45);
             this.simTimer = setTimeout(executeStep, delay);
         };
 
@@ -578,6 +600,12 @@ class UR3Visualizer {
             clearTimeout(this.simTimer);
             this.simTimer = null;
         }
+    }
+
+    // Gripper state control: 'open' spreads fingers apart, 'closed' brings them together
+    setGripperState(state) {
+        // targetGripperOpen: 0.0 = fully closed, 1.0 = fully open
+        this.targetGripperOpen = (state === 'open') ? 1.0 : 0.0;
     }
 
     animate() {
@@ -598,6 +626,34 @@ class UR3Visualizer {
         if (moved) {
             this.applyJointAngles(this.currentQ);
             this.updateAngleDisplay();
+        }
+
+        // Animate Niryo gripper fingers smoothly
+        if (this.currentModel === 'niryo' &&
+            this.niryoFingerLeft && this.niryoFingerRight &&
+            this.niryoTipLeft && this.niryoTipRight) {
+
+            if (typeof this.currentGripperOpen === 'undefined') this.currentGripperOpen = 1.0;
+            if (typeof this.targetGripperOpen === 'undefined')  this.targetGripperOpen  = 1.0;
+
+            const gripDiff = this.targetGripperOpen - this.currentGripperOpen;
+            if (Math.abs(gripDiff) > 0.002) {
+                this.currentGripperOpen += gripDiff * 0.10;
+            } else {
+                this.currentGripperOpen = this.targetGripperOpen;
+            }
+
+            // Fingers spread in X: open=±0.020m apart, closed=±0.006m (nearly touching)
+            const spread = 0.006 + this.currentGripperOpen * 0.014;
+            this.niryoFingerLeft.position.x  = -spread;
+            this.niryoFingerRight.position.x =  spread;
+            this.niryoTipLeft.position.x     = -(spread - 0.003);
+            this.niryoTipRight.position.x    =  (spread - 0.003);
+
+            // Angle fingers slightly inward when closing for a gripping effect
+            const fingerTilt = (1.0 - this.currentGripperOpen) * 0.20;
+            this.niryoFingerLeft.rotation.z  = -fingerTilt;
+            this.niryoFingerRight.rotation.z =  fingerTilt;
         }
 
         this.controls.update();
@@ -627,9 +683,13 @@ class UR3Visualizer {
         }
 
         if (this.currentModel === 'niryo') {
-            this.homePose = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0];
-            this.photoPose = [0.0, 0.35, -0.9, 0.0, 0.5, 0.0];
-            this.zeroPose = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+            // Niryo Ned standard home: arm upright, forearm horizontal forward
+            this.homePose  = [0.0, 0.0,  0.0, 0.0, 0.0,  0.0];
+            this.photoPose = [0.0, 0.35, -0.65, 0.0, 0.35, 0.0];
+            this.zeroPose  = [0.0, 0.0,  0.0, 0.0, 0.0,  0.0];
+            // Reset gripper state (starts open)
+            this.currentGripperOpen = 1.0;
+            this.targetGripperOpen  = 1.0;
             this.buildNiryoMaterials();
             this.buildNiryoModel();
         } else {
@@ -680,168 +740,182 @@ class UR3Visualizer {
     }
 
     buildNiryoModel() {
+        /**
+         * Precision 3D Niryo Ned Visualizer (Three.js)
+         * Matches physical Niryo Ned kinematics:
+         *   - Base to Shoulder: 0.103m
+         *   - Upper Arm: 0.210m
+         *   - Forearm: 0.190m
+         *   - Wrist to Flange: 0.077m
+         *
+         * World coordinates: Y is up, Z is forward (facing camera), X is right.
+         * Default home/zero pose [0, 0, 0, 0, 0, 0]:
+         *   - Turret faces forward (+Z)
+         *   - Upper arm upright (+Y)
+         *   - Forearm extends horizontal forward (+Z)
+         *   - Gripper open, pointing forward (+Z)
+         */
+
         this.robotRoot = new THREE.Group();
-        this.robotRoot.rotation.x = -Math.PI / 2;
         this.scene.add(this.robotRoot);
 
-        // 1. Base Mount
-        const baseMount = new THREE.Group();
-        this.robotRoot.add(baseMount);
-
-        const bBottom = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.082, 0.090, 0.020, 48),
+        // ── Static base platform on table ───────────────────────────────
+        const basePlatform = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.088, 0.095, 0.016, 48),
             this.matNiryoDark
         );
-        bBottom.rotation.x = Math.PI / 2;
-        bBottom.position.z = 0.010;
-        bBottom.castShadow = true;
-        bBottom.receiveShadow = true;
-        baseMount.add(bBottom);
+        basePlatform.position.y = 0.008;
+        basePlatform.castShadow = true;
+        basePlatform.receiveShadow = true;
+        this.robotRoot.add(basePlatform);
 
-        const bTealRing = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.083, 0.083, 0.005, 48),
+        // Signature glowing Niryo cyan/teal LED status ring
+        const baseTealRing = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.089, 0.089, 0.006, 48),
             this.matNiryoTeal
         );
-        bTealRing.rotation.x = Math.PI / 2;
-        bTealRing.position.z = 0.022;
-        baseMount.add(bTealRing);
+        baseTealRing.position.y = 0.019;
+        this.robotRoot.add(baseTealRing);
 
-        const bUpper = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.068, 0.080, 0.024, 48),
+        const baseUpper = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.072, 0.085, 0.016, 48),
             this.matNiryoDark
         );
-        bUpper.rotation.x = Math.PI / 2;
-        bUpper.position.z = 0.034;
-        bUpper.castShadow = true;
-        baseMount.add(bUpper);
+        baseUpper.position.y = 0.030;
+        baseUpper.castShadow = true;
+        this.robotRoot.add(baseUpper);
 
-        // --- Joint 0 (Base Pan) ---
+        // ── Joint 0 — Base Pan (rotates around world Y) ──────────────────
         this.j0 = new THREE.Group();
+        this.j0.position.y = 0.0;
         this.robotRoot.add(this.j0);
 
+        // Turret body
         const j0Housing = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.065, 0.065, 0.065, 48),
+            new THREE.CylinderGeometry(0.064, 0.066, 0.065, 48),
             this.matNiryoDark
         );
-        j0Housing.rotation.x = Math.PI / 2;
-        j0Housing.position.z = 0.046 + 0.0325;
+        j0Housing.position.y = 0.038 + 0.065 / 2;
         j0Housing.castShadow = true;
         this.j0.add(j0Housing);
 
-        const j0Teal = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.066, 0.066, 0.008, 48),
+        const j0TealBand = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.0645, 0.0645, 0.006, 48),
             this.matNiryoTeal
         );
-        j0Teal.rotation.x = Math.PI / 2;
-        j0Teal.position.z = 0.046 + 0.065;
-        this.j0.add(j0Teal);
+        j0TealBand.position.y = 0.098;
+        this.j0.add(j0TealBand);
 
-        // --- Joint 1 (Shoulder Pitch) ---
-        // d1 = 0.130m along Z
-        const d1 = 0.130;
+        // ── j1_frame — shoulder pivot at height 0.103m ───────────────────
+        const d1 = 0.103;
         this.j1_frame = new THREE.Group();
-        this.j1_frame.position.set(0, 0, d1);
-        this.j1_frame.rotation.x = Math.PI / 2; // Z becomes horizontal pitch axis
+        this.j1_frame.position.y = d1;
         this.j0.add(this.j1_frame);
 
+        // j1 rotates around X (shoulder pitch: positive = leans forward, negative = leans back)
         this.j1 = new THREE.Group();
         this.j1_frame.add(this.j1);
 
-        const j1Body = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.045, 0.045, 0.095, 48),
+        // Shoulder joint disc (horizontal bearing cylinder along X)
+        const j1Disc = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.045, 0.045, 0.096, 48),
             this.matNiryoDark
         );
-        j1Body.rotation.x = Math.PI / 2;
-        j1Body.position.z = 0.0;
-        j1Body.castShadow = true;
-        this.j1.add(j1Body);
+        j1Disc.rotation.z = Math.PI / 2;
+        j1Disc.castShadow = true;
+        this.j1.add(j1Disc);
 
-        const j1Cap1 = new THREE.Mesh(
+        const j1TealLeft = new THREE.Mesh(
             new THREE.CylinderGeometry(0.0455, 0.0455, 0.008, 36),
             this.matNiryoTeal
         );
-        j1Cap1.rotation.x = Math.PI / 2;
-        j1Cap1.position.z = 0.048;
-        this.j1.add(j1Cap1);
+        j1TealLeft.rotation.z = Math.PI / 2;
+        j1TealLeft.position.x = -0.049;
+        this.j1.add(j1TealLeft);
 
-        const j1Cap2 = new THREE.Mesh(
+        const j1TealRight = new THREE.Mesh(
             new THREE.CylinderGeometry(0.0455, 0.0455, 0.008, 36),
             this.matNiryoTeal
         );
-        j1Cap2.rotation.x = Math.PI / 2;
-        j1Cap2.position.z = -0.048;
-        this.j1.add(j1Cap2);
+        j1TealRight.rotation.z = Math.PI / 2;
+        j1TealRight.position.x = 0.049;
+        this.j1.add(j1TealRight);
 
-        // --- Upper Arm Link ---
-        // Upper arm extends along local +Y (length L1 = 0.210m)
+        // Upper arm link — extends upward along local +Y (length L1 = 0.210m)
         const L1 = 0.210;
-        const upperArmMesh = new THREE.Mesh(
+        const upperArm = new THREE.Mesh(
             new THREE.BoxGeometry(0.048, L1, 0.052),
             this.matNiryoDark
         );
-        upperArmMesh.position.set(0, L1 / 2, 0);
-        upperArmMesh.castShadow = true;
-        this.j1.add(upperArmMesh);
+        upperArm.position.y = L1 / 2;
+        upperArm.castShadow = true;
+        this.j1.add(upperArm);
 
         const upperArmStripe = new THREE.Mesh(
-            new THREE.BoxGeometry(0.050, L1 * 0.75, 0.012),
+            new THREE.BoxGeometry(0.050, L1 * 0.72, 0.008),
             this.matNiryoTeal
         );
-        upperArmStripe.position.set(0, L1 / 2, 0.021);
+        upperArmStripe.position.set(0, L1 / 2, 0.022);
         this.j1.add(upperArmStripe);
 
-        // --- Joint 2 (Elbow Pitch) ---
-        // At the top of upper arm: position (0, L1, 0), parallel pitch axis
+        // ── j2_frame — elbow pivot at top of upper arm ───────────────────
         this.j2_frame = new THREE.Group();
-        this.j2_frame.position.set(0, L1, 0);
+        this.j2_frame.position.y = L1;
+        // In Niryo Ned zero pose, the elbow is bent 90° forward so the forearm is horizontal forward (+Z):
+        this.j2_frame.rotation.x = Math.PI / 2;
         this.j1.add(this.j2_frame);
 
+        // j2 rotates around local X (elbow pitch: negative = bends down toward table/sleep)
         this.j2 = new THREE.Group();
         this.j2_frame.add(this.j2);
 
-        const elbowBody = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.038, 0.038, 0.080, 48),
+        const j2Disc = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.038, 0.038, 0.082, 48),
             this.matNiryoDark
         );
-        elbowBody.rotation.x = Math.PI / 2;
-        elbowBody.position.z = 0.0;
-        elbowBody.castShadow = true;
-        this.j2.add(elbowBody);
+        j2Disc.rotation.z = Math.PI / 2;
+        j2Disc.castShadow = true;
+        this.j2.add(j2Disc);
 
-        const elbowTeal = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.0385, 0.0385, 0.008, 36),
+        const j2TealLeft = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.0385, 0.0385, 0.007, 36),
             this.matNiryoTeal
         );
-        elbowTeal.rotation.x = Math.PI / 2;
-        elbowTeal.position.z = -0.040;
-        this.j2.add(elbowTeal);
+        j2TealLeft.rotation.z = Math.PI / 2;
+        j2TealLeft.position.x = -0.042;
+        this.j2.add(j2TealLeft);
 
-        // --- Forearm Link ---
-        // Extends along local +Y (length L2 = 0.190m)
+        const j2TealRight = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.0385, 0.0385, 0.007, 36),
+            this.matNiryoTeal
+        );
+        j2TealRight.rotation.z = Math.PI / 2;
+        j2TealRight.position.x = 0.042;
+        this.j2.add(j2TealRight);
+
+        // Forearm link — extends along local +Y (which points +Z forward when j2_frame rotation.x = pi/2)
         const L2 = 0.190;
-        const forearmMesh = new THREE.Mesh(
+        const forearm = new THREE.Mesh(
             new THREE.BoxGeometry(0.038, L2, 0.042),
             this.matNiryoDark
         );
-        forearmMesh.position.set(0, L2 / 2, 0);
-        forearmMesh.castShadow = true;
-        this.j2.add(forearmMesh);
+        forearm.position.y = L2 / 2;
+        forearm.castShadow = true;
+        this.j2.add(forearm);
 
         const forearmStripe = new THREE.Mesh(
-            new THREE.BoxGeometry(0.040, L2 * 0.65, 0.008),
+            new THREE.BoxGeometry(0.040, L2 * 0.62, 0.007),
             this.matNiryoTeal
         );
         forearmStripe.position.set(0, L2 / 2, 0.017);
         this.j2.add(forearmStripe);
 
-        // --- Joint 3 (Forearm Roll) ---
-        // At the end of forearm: (0, L2, 0)
-        // Rotate frame around X by -pi/2 so local Z points along the forearm axis (ROLL)
+        // ── j3_frame — forearm roll pivot at end of forearm ──────────────
         this.j3_frame = new THREE.Group();
-        this.j3_frame.position.set(0, L2, 0);
-        this.j3_frame.rotation.x = -Math.PI / 2;
+        this.j3_frame.position.y = L2;
         this.j2.add(this.j3_frame);
 
+        // j3 rotates around Y (forearm roll along forearm axis)
         this.j3 = new THREE.Group();
         this.j3_frame.add(this.j3);
 
@@ -849,7 +923,7 @@ class UR3Visualizer {
             new THREE.CylinderGeometry(0.032, 0.032, 0.030, 36),
             this.matNiryoDark
         );
-        rollCollar.position.z = 0.015;
+        rollCollar.position.y = 0.015;
         rollCollar.castShadow = true;
         this.j3.add(rollCollar);
 
@@ -857,113 +931,123 @@ class UR3Visualizer {
             new THREE.CylinderGeometry(0.0325, 0.0325, 0.006, 36),
             this.matNiryoTeal
         );
-        rollRing.position.z = 0.028;
+        rollRing.position.y = 0.029;
         this.j3.add(rollRing);
 
-        // --- Joint 4 (Wrist Pitch) ---
-        // Positioned 0.045m along the forearm roll axis (Z)
-        // Rotate frame around X by +pi/2 so local Z is the pitch hinge axis
-        const d4 = 0.045;
+        // ── j4_frame — wrist pitch pivot, offset from roll collar ────────
+        const d4 = 0.042;
         this.j4_frame = new THREE.Group();
-        this.j4_frame.position.set(0, 0, d4);
-        this.j4_frame.rotation.x = Math.PI / 2;
+        this.j4_frame.position.y = d4;
         this.j3.add(this.j4_frame);
 
+        // j4 rotates around local X (wrist pitch: tilts tool up/down)
         this.j4 = new THREE.Group();
         this.j4_frame.add(this.j4);
 
-        const wPitchBody = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.027, 0.027, 0.055, 36),
+        const wristDisc = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.026, 0.026, 0.054, 36),
             this.matNiryoDark
         );
-        wPitchBody.rotation.x = Math.PI / 2;
-        wPitchBody.castShadow = true;
-        this.j4.add(wPitchBody);
+        wristDisc.rotation.z = Math.PI / 2;
+        wristDisc.castShadow = true;
+        this.j4.add(wristDisc);
 
-        const wPitchTeal = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.0275, 0.0275, 0.006, 36),
+        const wristTeal = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.0265, 0.0265, 0.006, 36),
             this.matNiryoTeal
         );
-        wPitchTeal.rotation.x = Math.PI / 2;
-        wPitchTeal.position.z = 0.028;
-        this.j4.add(wPitchTeal);
+        wristTeal.rotation.z = Math.PI / 2;
+        wristTeal.position.x = 0.028;
+        this.j4.add(wristTeal);
 
-        // --- Joint 5 (Tool Roll & Gripper) ---
-        // Positioned 0.040m along the wrist, rotate around X by -pi/2 so local Z points out along tool
-        const d5 = 0.040;
+        // Small wrist neck link extends upward along local +Y to tool flange
+        const wristLink = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.020, 0.020, 0.032, 28),
+            this.matNiryoDark
+        );
+        wristLink.position.y = 0.016;
+        this.j4.add(wristLink);
+
+        // ── j5_frame — tool flange roll, offset from wrist link top ──────
+        const d5 = 0.035;
         this.j5_frame = new THREE.Group();
-        this.j5_frame.position.set(0, 0, d5);
-        this.j5_frame.rotation.x = -Math.PI / 2;
+        this.j5_frame.position.y = d5;
         this.j4.add(this.j5_frame);
 
+        // j5 rotates around Y (tool flange roll)
         this.j5 = new THREE.Group();
         this.j5_frame.add(this.j5);
 
-        // Tool Mount Flange
-        const toolMount = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.025, 0.025, 0.015, 36),
+        // Tool flange disc
+        const toolFlange = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.025, 0.025, 0.014, 36),
             this.matNiryoDark
         );
-        toolMount.position.z = 0.0075;
-        toolMount.castShadow = true;
-        this.j5.add(toolMount);
+        toolFlange.position.y = 0.007;
+        toolFlange.castShadow = true;
+        this.j5.add(toolFlange);
 
         const toolRing = new THREE.Mesh(
             new THREE.CylinderGeometry(0.0255, 0.0255, 0.005, 36),
             this.matNiryoMetal
         );
-        toolRing.position.z = 0.015;
+        toolRing.position.y = 0.015;
         this.j5.add(toolRing);
 
-        // Gripper Body
+        // ── Niryo Gripper Tool (attached to j5) ───────────────────────────
         const gripperBase = new THREE.Mesh(
-            new THREE.BoxGeometry(0.048, 0.022, 0.016),
+            new THREE.BoxGeometry(0.058, 0.020, 0.022),
             this.matNiryoGripper
         );
-        gripperBase.position.z = 0.025;
+        gripperBase.position.y = 0.026;
         gripperBase.castShadow = true;
         this.j5.add(gripperBase);
 
         const gripperTealPlate = new THREE.Mesh(
-            new THREE.BoxGeometry(0.044, 0.018, 0.003),
+            new THREE.BoxGeometry(0.054, 0.005, 0.018),
             this.matNiryoTeal
         );
-        gripperTealPlate.position.z = 0.034;
+        gripperTealPlate.position.y = 0.038;
         this.j5.add(gripperTealPlate);
 
-        // Left Finger
-        const fingerLeft = new THREE.Mesh(
-            new THREE.BoxGeometry(0.007, 0.014, 0.030),
+        // ── Animated Fingers ─────────────────────────────────────────────
+        // Left finger (moves in -X direction when open)
+        this.niryoFingerLeft = new THREE.Mesh(
+            new THREE.BoxGeometry(0.009, 0.034, 0.014),
             this.matNiryoGripper
         );
-        fingerLeft.position.set(-0.014, 0, 0.050);
-        fingerLeft.castShadow = true;
-        this.j5.add(fingerLeft);
+        this.niryoFingerLeft.position.set(-0.021, 0.058, 0.0);
+        this.niryoFingerLeft.castShadow = true;
+        this.j5.add(this.niryoFingerLeft);
 
-        const tipLeft = new THREE.Mesh(
-            new THREE.BoxGeometry(0.005, 0.012, 0.010),
+        this.niryoTipLeft = new THREE.Mesh(
+            new THREE.BoxGeometry(0.007, 0.012, 0.010),
             this.matNiryoRubber
         );
-        tipLeft.position.set(-0.011, 0, 0.062);
-        this.j5.add(tipLeft);
+        this.niryoTipLeft.position.set(-0.018, 0.074, 0.0);
+        this.j5.add(this.niryoTipLeft);
 
-        // Right Finger
-        const fingerRight = new THREE.Mesh(
-            new THREE.BoxGeometry(0.007, 0.014, 0.030),
+        // Right finger (moves in +X direction when open)
+        this.niryoFingerRight = new THREE.Mesh(
+            new THREE.BoxGeometry(0.009, 0.034, 0.014),
             this.matNiryoGripper
         );
-        fingerRight.position.set(0.014, 0, 0.050);
-        fingerRight.castShadow = true;
-        this.j5.add(fingerRight);
+        this.niryoFingerRight.position.set(0.021, 0.058, 0.0);
+        this.niryoFingerRight.castShadow = true;
+        this.j5.add(this.niryoFingerRight);
 
-        const tipRight = new THREE.Mesh(
-            new THREE.BoxGeometry(0.005, 0.012, 0.010),
+        this.niryoTipRight = new THREE.Mesh(
+            new THREE.BoxGeometry(0.007, 0.012, 0.010),
             this.matNiryoRubber
         );
-        tipRight.position.set(0.011, 0, 0.062);
-        this.j5.add(tipRight);
+        this.niryoTipRight.position.set(0.018, 0.074, 0.0);
+        this.j5.add(this.niryoTipRight);
 
-        // 6 articulated joint groups
+        // Start gripper fully open
+        this.currentGripperOpen = 1.0;
+        this.targetGripperOpen  = 1.0;
+
+        // Store active joint references
         this.joints = [this.j0, this.j1, this.j2, this.j3, this.j4, this.j5];
     }
 
