@@ -300,6 +300,8 @@ class MockRTDEControl:
         return True
 
     def setStandardDigitalOut(self, pin: int, value: bool):
+        if len(self.tracker) > 1000:
+            raise RuntimeError("Simulation step limit exceeded (> 1000 waypoints). Please check for infinite loops in your code.")
         self.tracker.append({
             "type": "digitalOut",
             "robot_model": "ur",
@@ -310,6 +312,8 @@ class MockRTDEControl:
         return True
 
     def setToolDigitalOut(self, pin: int, value: bool):
+        if len(self.tracker) > 1000:
+            raise RuntimeError("Simulation step limit exceeded (> 1000 waypoints). Please check for infinite loops in your code.")
         self.tracker.append({
             "type": "digitalOut",
             "robot_model": "ur",
@@ -339,14 +343,57 @@ class MockRTDEControl:
         return lambda *a, **kw: True
 
 
-# Standard Niryo One / Ned DH parameters [a, d, alpha]
+class MockRTDEIO:
+    """Mock for ur_rtde RTDEIOInterface to ensure simulated digital I/O never touches physical hardware."""
+    def __init__(self, tracker: List[Dict[str, Any]], ip: str = "127.0.0.1"):
+        self.tracker = tracker
+        self.ip = ip
+        self.pins = {}
+
+    def setStandardDigitalOut(self, pin: int, value: bool) -> bool:
+        if len(self.tracker) > 1000:
+            raise RuntimeError("Simulation step limit exceeded (> 1000 waypoints). Please check for infinite loops in your code.")
+        self.pins[pin] = bool(value)
+        self.tracker.append({
+            "type": "digitalOut",
+            "robot_model": "ur",
+            "pin": pin,
+            "value": bool(value),
+            "label": f"DigitalOut({pin}={value})"
+        })
+        return True
+
+    def setToolDigitalOut(self, pin: int, value: bool) -> bool:
+        if len(self.tracker) > 1000:
+            raise RuntimeError("Simulation step limit exceeded (> 1000 waypoints). Please check for infinite loops in your code.")
+        self.tracker.append({
+            "type": "digitalOut",
+            "robot_model": "ur",
+            "pin": pin,
+            "value": bool(value),
+            "label": f"ToolDigitalOut({pin}={value})"
+        })
+        return True
+
+    def getStandardDigitalOut(self, pin: int) -> bool:
+        return self.pins.get(pin, False)
+
+    def getToolDigitalOut(self, pin: int) -> bool:
+        return False
+
+    def __getattr__(self, name: str):
+        return lambda *a, **kw: True
+
+
+# Standard Niryo One / Ned DH parameters [a, d, alpha, theta_offset]
+# Link 2 has +pi/2 offset so arm is vertical at theta2=0 (Niryo physical home)
 DH_NIRYO = [
-    [0.0,   0.130,  np.pi / 2],
-    [0.210, 0.0,    0.0],
-    [0.030, 0.0,    np.pi / 2],
-    [0.0,   0.190, -np.pi / 2],
-    [0.0,   0.0,    np.pi / 2],
-    [0.0,   0.080,  0.0]
+    [0.0,   0.103,  np.pi / 2, 0.0],
+    [0.210, 0.0,    0.0,       np.pi / 2],
+    [0.030, 0.0,    np.pi / 2, 0.0],
+    [0.0,   0.190, -np.pi / 2, 0.0],
+    [0.0,   0.0,    np.pi / 2, 0.0],
+    [0.0,   0.077,  0.0,       0.0]
 ]
 
 
@@ -379,8 +426,8 @@ def fk_niryo(q: List[float]):
     positions = [np.zeros(3)]
     z_axes = [np.array([0.0, 0.0, 1.0])]
     for i in range(6):
-        theta = float(q[i])
-        a, d, alpha = DH_NIRYO[i]
+        a, d, alpha, offset = DH_NIRYO[i]
+        theta = float(q[i]) + offset
         ct, st = np.cos(theta), np.sin(theta)
         ca, sa = np.cos(alpha), np.sin(alpha)
         Ti = np.array([
@@ -468,7 +515,7 @@ class MockNiryoRobot:
         self.tracker = tracker
         self.ip = ip
         # Default starting home/ready pose [j1, j2, j3, j4, j5, j6] (rad)
-        self.current_q = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self.current_q = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0]
         self.is_calibrated = False
 
     def calibrate_auto(self):
@@ -480,14 +527,16 @@ class MockNiryoRobot:
         return True
 
     def move_to_home_pose(self):
-        home_q = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        home_q = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0]
         return self.move_joints(home_q)
 
     def go_to_sleep(self):
-        sleep_q = [0.0, 0.35, -1.3, 0.0, 0.0, 0.0]
+        sleep_q = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0]
         return self.move_joints(sleep_q)
 
     def move_joints(self, joints: Any):
+        if len(self.tracker) > 1000:
+            raise RuntimeError("Simulation step limit exceeded (> 1000 waypoints). Please check for infinite loops in your code.")
         q_target = [float(x) for x in joints]
         q_start = list(self.current_q)
         num_steps = 10
@@ -531,6 +580,8 @@ class MockNiryoRobot:
         return MockNiryoPose(pos[0], pos[1], pos[2], rpy[0], rpy[1], rpy[2])
 
     def open_gripper(self, speed: int = 500):
+        if len(self.tracker) > 1000:
+            raise RuntimeError("Simulation step limit exceeded (> 1000 waypoints). Please check for infinite loops in your code.")
         self.tracker.append({
             "type": "gripper",
             "robot_model": "niryo",
@@ -542,6 +593,8 @@ class MockNiryoRobot:
         return True
 
     def close_gripper(self, speed: int = 500):
+        if len(self.tracker) > 1000:
+            raise RuntimeError("Simulation step limit exceeded (> 1000 waypoints). Please check for infinite loops in your code.")
         self.tracker.append({
             "type": "gripper",
             "robot_model": "niryo",
@@ -575,10 +628,12 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
     """
     Simulates Python code in an isolated scope with accurate UR3 & Niryo mock kinematics.
     Returns generated trajectory waypoints and captured output logs.
+    Guarantees no physical robot I/O or network connections are triggered during simulation.
     """
     waypoints = []
     receiver = MockRTDEReceive()
     controller = MockRTDEControl(tracker=waypoints, receiver=receiver)
+    io_interface = MockRTDEIO(tracker=waypoints)
     niryo_robot = MockNiryoRobot(tracker=waypoints)
     captured_logs = []
 
@@ -595,16 +650,38 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
         captured_logs.append(" ".join(str(a) for a in args))
 
     import builtins
+    import socket
 
     sim_builtins = dict(builtins.__dict__)
     sim_builtins["print"] = mock_print
     sim_builtins["printf"] = mock_printf
 
-    # Mock modules in sys.modules so imports resolve seamlessly
+    sleep_counter = [0]
+    def safe_mock_sleep(s):
+        sleep_counter[0] += 1
+        if sleep_counter[0] > 1000:
+            raise RuntimeError("Simulation execution limit exceeded (> 1000 delays/steps). Please check for infinite while loops in your code.")
+
+    # Mock modules in sys.modules so imports resolve seamlessly without hitting real hardware
     mock_ctrl_mod = types.ModuleType("rtde_control")
     mock_ctrl_mod.RTDEControlInterface = lambda *a, **kw: controller
+    mock_ctrl_mod.RTDEControl = lambda *a, **kw: controller
+
     mock_recv_mod = types.ModuleType("rtde_receive")
     mock_recv_mod.RTDEReceiveInterface = lambda *a, **kw: receiver
+    mock_recv_mod.RTDEReceive = lambda *a, **kw: receiver
+
+    mock_io_mod = types.ModuleType("rtde_io")
+    mock_io_mod.RTDEIOInterface = lambda *a, **kw: io_interface
+    mock_io_mod.RTDEIO = lambda *a, **kw: io_interface
+
+    mock_ur_rtde_mod = types.ModuleType("ur_rtde")
+    mock_ur_rtde_mod.RTDEControlInterface = lambda *a, **kw: controller
+    mock_ur_rtde_mod.RTDEReceiveInterface = lambda *a, **kw: receiver
+    mock_ur_rtde_mod.RTDEIOInterface = lambda *a, **kw: io_interface
+    mock_ur_rtde_mod.rtde_control = mock_ctrl_mod
+    mock_ur_rtde_mod.rtde_receive = mock_recv_mod
+    mock_ur_rtde_mod.rtde_io = mock_io_mod
 
     # Mock pyniryo module
     mock_niryo_mod = types.ModuleType("pyniryo")
@@ -619,9 +696,9 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
         def movel(self, pose, a=0.3, v=0.2):
             return controller.moveL(pose, a, v)
         def set_digital_out(self, pin, value):
-            return controller.setStandardDigitalOut(pin, value)
+            return io_interface.setStandardDigitalOut(pin, value)
         def sleep(self, s):
-            pass
+            safe_mock_sleep(s)
         def get_actual_joint_positions(self):
             return receiver.getActualQ()
         def get_actual_tcp_pose(self):
@@ -638,13 +715,38 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
     mock_wrap_mod.MAX_LINEAR_SPEED = 0.20
     mock_wrap_mod.MAX_LINEAR_ACCEL = 0.50
 
+    # Mock socket during simulation so user code cannot reach physical controllers
+    class MockSimSocket:
+        def __init__(self, *args, **kwargs): pass
+        def connect(self, *args, **kwargs): pass
+        def sendall(self, *args, **kwargs): pass
+        def send(self, *args, **kwargs): return 0
+        def recv(self, *args, **kwargs): return b""
+        def close(self): pass
+        def settimeout(self, *args, **kwargs): pass
+        def setsockopt(self, *args, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+
+    old_socket_cls = getattr(socket, "socket", None)
+    old_socket_create = getattr(socket, "create_connection", None)
+    socket.socket = MockSimSocket
+    socket.create_connection = lambda *a, **kw: MockSimSocket()
+
     old_ctrl = sys.modules.get("rtde_control")
     old_recv = sys.modules.get("rtde_receive")
+    old_io = sys.modules.get("rtde_io")
+    old_ur_rtde = sys.modules.get("ur_rtde")
     old_wrap = sys.modules.get("ur_wrapper")
     old_niryo = sys.modules.get("pyniryo")
 
     sys.modules["rtde_control"] = mock_ctrl_mod
     sys.modules["rtde_receive"] = mock_recv_mod
+    sys.modules["rtde_io"] = mock_io_mod
+    sys.modules["ur_rtde"] = mock_ur_rtde_mod
+    sys.modules["ur_rtde.rtde_control"] = mock_ctrl_mod
+    sys.modules["ur_rtde.rtde_receive"] = mock_recv_mod
+    sys.modules["ur_rtde.rtde_io"] = mock_io_mod
     sys.modules["ur_wrapper"] = mock_wrap_mod
     sys.modules["pyniryo"] = mock_niryo_mod
 
@@ -653,9 +755,16 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
         "np": np,
         "numpy": np,
         "math": math,
-        "time": type("MockTime", (), {"sleep": lambda s: None}),
+        "time": type("MockTime", (), {"sleep": safe_mock_sleep}),
         "RTDEControl": lambda *a, **kw: controller,
+        "RTDEControlInterface": lambda *a, **kw: controller,
         "RTDEReceive": lambda *a, **kw: receiver,
+        "RTDEReceiveInterface": lambda *a, **kw: receiver,
+        "RTDEIO": lambda *a, **kw: io_interface,
+        "RTDEIOInterface": lambda *a, **kw: io_interface,
+        "rtde_control": mock_ctrl_mod,
+        "rtde_receive": mock_recv_mod,
+        "rtde_io": mock_io_mod,
         "NiryoRobot": lambda *a, **kw: niryo_robot,
         "pyniryo": mock_niryo_mod,
         "RobotArm": MockRobotArm,
@@ -665,7 +774,7 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
     # Detect robot model from code content or explicit model hint
     if "pyniryo" in code_str or "NiryoRobot" in code_str:
         detected_model = "niryo"
-    elif "rtde_control" in code_str or "rtde_receive" in code_str or "RTDEControl" in code_str or "ur_wrapper" in code_str:
+    elif "rtde_control" in code_str or "rtde_receive" in code_str or "rtde_io" in code_str or "RTDEControl" in code_str or "RTDEIO" in code_str or "ur_wrapper" in code_str:
         detected_model = "ur"
     elif robot_model in ("ur", "niryo"):
         detected_model = robot_model
@@ -689,6 +798,13 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
             "logs": captured_logs
         }
     finally:
+        # Restore socket
+        if old_socket_cls:
+            socket.socket = old_socket_cls
+        if old_socket_create:
+            socket.create_connection = old_socket_create
+
+        # Restore sys.modules
         if old_ctrl is not None:
             sys.modules["rtde_control"] = old_ctrl
         else:
@@ -697,6 +813,18 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
             sys.modules["rtde_receive"] = old_recv
         else:
             sys.modules.pop("rtde_receive", None)
+        if old_io is not None:
+            sys.modules["rtde_io"] = old_io
+        else:
+            sys.modules.pop("rtde_io", None)
+        if old_ur_rtde is not None:
+            sys.modules["ur_rtde"] = old_ur_rtde
+        else:
+            sys.modules.pop("ur_rtde", None)
+        sys.modules.pop("ur_rtde.rtde_control", None)
+        sys.modules.pop("ur_rtde.rtde_receive", None)
+        sys.modules.pop("ur_rtde.rtde_io", None)
+
         if old_wrap is not None:
             sys.modules["ur_wrapper"] = old_wrap
         else:
@@ -705,5 +833,111 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
             sys.modules["pyniryo"] = old_niryo
         else:
             sys.modules.pop("pyniryo", None)
+
+
+async def run_simulation_isolated(code_str: str, robot_model: Optional[str] = None, timeout_sec: float = 8.0) -> Dict[str, Any]:
+    """
+    Runs the 3D kinematics simulation completely isolated in a separate Python subprocess.
+    Ensures 100% responsiveness of the main FastAPI server, preventing any event-loop or GIL blockage,
+    and guarantees zero mutation/pollution of core server sys.modules or socket handlers.
+    """
+    import asyncio
+    import json
+    import os
+    import sys
+
+    sim_script = os.path.abspath(__file__)
+    work_dir = os.path.dirname(sim_script)
+    payload_json = json.dumps({"code": code_str, "robot_model": robot_model})
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-u", sim_script, "--worker",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=work_dir
+        )
+
+        try:
+            stdout_data, stderr_data = await asyncio.wait_for(
+                proc.communicate(input=payload_json.encode("utf-8")),
+                timeout=timeout_sec
+            )
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
+            return {
+                "success": False,
+                "robot_model": robot_model or "ur",
+                "error": f"Simulation timed out (> {timeout_sec}s). Please verify there are no infinite while loops or excessive delays in your script.",
+                "waypoints": [],
+                "logs": []
+            }
+
+        if proc.returncode != 0 and not stdout_data:
+            err_msg = stderr_data.decode("utf-8", errors="replace").strip() if stderr_data else f"Worker exited with code {proc.returncode}"
+            return {
+                "success": False,
+                "robot_model": robot_model or "ur",
+                "error": f"Simulation worker error: {err_msg}",
+                "waypoints": [],
+                "logs": []
+            }
+
+        raw_out = stdout_data.decode("utf-8", errors="replace").strip()
+        if not raw_out:
+            return {
+                "success": False,
+                "robot_model": robot_model or "ur",
+                "error": "Simulator worker returned empty output.",
+                "waypoints": [],
+                "logs": []
+            }
+
+        lines = [l for l in raw_out.splitlines() if l.strip().startswith("{") and l.strip().endswith("}")]
+        if lines:
+            parsed = json.loads(lines[-1])
+            return parsed
+        else:
+            return json.loads(raw_out)
+
+    except Exception as e:
+        return {
+            "success": False,
+            "robot_model": robot_model or "ur",
+            "error": f"Failed to execute isolated simulation: {e}",
+            "waypoints": [],
+            "logs": []
+        }
+
+
+if __name__ == "__main__":
+    import json
+    import sys
+
+    # Worker entrypoint for isolated simulation process
+    try:
+        raw_in = sys.stdin.read()
+        if not raw_in.strip():
+            print(json.dumps({"success": False, "error": "No input payload provided.", "waypoints": [], "logs": []}))
+            sys.exit(0)
+        data = json.loads(raw_in)
+        code_input = data.get("code", "")
+        model_input = data.get("robot_model", None)
+        res = simulate_script(code_input, robot_model=model_input)
+        print(json.dumps(res))
+    except Exception as err:
+        print(json.dumps({
+            "success": False,
+            "error": str(err),
+            "waypoints": [],
+            "logs": []
+        }))
+    sys.exit(0)
+
 
 

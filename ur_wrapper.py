@@ -127,6 +127,24 @@ class RobotArm:
                 f"Target radial distance R={r:.3f}m exceeds max radius limit ({WORKSPACE_R_MAX}m)."
             )
 
+    def check_safety_state(self):
+        """Checks if the physical UR robot is in Emergency Stop or Protective Stop."""
+        if self.is_simulated or not self.rtde_r:
+            return
+        try:
+            if hasattr(self.rtde_r, "isEmergencyStopped") and self.rtde_r.isEmergencyStopped():
+                raise SafetyViolationError("UR Robot hardware is in EMERGENCY STOP! Release physical E-stop button and reset safety on teach pendant.")
+            if hasattr(self.rtde_r, "isProtectiveStopped") and self.rtde_r.isProtectiveStopped():
+                raise SafetyViolationError("UR Robot hardware is in PROTECTIVE STOP! Clear collision obstacle and unlock arm on teach pendant.")
+            if hasattr(self.rtde_r, "getSafetyMode"):
+                mode = self.rtde_r.getSafetyMode()
+                if mode in (3, 6, 7, 8, 11):
+                    raise SafetyViolationError(f"UR Robot Safety mode violation (mode={mode}). Arm is halted.")
+        except SafetyViolationError:
+            raise
+        except Exception:
+            pass
+
     def movej(self, q: List[float], a: float = 0.5, v: float = 0.3):
         """Move to joint position with safety clamping."""
         if len(q) != 6:
@@ -140,7 +158,12 @@ class RobotArm:
             print("[RobotArm (Sim)] Joint motion completed.", flush=True)
             return True
         else:
-            return self.rtde_c.moveJ(q, safe_v, safe_a)
+            self.check_safety_state()
+            ok = self.rtde_c.moveJ(q, safe_v, safe_a)
+            if not ok:
+                self.check_safety_state()
+                raise RuntimeError("UR moveJ command rejected by controller (robot may be halted or in protective/emergency stop).")
+            return ok
 
     def movel(self, pose: List[float], a: float = 0.3, v: float = 0.2):
         """Move to Cartesian pose [x, y, z, rx, ry, rz] with boundary checks."""
@@ -156,7 +179,12 @@ class RobotArm:
             print("[RobotArm (Sim)] Linear motion completed.", flush=True)
             return True
         else:
-            return self.rtde_c.moveL(pose, safe_v, safe_a)
+            self.check_safety_state()
+            ok = self.rtde_c.moveL(pose, safe_v, safe_a)
+            if not ok:
+                self.check_safety_state()
+                raise RuntimeError("UR moveL command rejected by controller (robot may be halted or in protective/emergency stop).")
+            return ok
 
     def set_digital_out(self, pin: int, value: bool):
         """Set digital output pin (e.g. for pneumatic gripper)."""
@@ -191,7 +219,14 @@ class RobotArm:
                 pass
 
     def __del__(self):
-        self.stop()
+        try:
+            if not getattr(self, "is_simulated", True):
+                if getattr(self, "rtde_c", None):
+                    self.rtde_c.disconnect()
+                if getattr(self, "rtde_r", None):
+                    self.rtde_r.disconnect()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

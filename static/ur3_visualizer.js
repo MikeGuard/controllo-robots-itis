@@ -513,6 +513,16 @@ class UR3Visualizer {
             if (this.joints[3]) this.joints[3].rotation.y = q[3];
             if (this.joints[4]) this.joints[4].rotation.x = -q[4];
             if (this.joints[5]) this.joints[5].rotation.y = q[5];
+
+            // Table collision safeguard: ensure gripper and wrist never plunge underground
+            if (this.niryoToolFlange) {
+                const flangeWorldPos = new THREE.Vector3();
+                this.niryoToolFlange.getWorldPosition(flangeWorldPos);
+                if (flangeWorldPos.y < 0.045 && this.joints[1]) {
+                    const delta = 0.045 - flangeWorldPos.y;
+                    this.joints[1].rotation.x -= Math.min(delta * 1.6, 0.8);
+                }
+            }
         } else {
             // UR3: Direct DH rotation around each joint's local Z-axis
             for (let i = 0; i < 6; i++) {
@@ -683,10 +693,10 @@ class UR3Visualizer {
         }
 
         if (this.currentModel === 'niryo') {
-            // Niryo Ned standard home: arm upright, forearm horizontal forward
-            this.homePose  = [0.0, 0.0,  0.0, 0.0, 0.0,  0.0];
+            // Niryo Ned standard home & ready poses
+            this.homePose  = [0.0, 0.35, -0.65, 0.0, 0.35, 0.0];
             this.photoPose = [0.0, 0.35, -0.65, 0.0, 0.35, 0.0];
-            this.zeroPose  = [0.0, 0.0,  0.0, 0.0, 0.0,  0.0];
+            this.zeroPose  = [0.0, 0.0,   0.0,  0.0, 0.0,  0.0];
             // Reset gripper state (starts open)
             this.currentGripperOpen = 1.0;
             this.targetGripperOpen  = 1.0;
@@ -861,8 +871,8 @@ class UR3Visualizer {
         // ── j2_frame — elbow pivot at top of upper arm ───────────────────
         this.j2_frame = new THREE.Group();
         this.j2_frame.position.y = L1;
-        // In Niryo Ned zero pose, the elbow is bent 90° forward so the forearm is horizontal forward (+Z):
-        this.j2_frame.rotation.x = Math.PI / 2;
+        // Forearm aligns naturally along the upper arm axis at zero angle
+        this.j2_frame.rotation.x = 0;
         this.j1.add(this.j2_frame);
 
         // j2 rotates around local X (elbow pitch: negative = bends down toward table/sleep)

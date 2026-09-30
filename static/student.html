@@ -57,6 +57,11 @@
             </div>
 
 
+            <!-- Manager Console Shortcut Link -->
+            <a href="/admin" class="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-amber-300 hover:text-amber-200 border border-amber-500/30 rounded-lg text-xs font-semibold transition shadow-sm" title="Go to Robot Manager / Instructor Console">
+                <span>🛠️ Manager Portal</span>
+            </a>
+
             <!-- Student User Badge / Logout -->
             <div id="userHeaderBadge" class="flex items-center space-x-2 bg-slate-850 border border-slate-700 px-3 py-1.5 rounded-lg text-xs shadow-inner">
                 <span class="text-slate-400">Student:</span>
@@ -250,10 +255,15 @@ Write your Python script, click "Save Code", and click "Send for Execution" to q
                     <span>Log In &amp; Enter Lab</span>
                 </button>
 
-                <div class="text-center pt-2 border-t border-slate-800">
-                    <button onclick="toggleAuthMode('register')" class="text-xs text-sky-400 hover:text-sky-300 font-medium">
+                <div class="text-center pt-2 border-t border-slate-800 space-y-2">
+                    <button onclick="toggleAuthMode('register')" class="text-xs text-sky-400 hover:text-sky-300 font-medium block w-full text-center">
                         ➕ New Student? Create an Account
                     </button>
+                    <div class="pt-2 border-t border-slate-800/80">
+                        <button onclick="toggleAuthMode('manager')" class="w-full py-2 px-3 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 hover:from-amber-500/20 hover:to-indigo-500/20 border border-amber-500/30 hover:border-amber-400 rounded-xl text-xs font-bold text-amber-300 transition flex items-center justify-center space-x-2 shadow-sm">
+                            <span>🛠️ Access as Robot Manager</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -289,6 +299,37 @@ Write your Python script, click "Save Code", and click "Send for Execution" to q
                 <div class="text-center pt-2 border-t border-slate-800">
                     <button onclick="toggleAuthMode('login')" class="text-xs text-slate-400 hover:text-white font-medium">
                         &larr; Back to Login
+                    </button>
+                </div>
+            </div>
+
+            <!-- Robot Manager / Superadmin Login Form -->
+            <div id="managerFormSection" class="hidden space-y-4">
+                <div class="text-center space-y-1">
+                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-indigo-500/20 text-amber-400 border border-amber-500/40 text-2xl mb-1">🛠️</div>
+                    <h2 class="text-lg font-bold text-white">Robot Manager Access</h2>
+                    <p class="text-xs text-slate-400">Superadmin &amp; Dispatcher Management Portal</p>
+                </div>
+
+                <div id="managerAlert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Manager Username</label>
+                    <input id="managerUsername" type="text" placeholder="Enter manager username" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition font-mono">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
+                    <input id="managerPassword" type="password" placeholder="Enter manager password" onkeydown="if(event.key==='Enter') submitManagerLogin()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition font-mono">
+                </div>
+
+                <button id="btnManagerSubmit" onclick="submitManagerLogin()" class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-slate-950 hover:text-black font-extrabold text-sm rounded-lg shadow-lg shadow-amber-500/20 transition flex items-center justify-center space-x-1.5">
+                    <span>⚡ Unlock Manager Console</span>
+                </button>
+
+                <div class="text-center pt-2 border-t border-slate-800">
+                    <button onclick="toggleAuthMode('login')" class="text-xs text-slate-400 hover:text-white font-medium">
+                        &larr; Back to Student Login
                     </button>
                 </div>
             </div>
@@ -531,14 +572,22 @@ print("Routine completed successfully!")
         function toggleAuthMode(mode) {
             const loginSec = document.getElementById("loginFormSection");
             const regSec = document.getElementById("registerFormSection");
+            const mgrSec = document.getElementById("managerFormSection");
             clearAuthAlerts();
 
             if (mode === "register") {
                 loginSec.classList.add("hidden");
+                mgrSec.classList.add("hidden");
                 regSec.classList.remove("hidden");
                 document.getElementById("regUsername").focus();
+            } else if (mode === "manager") {
+                loginSec.classList.add("hidden");
+                regSec.classList.add("hidden");
+                mgrSec.classList.remove("hidden");
+                document.getElementById("managerPassword").focus();
             } else {
                 regSec.classList.add("hidden");
+                mgrSec.classList.add("hidden");
                 loginSec.classList.remove("hidden");
                 fetchApprovedStudents();
             }
@@ -547,18 +596,79 @@ print("Routine completed successfully!")
         function clearAuthAlerts() {
             const lAlert = document.getElementById("loginAlert");
             const rAlert = document.getElementById("registerAlert");
+            const mAlert = document.getElementById("managerAlert");
             if (lAlert) { lAlert.className = "hidden"; lAlert.innerText = ""; }
             if (rAlert) { rAlert.className = "hidden"; rAlert.innerText = ""; }
+            if (mAlert) { mAlert.className = "hidden"; mAlert.innerText = ""; }
         }
 
         function showAuthAlert(type, message, isError = true) {
-            const el = document.getElementById(type === "login" ? "loginAlert" : "registerAlert");
+            let elId = "loginAlert";
+            if (type === "register") elId = "registerAlert";
+            else if (type === "manager") elId = "managerAlert";
+            const el = document.getElementById(elId);
             if (!el) return;
             el.className = isError
                 ? "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-800 text-rose-300"
                 : "p-3 rounded-lg text-xs font-medium bg-emerald-950/80 border border-emerald-800 text-emerald-300";
             el.innerText = message;
             el.classList.remove("hidden");
+        }
+
+        async function submitManagerLogin() {
+            const username = document.getElementById("managerUsername").value.trim();
+            const password = document.getElementById("managerPassword").value.trim();
+
+            if (!username) {
+                showAuthAlert("manager", "Please enter the manager username.");
+                return;
+            }
+            if (!password) {
+                showAuthAlert("manager", "Please enter the manager password.");
+                return;
+            }
+
+            const btn = document.getElementById("btnManagerSubmit");
+            btn.disabled = true;
+            btn.innerText = "Authenticating Manager...";
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    showAuthAlert("manager", data.detail || "Authentication failed.");
+                    btn.disabled = false;
+                    btn.innerText = "⚡ Unlock Manager Console";
+                    return;
+                }
+
+                if (data.user.role !== 'admin' && data.user.role !== 'superadmin') {
+                    showAuthAlert("manager", "Access denied: Account is not an administrator or superadmin.");
+                    btn.disabled = false;
+                    btn.innerText = "⚡ Unlock Manager Console";
+                    return;
+                }
+
+                // Store admin tokens and info for immediate redirection
+                localStorage.setItem("ur_admin_token", data.token);
+                localStorage.setItem("ur_admin_user", JSON.stringify(data.user));
+                localStorage.setItem(STORAGE_TOKEN_KEY, data.token);
+                localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data.user));
+
+                showAuthAlert("manager", "Access granted! Redirecting to Manager Console...", false);
+                setTimeout(() => {
+                    window.location.href = "/admin";
+                }, 400);
+            } catch (e) {
+                showAuthAlert("manager", "Network error during login: " + e.message);
+                btn.disabled = false;
+                btn.innerText = "⚡ Unlock Manager Console";
+            }
         }
 
         async function fetchApprovedStudents() {
@@ -937,7 +1047,12 @@ print("Routine completed successfully!")
 
                 const modelLabel = (currentRobotModel === 'niryo') ? 'Niryo Ned' : 'UR3 Arm';
 
-                if (isRobotReady) {
+                if (data.is_emergency_halted) {
+                    statusDiv.className = "flex items-center space-x-2 text-xs text-rose-300 bg-rose-950/80 border border-rose-600 px-3 py-1.5 rounded-full transition-all animate-pulse";
+                    pingDot.className = "w-2 h-2 rounded-full bg-rose-500 animate-ping";
+                    pingText.innerText = `${modelLabel} EMERGENCY STOPPED`;
+                    notice.classList.remove("hidden");
+                } else if (isRobotReady) {
                     statusDiv.className = "flex items-center space-x-2 text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-3 py-1.5 rounded-full transition-all";
                     pingDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
                     pingText.innerText = `${modelLabel} Ready (${data.ip})`;

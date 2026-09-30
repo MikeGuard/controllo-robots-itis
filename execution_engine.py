@@ -22,12 +22,58 @@ ROBOT_IP = config.ROBOT_IP
 ROBOT_PORT = config.ROBOT_SECONDARY_PORT
 
 
+def _send_ur_emergency_halt(ip: str, port: int):
+    """Sends stopj(5.0) and resets digital outs via secondary socket with short timeout."""
+    if not ip:
+        return
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.4)
+        s.connect((ip, port))
+        s.sendall(b"stopj(5.0)\n")
+        s.sendall(b"set_standard_digital_out(0, False)\n")
+        s.sendall(b"set_standard_digital_out(1, False)\n")
+        s.sendall(b"set_tool_digital_out(0, False)\n")
+        s.sendall(b"set_tool_digital_out(1, False)\n")
+        s.close()
+        print(f"[EMERGENCY STOP] Sent stopj(5.0) and reset digital outputs to UR at {ip}:{port}")
+    except Exception as e:
+        print(f"[EMERGENCY STOP] UR halt notice ({ip}): {e}")
+
+
+def _send_niryo_emergency_halt(ip: str):
+    """Sends stop_move to Niryo arm if reachable, with short probe to avoid long blocking."""
+    if not ip:
+        return
+    try:
+        # Pre-probe socket with 0.3s timeout so pyniryo does not freeze for 20s
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.3)
+        s.connect((ip, getattr(config, "NIRYO_PORT", 9090)))
+        s.close()
+
+        import pyniryo
+        niryo = pyniryo.NiryoRobot(ip)
+        niryo.stop_move()
+        niryo.end()
+        print(f"[EMERGENCY STOP] Sent stop_move() to Niryo at {ip}")
+    except Exception as e:
+        print(f"[EMERGENCY STOP] Niryo halt notice ({ip}): {e}")
+
+
 class ExecutionEngine:
     def __init__(self):
         self.current_process: Optional[asyncio.subprocess.Process] = None
         self.current_submission_id: Optional[int] = None
         self.is_executing = False
+        self.is_aborted = False
+        self.is_emergency_halted = False
+        self.emergency_halt_reason = ""
         self._lock = asyncio.Lock()
+
+    def reset_emergency(self):
+        self.is_emergency_halted = False
+        self.emergency_halt_reason = ""
 
     async def execute_submission(
         self,
@@ -50,6 +96,7 @@ class ExecutionEngine:
             if self.is_executing:
                 raise RuntimeError("Another script is currently executing on the robot.")
             self.is_executing = True
+            self.is_aborted = False
             self.current_submission_id = submission_id
 
         await update_status(submission_id, "running")
@@ -103,12 +150,15 @@ class ExecutionEngine:
 
             async def stream_output():
                 while True:
-                    line = await proc.stdout.readline()
-                    if not line:
+                    try:
+                        line = await proc.stdout.readline()
+                        if not line:
+                            break
+                        decoded = line.decode("utf-8", errors="replace")
+                        await append_logs(submission_id, decoded)
+                        await dispatch_log(decoded)
+                    except Exception:
                         break
-                    decoded = line.decode("utf-8", errors="replace")
-                    await append_logs(submission_id, decoded)
-                    await dispatch_log(decoded)
 
             # Run with watchdog timeout
             try:
@@ -116,7 +166,13 @@ class ExecutionEngine:
                     asyncio.gather(proc.wait(), stream_output()),
                     timeout=timeout_sec
                 )
-                if proc.returncode == 0:
+
+                if self.is_aborted:
+                    msg = f"\n[Supervisor] Script was aborted ({self.emergency_halt_reason or 'Emergency Stop'}).\n"
+                    await append_logs(submission_id, msg)
+                    await dispatch_log(msg)
+                    await update_status(submission_id, "aborted")
+                elif proc.returncode == 0:
                     success = True
                     msg = "\n[Supervisor] Execution completed successfully with returncode 0.\n"
                     await append_logs(submission_id, msg)
@@ -150,6 +206,11 @@ class ExecutionEngine:
                     os.remove(temp_path)
                 except Exception:
                     pass
+            if not success and getattr(self, "current_robot_model", "ur") == "ur" and getattr(config, "UR_IP", None):
+                # Non-blocking background reset
+                asyncio.create_task(asyncio.to_thread(
+                    _send_ur_emergency_halt, config.UR_IP, config.ROBOT_SECONDARY_PORT
+                ))
             self.current_process = None
             self.current_submission_id = None
             self.is_executing = False
@@ -157,21 +218,25 @@ class ExecutionEngine:
         return success
 
     async def abort_current(self, reason: str = "Instructor Emergency Stop"):
-        """Emergency Stop: Kills student process group and commands the active robot to halt."""
+        """Emergency Stop: Kills student process group immediately and commands active robot to halt without blocking."""
         print(f"[EMERGENCY STOP] Triggered: {reason}")
+        self.is_aborted = True
+        self.is_emergency_halted = True
+        self.emergency_halt_reason = reason
 
         # 1. Kill the subprocess group immediately
-        if self.current_process and self.current_process.pid:
+        proc = self.current_process
+        if proc and proc.pid:
             try:
                 if sys.platform == "win32":
                     try:
-                        self.current_process.kill()
+                        proc.kill()
                     except ProcessLookupError:
                         pass
                     try:
                         import subprocess
                         subprocess.run(
-                            ["taskkill", "/F", "/T", "/PID", str(self.current_process.pid)],
+                            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                             check=False
@@ -179,49 +244,33 @@ class ExecutionEngine:
                     except Exception:
                         pass
                 else:
-                    pgid = os.getpgid(self.current_process.pid)
+                    pgid = os.getpgid(proc.pid)
                     os.killpg(pgid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
             except Exception as e:
                 print(f"[EMERGENCY STOP] Error killing process group: {e}")
 
-        # 2. Hardware Emergency Halt — Send immediate halt to both UR and Niryo arms
-        # UR Robot Halt (Secondary socket stopj with 5.0 rad/s^2 emergency deceleration)
-        ur_target = config.UR_IP
-        if ur_target:
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(0.5)
-                s.connect((ur_target, config.ROBOT_SECONDARY_PORT))
-                s.sendall(b"stopj(5.0)\n")
-                s.close()
-                print(f"[EMERGENCY STOP] Sent stopj(5.0) to UR controller at {ur_target}.")
-            except Exception as e:
-                print(f"[EMERGENCY STOP] UR halt attempt ({ur_target}): {e}")
+        # 2. Hardware Emergency Halt — dispatched in worker threads (zero blocking on event loop)
+        active_model = getattr(self, "current_robot_model", None) or getattr(config, "ROBOT_MODEL", "ur")
+        if active_model == "ur" and getattr(config, "UR_IP", None):
+            asyncio.create_task(asyncio.to_thread(
+                _send_ur_emergency_halt, config.UR_IP, getattr(config, "ROBOT_SECONDARY_PORT", 30002)
+            ))
+        elif active_model == "niryo" and getattr(config, "NIRYO_IP", None):
+            asyncio.create_task(asyncio.to_thread(
+                _send_niryo_emergency_halt, config.NIRYO_IP
+            ))
 
-        # Niryo Robot Halt (pyniryo stop_move)
-        niryo_target = config.NIRYO_IP
-        if niryo_target:
-            try:
-                import pyniryo
-                niryo = pyniryo.NiryoRobot(niryo_target)
-                niryo.stop_move()
-                niryo.end()
-                print(f"[EMERGENCY STOP] Sent stop_move() to Niryo at {niryo_target}.")
-            except ImportError:
-                pass
-            except Exception as e:
-                print(f"[EMERGENCY STOP] Niryo halt attempt ({niryo_target}): {e}")
-
-        if self.current_submission_id:
+        sub_id = self.current_submission_id
+        if sub_id:
             await append_logs(
-                self.current_submission_id,
+                sub_id,
                 f"\n[EMERGENCY STOP] Execution aborted immediately: {reason}\n"
             )
-            await update_status(self.current_submission_id, "aborted")
-
+            await update_status(sub_id, "aborted")
 
 
 # Singleton engine instance
 engine = ExecutionEngine()
+
