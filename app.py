@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Set, Any
 # Ensure ur_platform directory is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Header
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Header, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -127,7 +127,12 @@ async def get_instructor_dashboard():
 
 # --- Helper Functions ---
 
-async def check_robot_reachability(ip: Optional[str] = None, model: Optional[str] = None):
+# Short-lived cache so many open dashboards polling every few seconds don't each spawn a ping
+_reachability_cache: Dict[tuple, tuple] = {}
+_REACHABILITY_TTL_SEC = 2.0
+
+
+async def check_robot_reachability(ip: Optional[str] = None, model: Optional[str] = None, use_cache: bool = True):
     target_ip = (ip or "").strip()
     target_model = (model or "").strip().lower()
 
@@ -141,6 +146,12 @@ async def check_robot_reachability(ip: Optional[str] = None, model: Optional[str
 
     if not target_model:
         target_model = "niryo" if target_ip == config.NIRYO_IP else "ur"
+
+    cache_key = (target_ip, target_model)
+    now_ts = asyncio.get_running_loop().time()
+    cached = _reachability_cache.get(cache_key)
+    if use_cache and cached and now_ts - cached[0] < _REACHABILITY_TTL_SEC:
+        return cached[1]
 
     ping_ok = False
     try:
@@ -170,7 +181,9 @@ async def check_robot_reachability(ip: Optional[str] = None, model: Optional[str
                 continue
 
     is_ready = ping_ok or port_ok
-    return is_ready, ping_ok, port_ok
+    result = (is_ready, ping_ok, port_ok)
+    _reachability_cache[cache_key] = (now_ts, result)
+    return result
 
 
 # --- Authentication Endpoints ---
@@ -226,6 +239,19 @@ def verify_admin_permission(authorization: Optional[str], required_perm: str) ->
     if "*" in perms or required_perm in perms:
         return session
     raise HTTPException(status_code=403, detail=f"Permission denied: Missing '{required_perm}' privilege.")
+
+
+def verify_any_admin(authorization: Optional[str]) -> Dict[str, Any]:
+    """Requires a valid admin or superadmin session (no specific permission)."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    token = authorization.replace("Bearer ", "").strip()
+    session = active_sessions.get(token)
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session. Please log in again.")
+    if session.get("role") not in ("admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="Instructor access required.")
+    return session
 
 
 @app.post("/api/auth/login")
@@ -311,8 +337,9 @@ async def logout_user(authorization: Optional[str] = Header(default=None)):
 # --- Admin & Superadmin User Management Endpoints ---
 
 @app.get("/api/admin/users")
-async def get_all_users_admin():
+async def get_all_users_admin(authorization: Optional[str] = Header(default=None)):
     """Lists all users (pending, approved, rejected) for the instructor."""
+    verify_any_admin(authorization)
     users = await database.get_all_users()
     return {"users": users}
 
@@ -434,8 +461,7 @@ async def update_permissions_endpoint(
 @app.post("/api/config")
 async def update_config(payload: ConfigUpdateRequest, authorization: Optional[str] = Header(default=None)):
     """Allows the instructor to change the robot model/IP from the admin dashboard."""
-    if authorization:
-        verify_admin_permission(authorization, "can_edit_config")
+    verify_admin_permission(authorization, "can_edit_config")
     import json
 
     # Determine new model
@@ -551,8 +577,9 @@ async def get_robot_status(ip: Optional[str] = None, model: Optional[str] = None
 
 
 @app.post("/api/emergency-reset")
-async def reset_emergency_stop():
+async def reset_emergency_stop(authorization: Optional[str] = Header(default=None)):
     """Allows instructor to clear the emergency halt latch and return robot status to normal."""
+    verify_admin_permission(authorization, "can_emergency_stop")
     engine.reset_emergency()
     await broadcast_to_admins({"type": "emergency_reset"})
     return {"status": "ok", "message": "Emergency stop cleared."}
@@ -645,13 +672,20 @@ async def submit_code(payload: SubmissionRequest):
 
 
 @app.get("/api/submissions")
-async def list_submissions():
+async def list_submissions(request: Request):
     rows = await database.get_all_submissions()
-    return {
+    payload = {
         "submissions": rows,
         "is_executing": engine.is_executing,
         "active_submission_id": engine.current_submission_id
     }
+    # ETag lets the 2s dashboard poll revalidate cheaply instead of re-downloading all code/logs
+    import hashlib, json as _json
+    body = _json.dumps(payload, separators=(",", ":"), default=str)
+    etag = '"' + hashlib.md5(body.encode("utf-8")).hexdigest() + '"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-cache"})
+    return Response(content=body, media_type="application/json", headers={"ETag": etag, "Cache-Control": "no-cache"})
 
 
 @app.get("/api/submissions/{sub_id}")
@@ -676,7 +710,7 @@ async def get_student_saved_projects(
         token = authorization.replace("Bearer ", "").strip()
         if token in active_sessions:
             session_data = active_sessions[token]
-            if session_data.get("role") == "admin":
+            if session_data.get("role") in ("admin", "superadmin"):
                 if student_name and student_name.strip():
                     target_student = student_name.strip()
             else:
@@ -692,19 +726,21 @@ async def get_student_saved_projects(
 
 
 @app.get("/api/admin/students/overview")
-async def get_admin_students_overview():
+async def get_admin_students_overview(authorization: Optional[str] = Header(default=None)):
     """
     Returns overview of all registered students with their project count and last active timestamp.
     """
+    verify_any_admin(authorization)
     overview = await database.get_all_students_overview()
     return {"students": overview}
 
 
 @app.get("/api/admin/students/{username}/projects")
-async def get_admin_student_projects(username: str):
+async def get_admin_student_projects(username: str, authorization: Optional[str] = Header(default=None)):
     """
     Returns all saved code / submissions for a specific student for instructor review.
     """
+    verify_any_admin(authorization)
     clean_username = username.strip()
     projects = await database.get_student_submissions(clean_username)
     return {"student": clean_username, "projects": projects}
@@ -748,8 +784,7 @@ async def launch_submission_execution(sub_id: int, code_str: str, robot_model: O
 
 @app.post("/api/submissions/{sub_id}/approve")
 async def approve_submission(sub_id: int, authorization: Optional[str] = Header(default=None)):
-    if authorization:
-        verify_admin_permission(authorization, "can_execute")
+    verify_admin_permission(authorization, "can_execute")
     sub = await database.get_submission(sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
@@ -760,7 +795,7 @@ async def approve_submission(sub_id: int, authorization: Optional[str] = Header(
     sub_model = sub.get("robot_model") or ("niryo" if ("pyniryo" in sub["code"] or "NiryoRobot" in sub["code"]) else "ur")
     target_ip = config.NIRYO_IP if sub_model == "niryo" else config.UR_IP
 
-    is_ready, _, _ = await check_robot_reachability(target_ip, model=sub_model)
+    is_ready, _, _ = await check_robot_reachability(target_ip, model=sub_model, use_cache=False)
     if not is_ready:
         model_name = "Niryo Ned" if sub_model == "niryo" else "UR3"
         raise HTTPException(
@@ -788,8 +823,10 @@ async def admin_send_code(payload: AdminSendCodeRequest, authorization: Optional
     """
     Allows the instructor to directly send/execute custom code from the admin dashboard.
     """
-    if authorization and payload.execute_now:
+    if payload.execute_now:
         verify_admin_permission(authorization, "can_direct_send")
+    else:
+        verify_any_admin(authorization)
     prog_name = (payload.program_name or "Admin Routine").strip()
     valid, errors = validate_python_code(payload.code)
     if not valid:
@@ -810,7 +847,7 @@ async def admin_send_code(payload: AdminSendCodeRequest, authorization: Optional
     )
 
     if payload.execute_now:
-        is_ready, _, _ = await check_robot_reachability(target_ip, model=detected_model)
+        is_ready, _, _ = await check_robot_reachability(target_ip, model=detected_model, use_cache=False)
         if not is_ready:
             model_name = "Niryo Ned" if detected_model == "niryo" else "UR3"
             raise HTTPException(
@@ -854,7 +891,8 @@ async def admin_send_code(payload: AdminSendCodeRequest, authorization: Optional
 
 
 @app.put("/api/submissions/{sub_id}")
-async def update_submission_endpoint(sub_id: int, payload: UpdateSubmissionRequest):
+async def update_submission_endpoint(sub_id: int, payload: UpdateSubmissionRequest, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
     sub = await database.get_submission(sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
@@ -877,7 +915,8 @@ async def update_submission_endpoint(sub_id: int, payload: UpdateSubmissionReque
 
 
 @app.post("/api/submissions/{sub_id}/reject")
-async def reject_submission(sub_id: int):
+async def reject_submission(sub_id: int, authorization: Optional[str] = Header(default=None)):
+    verify_admin_permission(authorization, "can_execute")
     sub = await database.get_submission(sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
@@ -888,7 +927,8 @@ async def reject_submission(sub_id: int):
 
 
 @app.delete("/api/submissions/{sub_id}")
-async def delete_submission_endpoint(sub_id: int):
+async def delete_submission_endpoint(sub_id: int, authorization: Optional[str] = Header(default=None)):
+    verify_admin_permission(authorization, "can_execute")
     sub = await database.get_submission(sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
@@ -899,8 +939,9 @@ async def delete_submission_endpoint(sub_id: int):
 
 
 @app.delete("/api/submissions")
-async def clear_all_submissions_endpoint():
+async def clear_all_submissions_endpoint(authorization: Optional[str] = Header(default=None)):
     """Deletes all submissions from the queue database."""
+    verify_admin_permission(authorization, "can_execute")
     await database.clear_all_submissions()
     await broadcast_to_admins({"type": "all_submissions_cleared"})
     return {"status": "cleared", "message": "All submissions deleted."}
@@ -908,21 +949,15 @@ async def clear_all_submissions_endpoint():
 
 @app.post("/api/abort")
 async def abort_robot(authorization: Optional[str] = Header(default=None)):
-    if authorization:
-        token = authorization.replace("Bearer ", "").strip()
-        session = active_sessions.get(token)
-        if session and session.get("role") == "student":
-            raise HTTPException(
-                status_code=403,
-                detail="Emergency Stop is disabled for students. Only instructors can trigger E-Stop."
-            )
+    verify_admin_permission(authorization, "can_emergency_stop")
     await engine.abort_current("Instructor pressed Emergency Abort button.")
     await broadcast_to_admins({"type": "aborted"})
     return {"status": "aborted", "message": "Emergency Stop sent to execution engine and robot."}
 
 
 @app.post("/api/clear-queue")
-async def clear_queue():
+async def clear_queue(authorization: Optional[str] = Header(default=None)):
+    verify_admin_permission(authorization, "can_execute")
     await database.clear_pending_queue()
     await broadcast_to_admins({"type": "queue_cleared"})
     return {"status": "cleared", "message": "All pending submissions marked rejected."}
@@ -962,8 +997,7 @@ async def get_example_endpoint(example_id: int):
 
 @app.post("/api/examples")
 async def create_example_endpoint(payload: CreateExampleRequest, authorization: Optional[str] = Header(default=None)):
-    if authorization:
-        verify_admin_permission(authorization, "can_manage_examples")
+    verify_admin_permission(authorization, "can_manage_examples")
     if not payload.title.strip():
         raise HTTPException(status_code=400, detail="Title is required.")
     if not payload.code.strip():
@@ -997,8 +1031,10 @@ async def upload_example_file(
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
     description: Optional[str] = Form(""),
-    robot_model: Optional[str] = Form("ur")
+    robot_model: Optional[str] = Form("ur"),
+    authorization: Optional[str] = Header(default=None)
 ):
+    verify_admin_permission(authorization, "can_manage_examples")
     if not file.filename.endswith(".py"):
         raise HTTPException(status_code=400, detail="Only Python (.py) files are supported.")
 
@@ -1031,8 +1067,7 @@ async def upload_example_file(
 
 @app.delete("/api/examples/{example_id}")
 async def delete_example_endpoint(example_id: int, authorization: Optional[str] = Header(default=None)):
-    if authorization:
-        verify_admin_permission(authorization, "can_manage_examples")
+    verify_admin_permission(authorization, "can_manage_examples")
     ex = await database.get_example(example_id)
     if not ex:
         raise HTTPException(status_code=404, detail="Example not found")
@@ -1073,7 +1108,9 @@ async def ws_admin(websocket: WebSocket):
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        admin_sockets.remove(websocket)
+        admin_sockets.discard(websocket)
+    except Exception:
+        admin_sockets.discard(websocket)
 
 
 async def broadcast_to_admins(data: dict):
@@ -1081,7 +1118,7 @@ async def broadcast_to_admins(data: dict):
         try:
             await ws.send_json(data)
         except Exception:
-            pass
+            admin_sockets.discard(ws)
 
 
 if __name__ == "__main__":

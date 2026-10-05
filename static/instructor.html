@@ -998,18 +998,29 @@ print("Gripper test finished!")
             }
         }
 
+        let lastSubmissionsRaw = null;
+        let submissionsFetchInFlight = false;
+
         async function fetchSubmissions() {
+            if (document.hidden || submissionsFetchInFlight) return;
+            submissionsFetchInFlight = true;
             try {
                 const res = await fetch('/api/submissions');
-                const data = await res.json();
-                submissionsList = data.submissions;
+                const raw = await res.text();
+                const data = JSON.parse(raw);
                 isExecuting = data.is_executing;
                 activeSubId = data.active_submission_id;
-                renderSubmissionsTable(data.submissions);
+                if (raw !== lastSubmissionsRaw) {
+                    lastSubmissionsRaw = raw;
+                    submissionsList = data.submissions;
+                    renderSubmissionsTable(data.submissions);
+                }
                 updateStatusBadge();
                 updateInspectorButtons();
             } catch (e) {
                 console.error("Failed to fetch submissions:", e);
+            } finally {
+                submissionsFetchInFlight = false;
             }
         }
 
@@ -2170,6 +2181,23 @@ print("Gripper test finished!")
         // ==========================================
 
         let currentAdminToken = localStorage.getItem("ur_admin_token");
+
+        // Attach the admin session token to every same-origin /api call that doesn't set its own
+        const _origFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+            try {
+                const url = typeof input === 'string' ? input : (input && input.url) || '';
+                if (currentAdminToken && url.startsWith('/api/')) {
+                    init = init || {};
+                    const headers = new Headers(init.headers || {});
+                    if (!headers.has('Authorization')) {
+                        headers.set('Authorization', `Bearer ${currentAdminToken}`);
+                    }
+                    init.headers = headers;
+                }
+            } catch (e) { }
+            return _origFetch(input, init);
+        };
         let currentAdminUser = null;
         try {
             currentAdminUser = JSON.parse(localStorage.getItem("ur_admin_user") || "null");

@@ -148,17 +148,32 @@ class ExecutionEngine:
                     if asyncio.iscoroutine(res):
                         await res
 
+            log_buffer = []
+            last_flush = [0.0]
+
+            async def flush_logs():
+                if log_buffer:
+                    chunk = "".join(log_buffer)
+                    log_buffer.clear()
+                    await append_logs(submission_id, chunk)
+                last_flush[0] = asyncio.get_running_loop().time()
+
             async def stream_output():
-                while True:
-                    try:
-                        line = await proc.stdout.readline()
-                        if not line:
+                try:
+                    while True:
+                        try:
+                            line = await proc.stdout.readline()
+                            if not line:
+                                break
+                            decoded = line.decode("utf-8", errors="replace")
+                            log_buffer.append(decoded)
+                            await dispatch_log(decoded)
+                            if asyncio.get_running_loop().time() - last_flush[0] > 0.3:
+                                await flush_logs()
+                        except Exception:
                             break
-                        decoded = line.decode("utf-8", errors="replace")
-                        await append_logs(submission_id, decoded)
-                        await dispatch_log(decoded)
-                    except Exception:
-                        break
+                finally:
+                    await flush_logs()
 
             # Run with watchdog timeout
             try:
@@ -185,6 +200,7 @@ class ExecutionEngine:
                     await update_status(submission_id, "failed")
 
             except asyncio.TimeoutError:
+                await flush_logs()
                 msg = f"\n[Supervisor WATCHDOG] Execution timed out (> {timeout_sec}s). Force killing process.\n"
                 await append_logs(submission_id, msg)
                 await dispatch_log(msg)

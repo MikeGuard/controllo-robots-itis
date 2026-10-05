@@ -23,6 +23,8 @@ class UR3Visualizer {
         this.homePose = [0.0, -Math.PI / 2, Math.PI / 2, -Math.PI / 2, -Math.PI / 2, 0.0];
         // Photo pose matching the uploaded image
         this.photoPose = [-0.61, -1.31, 1.83, -2.09, -1.57, 0.0];
+        this.zeroPose = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        this.needsRender = true;
 
         this.currentQ = [...this.homePose];
         this.targetQ = [...this.homePose];
@@ -63,6 +65,7 @@ class UR3Visualizer {
 
         // OrbitControls
         this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+        this.controls.addEventListener('change', () => { this.needsRender = true; });
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.08;
         this.controls.target.set(0, 0.28, 0);
@@ -116,6 +119,7 @@ class UR3Visualizer {
                 this.camera.aspect = w / h;
                 this.camera.updateProjectionMatrix();
                 this.renderer.setSize(w, h);
+                this.needsRender = true;
             }
         };
 
@@ -500,29 +504,19 @@ class UR3Visualizer {
         if (!q || q.length !== 6 || !this.joints) return;
 
         if (this.currentModel === 'niryo') {
-            // Niryo Ned kinematic joint rotation mapping:
-            //   j0: base pan         → rotation.y = q[0]  (world vertical yaw)
-            //   j1: shoulder pitch   → rotation.x = q[1]  (horizontal pitch: forward/back)
-            //   j2: elbow pitch      → rotation.x = -q[2] (horizontal pitch: negative folds down to table/sleep)
-            //   j3: forearm roll     → rotation.y = q[3]  (roll around forearm axis)
-            //   j4: wrist pitch      → rotation.x = -q[4] (horizontal pitch: tilts gripper up/down)
-            //   j5: tool flange roll → rotation.y = q[5]  (spin around tool axis)
+            // Niryo Ned joint mapping (consistent with simulator.py DH model; +Z = forward, +Y = up):
+            //   q0: base pan        → rotation.y = q0   (positive turns left)
+            //   q1: shoulder pitch  → rotation.x = -q1  (positive leans BACK, negative leans forward)
+            //   q2: elbow pitch     → rotation.x = -q2  (negative folds forearm down from horizontal)
+            //   q3: forearm roll    → rotation.y = q3
+            //   q4: wrist pitch     → rotation.x = -q4  (positive tilts tool up)
+            //   q5: tool roll       → rotation.y = q5
             if (this.joints[0]) this.joints[0].rotation.y = q[0];
-            if (this.joints[1]) this.joints[1].rotation.x = q[1];
+            if (this.joints[1]) this.joints[1].rotation.x = -q[1];
             if (this.joints[2]) this.joints[2].rotation.x = -q[2];
             if (this.joints[3]) this.joints[3].rotation.y = q[3];
             if (this.joints[4]) this.joints[4].rotation.x = -q[4];
             if (this.joints[5]) this.joints[5].rotation.y = q[5];
-
-            // Table collision safeguard: ensure gripper and wrist never plunge underground
-            if (this.niryoToolFlange) {
-                const flangeWorldPos = new THREE.Vector3();
-                this.niryoToolFlange.getWorldPosition(flangeWorldPos);
-                if (flangeWorldPos.y < 0.045 && this.joints[1]) {
-                    const delta = 0.045 - flangeWorldPos.y;
-                    this.joints[1].rotation.x -= Math.min(delta * 1.6, 0.8);
-                }
-            }
         } else {
             // UR3: Direct DH rotation around each joint's local Z-axis
             for (let i = 0; i < 6; i++) {
@@ -621,6 +615,11 @@ class UR3Visualizer {
     animate() {
         requestAnimationFrame(this.animate);
 
+        // Skip all work while the tab is hidden or the viewport is collapsed (e.g. inactive panel)
+        if (document.hidden || !this.container || this.container.clientWidth === 0 || this.container.clientHeight === 0) {
+            return;
+        }
+
         // Smooth cubic-like interpolation towards target joint angles
         let moved = false;
         for (let i = 0; i < 6; i++) {
@@ -636,6 +635,7 @@ class UR3Visualizer {
         if (moved) {
             this.applyJointAngles(this.currentQ);
             this.updateAngleDisplay();
+            this.needsRender = true;
         }
 
         // Animate Niryo gripper fingers smoothly
@@ -649,8 +649,10 @@ class UR3Visualizer {
             const gripDiff = this.targetGripperOpen - this.currentGripperOpen;
             if (Math.abs(gripDiff) > 0.002) {
                 this.currentGripperOpen += gripDiff * 0.10;
-            } else {
+                this.needsRender = true;
+            } else if (gripDiff !== 0) {
                 this.currentGripperOpen = this.targetGripperOpen;
+                this.needsRender = true;
             }
 
             // Fingers spread in X: open=±0.020m apart, closed=±0.006m (nearly touching)
@@ -667,7 +669,10 @@ class UR3Visualizer {
         }
 
         this.controls.update();
-        this.renderer.render(this.scene, this.camera);
+        if (this.needsRender) {
+            this.needsRender = false;
+            this.renderer.render(this.scene, this.camera);
+        }
     }
 
     updateAngleDisplay() {
@@ -689,13 +694,17 @@ class UR3Visualizer {
 
         if (this.robotRoot) {
             this.scene.remove(this.robotRoot);
+            this.disposeObject(this.robotRoot);
             this.robotRoot = null;
         }
+        this.disposeMaterials();
+        this.needsRender = true;
 
         if (this.currentModel === 'niryo') {
             // Niryo Ned standard home & ready poses
-            this.homePose  = [0.0, 0.35, -0.65, 0.0, 0.35, 0.0];
-            this.photoPose = [0.0, 0.35, -0.65, 0.0, 0.35, 0.0];
+            // Same as MockNiryoRobot home pose in simulator.py
+            this.homePose  = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0];
+            this.photoPose = [0.0, 0.3, -1.3, 0.0, 0.0, 0.0];
             this.zeroPose  = [0.0, 0.0,   0.0,  0.0, 0.0,  0.0];
             // Reset gripper state (starts open)
             this.currentGripperOpen = 1.0;
@@ -714,6 +723,21 @@ class UR3Visualizer {
         this.targetQ = [...this.homePose];
         this.applyJointAngles(this.currentQ);
         this.updateAngleDisplay();
+    }
+
+    disposeObject(root) {
+        // Free GPU buffers of an entire robot hierarchy (materials are disposed separately)
+        root.traverse(obj => {
+            if (obj.geometry) obj.geometry.dispose();
+        });
+    }
+
+    disposeMaterials() {
+        for (const key of Object.keys(this)) {
+            if (/^mat[A-Z]/.test(key) && this[key] && typeof this[key].dispose === 'function') {
+                this[key].dispose();
+            }
+        }
     }
 
     buildNiryoMaterials() {
@@ -871,8 +895,8 @@ class UR3Visualizer {
         // ── j2_frame — elbow pivot at top of upper arm ───────────────────
         this.j2_frame = new THREE.Group();
         this.j2_frame.position.y = L1;
-        // Forearm aligns naturally along the upper arm axis at zero angle
-        this.j2_frame.rotation.x = 0;
+        // At q2 = 0 the real Ned forearm is horizontal (L-shape): +90° about X maps local +Y to world +Z (forward)
+        this.j2_frame.rotation.x = Math.PI / 2;
         this.j1.add(this.j2_frame);
 
         // j2 rotates around local X (elbow pitch: negative = bends down toward table/sleep)
@@ -917,7 +941,8 @@ class UR3Visualizer {
             new THREE.BoxGeometry(0.040, L2 * 0.62, 0.007),
             this.matNiryoTeal
         );
-        forearmStripe.position.set(0, L2 / 2, 0.017);
+        // Local -Z faces world up once the forearm frame is rotated +90° about X
+        forearmStripe.position.set(0, L2 / 2, -0.017);
         this.j2.add(forearmStripe);
 
         // ── j3_frame — forearm roll pivot at end of forearm ──────────────

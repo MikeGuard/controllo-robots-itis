@@ -350,6 +350,8 @@ print("Velocity control routine completed!")
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA synchronous=NORMAL")
         # Submissions table with robot_model support
         await db.execute("""
             CREATE TABLE IF NOT EXISTS submissions (
@@ -409,6 +411,9 @@ async def init_db():
             user_cols = [row[1] for row in await cursor.fetchall()]
             if "permissions" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT '[]'")
+
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_submissions_student ON submissions(student_name COLLATE NOCASE, task_id COLLATE NOCASE)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_examples_model ON examples(robot_model)")
 
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
