@@ -14,5 +14,5 @@ numpy>=1.24.0
 opencv-python-headless>=4.8.0
 
 # Robotics SDKs
-pyniryo==1.2.5
+pyniryo==1.1.2
 ur_rtde>=1.6.0

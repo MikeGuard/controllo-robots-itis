@@ -368,11 +368,17 @@ async def init_db():
             )
         """)
 
-        # Check if robot_model column exists in submissions (migration)
+        # Check if robot_model, files, and entry_point columns exist in submissions (migration)
         async with db.execute("PRAGMA table_info(submissions)") as cursor:
             sub_cols = [row[1] for row in await cursor.fetchall()]
             if "robot_model" not in sub_cols:
                 await db.execute("ALTER TABLE submissions ADD COLUMN robot_model TEXT NOT NULL DEFAULT 'ur'")
+            if "files" not in sub_cols:
+                await db.execute("ALTER TABLE submissions ADD COLUMN files TEXT DEFAULT NULL")
+            if "entry_point" not in sub_cols:
+                await db.execute("ALTER TABLE submissions ADD COLUMN entry_point TEXT DEFAULT 'main.py'")
+            if "project_name" not in sub_cols:
+                await db.execute("ALTER TABLE submissions ADD COLUMN project_name TEXT DEFAULT NULL")
 
         # Examples table with robot_model support
         await db.execute("""
@@ -411,6 +417,8 @@ async def init_db():
             user_cols = [row[1] for row in await cursor.fetchall()]
             if "permissions" not in user_cols:
                 await db.execute("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT '[]'")
+            if "is_trusted" not in user_cols:
+                await db.execute("ALTER TABLE users ADD COLUMN is_trusted INTEGER NOT NULL DEFAULT 0")
 
         await db.execute("CREATE INDEX IF NOT EXISTS idx_submissions_student ON submissions(student_name COLLATE NOCASE, task_id COLLATE NOCASE)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_examples_model ON examples(robot_model)")
@@ -559,7 +567,7 @@ async def get_approved_students() -> List[Dict[str, Any]]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT id, username, role, status, created_at FROM users WHERE role = 'student' AND status = 'approved' ORDER BY username COLLATE NOCASE ASC"
+            "SELECT id, username, role, status, is_trusted, created_at FROM users WHERE (role = 'student' OR is_trusted = 1) AND status = 'approved' ORDER BY username COLLATE NOCASE ASC"
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
@@ -571,7 +579,7 @@ async def get_all_users() -> List[Dict[str, Any]]:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
-            SELECT id, username, role, status, permissions, created_at 
+            SELECT id, username, role, status, permissions, is_trusted, created_at 
             FROM users 
             ORDER BY CASE WHEN status = 'pending' THEN 0 ELSE 1 END, id DESC
             """
@@ -594,7 +602,7 @@ async def get_admin_users() -> List[Dict[str, Any]]:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
-            SELECT id, username, role, status, permissions, created_at 
+            SELECT id, username, role, status, permissions, is_trusted, created_at 
             FROM users 
             WHERE role IN ('admin', 'superadmin')
             ORDER BY CASE WHEN role = 'superadmin' THEN 0 ELSE 1 END, id ASC
@@ -622,6 +630,42 @@ async def update_user_permissions(user_id: int, permissions: List[str]) -> bool:
         )
         await db.commit()
         return cursor.rowcount > 0
+
+
+TRUSTED_DEFAULT_PERMISSIONS = ["can_execute", "can_emergency_stop", "can_direct_send", "can_manage_examples"]
+
+
+async def set_user_trusted(user_id: int, trusted: bool, permissions: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+    """
+    Promotes an approved student to a trusted student (admin role, is_trusted=1) or demotes
+    a trusted student back to a normal student. Superadmin and default admin are never touched.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+        if not row:
+            return None
+        user = dict(row)
+        if user["username"].lower() in ("mike", "admin"):
+            return None
+        if trusted:
+            if user["role"] == "student" and user["status"] != "approved":
+                return None
+            perms = permissions if permissions is not None else TRUSTED_DEFAULT_PERMISSIONS
+            await db.execute(
+                "UPDATE users SET role = 'admin', is_trusted = 1, permissions = ? WHERE id = ?",
+                (json.dumps(perms), user_id)
+            )
+        else:
+            if not user.get("is_trusted"):
+                return None  # only trusted students can be demoted here
+            await db.execute(
+                "UPDATE users SET role = 'student', is_trusted = 0, permissions = '[]' WHERE id = ?",
+                (user_id,)
+            )
+        await db.commit()
+        return {"id": user_id, "username": user["username"], "trusted": bool(trusted)}
 
 
 async def update_user_status(user_id: int, status: str) -> bool:
@@ -656,21 +700,47 @@ async def is_program_name_duplicate(student_name: str, program_name: str) -> boo
 
 # --- Submissions CRUD & Project History ---
 
-async def create_submission(student_name: str, task_id: str, code: str, robot_model: str = "ur") -> int:
+async def create_submission(
+    student_name: str,
+    task_id: str,
+    code: str,
+    robot_model: str = "ur",
+    files: Optional[Union[str, Dict[str, Any]]] = None,
+    entry_point: Optional[str] = "main.py",
+    project_name: Optional[str] = None
+) -> int:
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     norm_model = (robot_model or "ur").strip().lower()
     if norm_model not in ("ur", "niryo"):
         norm_model = "ur"
+    files_str = files
+    if files is not None and not isinstance(files, str):
+        try:
+            files_str = json.dumps(files)
+        except Exception:
+            files_str = str(files)
+    entry_file = (entry_point or "main.py").strip()
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             """
-            INSERT INTO submissions (student_name, task_id, code, status, logs, submitted_at, robot_model)
-            VALUES (?, ?, ?, 'pending', '', ?, ?)
+            INSERT INTO submissions (student_name, task_id, code, status, logs, submitted_at, robot_model, files, entry_point, project_name)
+            VALUES (?, ?, ?, 'pending', '', ?, ?, ?, ?, ?)
             """,
-            (student_name, task_id, code, now, norm_model)
+            (student_name, task_id, code, now, norm_model, files_str, entry_file, project_name)
         )
         await db.commit()
         return cursor.lastrowid
+
+
+def _parse_submission_row(row_dict: Dict[str, Any]) -> Dict[str, Any]:
+    if not row_dict:
+        return row_dict
+    if "files" in row_dict and isinstance(row_dict["files"], str) and row_dict["files"].strip():
+        try:
+            row_dict["files"] = json.loads(row_dict["files"])
+        except Exception:
+            pass
+    return row_dict
 
 
 async def get_submission(sub_id: int) -> Optional[Dict[str, Any]]:
@@ -678,7 +748,7 @@ async def get_submission(sub_id: int) -> Optional[Dict[str, Any]]:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM submissions WHERE id = ?", (sub_id,)) as cursor:
             row = await cursor.fetchone()
-            return dict(row) if row else None
+            return _parse_submission_row(dict(row)) if row else None
 
 
 async def get_all_submissions(limit: int = 50) -> List[Dict[str, Any]]:
@@ -688,7 +758,7 @@ async def get_all_submissions(limit: int = 50) -> List[Dict[str, Any]]:
             "SELECT * FROM submissions ORDER BY id DESC LIMIT ?", (limit,)
         ) as cursor:
             rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            return [_parse_submission_row(dict(r)) for r in rows]
 
 
 async def get_student_submissions(student_name: str, limit: int = 100) -> List[Dict[str, Any]]:
@@ -697,7 +767,7 @@ async def get_student_submissions(student_name: str, limit: int = 100) -> List[D
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
-            SELECT id, student_name, task_id, code, status, logs, submitted_at, executed_at, completed_at, robot_model
+            SELECT id, student_name, task_id, code, files, status, logs, submitted_at, executed_at, completed_at, robot_model
             FROM submissions 
             WHERE LOWER(student_name) = LOWER(?) 
             ORDER BY id DESC LIMIT ?
@@ -705,7 +775,7 @@ async def get_student_submissions(student_name: str, limit: int = 100) -> List[D
             (student_name.strip(), limit)
         ) as cursor:
             rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            return [_parse_submission_row(dict(r)) for r in rows]
 
 
 async def get_all_students_overview() -> List[Dict[str, Any]]:
@@ -718,13 +788,14 @@ async def get_all_students_overview() -> List[Dict[str, Any]]:
                 s_all.student_name as username,
                 COALESCE(u.role, 'student') as role,
                 COALESCE(u.status, 'approved') as status,
+                COALESCE(u.is_trusted, 0) as is_trusted,
                 u.created_at,
                 COUNT(s.id) as project_count,
                 MAX(s.submitted_at) as last_submitted_at,
                 (SELECT s2.task_id FROM submissions s2 WHERE LOWER(s2.student_name) = LOWER(s_all.student_name) ORDER BY s2.id DESC LIMIT 1) as latest_program_name,
                 (SELECT s3.robot_model FROM submissions s3 WHERE LOWER(s3.student_name) = LOWER(s_all.student_name) ORDER BY s3.id DESC LIMIT 1) as latest_robot_model
             FROM (
-                SELECT username as student_name FROM users WHERE role = 'student'
+                SELECT username as student_name FROM users WHERE role = 'student' OR is_trusted = 1
                 UNION
                 SELECT student_name FROM submissions WHERE student_name IS NOT NULL AND TRIM(student_name) != ''
             ) s_all
@@ -764,24 +835,47 @@ async def update_status(sub_id: int, status: str, logs: Optional[str] = None):
         await db.commit()
 
 
-async def update_submission_code(sub_id: int, code: Optional[str] = None, student_name: Optional[str] = None):
+async def update_submission_code(
+    sub_id: int,
+    code: Optional[str] = None,
+    program_name: Optional[str] = None,
+    student_name: Optional[str] = None,
+    robot_model: Optional[str] = None,
+    files: Optional[Union[str, Dict[str, Any]]] = None,
+    entry_point: Optional[str] = None
+):
     async with aiosqlite.connect(DB_PATH) as db:
-        if code is not None and student_name is not None:
-            await db.execute(
-                "UPDATE submissions SET code = ?, student_name = ? WHERE id = ?",
-                (code, student_name, sub_id)
-            )
-        elif code is not None:
-            await db.execute(
-                "UPDATE submissions SET code = ? WHERE id = ?",
-                (code, sub_id)
-            )
-        elif student_name is not None:
-            await db.execute(
-                "UPDATE submissions SET student_name = ? WHERE id = ?",
-                (student_name, sub_id)
-            )
-        await db.commit()
+        updates = []
+        params = []
+        if code is not None:
+            updates.append("code = ?")
+            params.append(code)
+        if files is not None:
+            files_str = files
+            if not isinstance(files, str):
+                try:
+                    files_str = json.dumps(files)
+                except Exception:
+                    files_str = str(files)
+            updates.append("files = ?")
+            params.append(files_str)
+        if entry_point is not None and entry_point.strip():
+            updates.append("entry_point = ?")
+            params.append(entry_point.strip())
+        if program_name is not None and program_name.strip():
+            updates.append("task_id = ?")
+            params.append(program_name.strip())
+        if student_name is not None and student_name.strip():
+            updates.append("student_name = ?")
+            params.append(student_name.strip())
+        if robot_model is not None and robot_model in ("ur", "niryo"):
+            updates.append("robot_model = ?")
+            params.append(robot_model)
+        if updates:
+            params.append(sub_id)
+            sql = f"UPDATE submissions SET {', '.join(updates)} WHERE id = ?"
+            await db.execute(sql, tuple(params))
+            await db.commit()
 
 
 async def append_logs(sub_id: int, log_chunk: str):

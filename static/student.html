@@ -12,11 +12,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="/static/ur3_visualizer.js"></script>
+    <!-- JSZip for Multi-File Project Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+<body class="bg-slate-950 text-slate-100 min-h-screen lg:h-screen lg:overflow-hidden flex flex-col">
 
     <!-- Header -->
     <header class="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
@@ -73,154 +75,415 @@
         </div>
     </header>
 
+    <!-- Portal View Switcher Navigation Bar -->
+    <div class="px-4 sm:px-6 py-2 bg-slate-900/95 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30 backdrop-blur">
+        <div class="flex items-center space-x-2">
+            <!-- Tab 1: Code Studio -->
+            <button id="tabNavCode" onclick="switchMainPortalView('code')"
+                class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-blue-600 text-white shadow-lg shadow-blue-600/30">
+                <span>💻</span>
+                <span>Code Studio</span>
+                <span id="navFileCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-800 text-blue-200">1 file</span>
+            </button>
+            <!-- Tab 2: Simulation & Live Output -->
+            <button id="tabNavSim" onclick="switchMainPortalView('sim')"
+                class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
+                <span>🎮</span>
+                <span>Simulation &amp; Output</span>
+                <span id="navSimStatusBadge" class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-400">IDLE</span>
+            </button>
+        </div>
 
-    <!-- Main Content -->
-    <main class="flex-1 p-6 grid grid-cols-1 xl:grid-cols-12 gap-6">
-        
-        <!-- Left: Code Editor (7 cols) -->
-        <div class="xl:col-span-7 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
-            <!-- Program Name Header -->
-            <div class="p-4 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                <div class="flex-1 min-w-[220px]">
-                    <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
-                        Program Name (Must be unique for your account)
-                    </label>
-                    <input id="programName" type="text" placeholder="e.g., Trajectory Routine v1" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition font-medium">
-                </div>
-                <!-- Save Status Indicator -->
-                <div id="saveToast" class="text-xs text-emerald-400 font-medium opacity-0 transition-opacity duration-300">
-                    ✓ Code Saved!
-                </div>
-            </div>
+        <div class="flex items-center space-x-2 sm:space-x-3">
+            <button id="btnSyntax" onclick="checkSyntax()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700 flex items-center space-x-1.5">
+                <span>🔍 Check Syntax</span>
+            </button>
+            <button id="btnSimulate" onclick="simulateCode()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center space-x-1.5">
+                <span>🎮 Simulate in 3D</span>
+            </button>
+            <button id="btnSubmit" onclick="submitCode()" class="px-4 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5">
+                <span>🚀 Send for Execution</span>
+            </button>
+        </div>
+    </div>
 
-            <!-- Editor Header -->
-            <div class="px-4 py-2 bg-slate-850/80 flex items-center justify-between border-b border-slate-800 text-xs text-slate-400">
-                <div class="flex items-center space-x-3">
-                    <span class="font-mono text-slate-300">main.py</span>
-                    <button onclick="resetEditorToDefault()" class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline">Reset to Template</button>
-                </div>
-                <div class="flex items-center space-x-2">
-                    <span id="robotSelectedBadge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3 ARM</span>
-                    <span id="robotIpNotice">Target: Loading...</span>
-                </div>
-            </div>
+    <!-- Main Content Container -->
+    <main class="flex-1 flex flex-col min-h-0 bg-slate-950">
 
-            <!-- Monaco Container -->
-            <div id="editorContainer" class="flex-1 min-h-[460px]"></div>
-
-            <!-- Robot Offline Notice Banner (Informational: student CAN send, but execution on arm waits for online) -->
-            <div id="robotOfflineNotice" class="hidden px-4 py-2 bg-amber-950/80 border-t border-amber-800 text-xs text-amber-300 flex items-center space-x-2 font-medium">
-                <span>⚠️</span>
-                <span><strong>Robot Currently Offline:</strong> You can still save and queue your code. Physical execution runs once the robot is online.</span>
-            </div>
-
-            <!-- Actions Bar -->
-            <div class="p-4 bg-slate-850 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                <div class="flex items-center space-x-2">
-                    <!-- Save Code Button -->
-                    <button id="btnSave" onclick="saveCodeLocally()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow">
-                        <span>💾 Save Code</span>
-                    </button>
+        <!-- ========================================================= -->
+        <!-- VIEW 1: FULL-PAGE CODE STUDIO (VS CODE WORKSPACE)        -->
+        <!-- ========================================================= -->
+        <div id="viewCodeStudio" class="flex-1 flex flex-col p-2 sm:p-3 space-y-2 min-h-0 overflow-hidden">
+            
+            <div class="flex-1 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-2xl overflow-hidden min-h-0">
+                
+                <!-- Project Folder Header & Model Indicator -->
+                <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5 flex-shrink-0">
+                    <div class="flex items-center space-x-3 flex-1 min-w-[280px]">
+                        <div class="flex items-center space-x-2">
+                            <label for="studentProjectSelect" class="text-xs font-bold text-slate-400 whitespace-nowrap flex items-center space-x-1.5">
+                                <span>📁</span>
+                                <span>Project:</span>
+                            </label>
+                            <select id="studentProjectSelect" onchange="onSelectStudentProject(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500 font-mono font-bold max-w-[220px]">
+                            </select>
+                            <button onclick="openNewProjectModal()" title="Create New Project Folder" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
+                                <span>➕</span>
+                                <span class="hidden sm:inline">New Project</span>
+                            </button>
+                            <button onclick="promptRenameCurrentProject()" title="Rename this project folder" class="p-1 px-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">
+                                ✏️
+                            </button>
+                        </div>
+                        <div id="saveToast" class="text-xs text-emerald-400 font-medium opacity-0 transition-opacity duration-300 whitespace-nowrap">
+                            ✓ Saved!
+                        </div>
+                    </div>
                     
-                    <!-- My Saved Projects Button -->
-                    <button id="btnMyProjects" onclick="openMyProjectsModal()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow border border-sky-500/30">
-                        <span>📂 My Projects</span>
-                        <span id="myProjectsCountBadge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-sky-600 text-white">0</span>
-                    </button>
+                    <div class="flex items-center space-x-2.5">
+                        <span id="robotSelectedBadge" class="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3 ARM</span>
+                        <button onclick="resetEditorToDefault()" class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline">Reset Code</button>
+                    </div>
+                </div>
 
-                    <!-- Examples Dropdown Button -->
-                    <div class="relative inline-block text-left">
-                        <button id="btnExamples" onclick="toggleExamplesMenu(event)" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow border border-slate-700">
-                            <span>📚 Examples ▾</span>
+                <!-- VS Code Editor Tab Bar -->
+                <div class="px-2 py-1 bg-slate-850/95 flex items-center justify-between border-b border-slate-800 text-xs text-slate-400 select-none flex-shrink-0">
+                    <div class="flex items-center space-x-1.5 overflow-x-auto py-0.5 flex-1 min-w-0" id="editorTabsBar">
+                        <!-- Sidebar Toggle Button -->
+                        <button id="btnToggleExplorer" onclick="toggleProjectExplorer()" title="Toggle Project File Explorer"
+                            class="px-2.5 py-1 rounded text-xs font-semibold transition flex items-center space-x-1.5 bg-slate-800 text-sky-400 hover:bg-slate-700 mr-1 border border-slate-700/80">
+                            <span>📁</span>
+                            <span class="font-mono text-[11px]">Explorer</span>
+                            <span id="tabFilesCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-sky-900/80 text-sky-300">1</span>
                         </button>
-                        <div id="examplesDropdown" class="hidden absolute left-0 bottom-full mb-2 w-80 max-w-sm bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-96">
-                            <div class="px-3 py-2 bg-slate-850 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-                                <span id="examplesModalTitle">Lab Examples</span>
-                                <button onclick="fetchExamples(true)" class="text-blue-400 hover:underline text-[10px]">Refresh</button>
+                        
+                        <!-- Dynamic File Tabs List -->
+                        <div id="fileTabsList" class="flex items-center space-x-1 overflow-x-auto scrollbar-none">
+                            <!-- Populated by JS -->
+                        </div>
+
+                        <!-- Add File Quick Button -->
+                        <button onclick="openNewFileModal()" title="Create New File (+)"
+                            class="px-2 py-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded text-xs font-bold transition flex items-center space-x-1">
+                            <span>+</span>
+                        </button>
+                    </div>
+
+                    <div class="flex items-center space-x-2 flex-shrink-0 pl-2">
+                        <span id="activeFileIndicator" class="font-mono text-[11px] text-slate-400 hidden md:inline">main.py (Python)</span>
+                    </div>
+                </div>
+
+                <!-- Split Workspace (Explorer Sidebar + Whole-Page Monaco Editor) -->
+                <div class="flex flex-1 min-h-0 relative overflow-hidden bg-slate-950">
+                    
+                    <!-- Collapsible Project File Explorer Sidebar -->
+                    <div id="projectExplorerSidebar" class="w-60 flex-shrink-0 bg-slate-950 border-r border-slate-800 flex flex-col transition-all duration-150 select-none">
+                        <!-- Explorer Header -->
+                        <div class="px-3 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
+                            <span class="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 font-mono">Project Files</span>
+                            <div class="flex items-center space-x-1">
+                                <button onclick="openNewFileModal('txt')" title="Add Text File (.txt)" class="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded text-[10px] font-mono font-bold transition border border-slate-700">
+                                    +txt
+                                </button>
+                                <button onclick="openNewFileModal('py')" title="Add Python Script (.py)" class="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-sky-300 rounded text-[10px] font-mono font-bold transition border border-slate-700">
+                                    +py
+                                </button>
+                                <button onclick="openNewFileModal()" title="New File" class="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">
+                                    ➕
+                                </button>
+                                <button onclick="exportProjectZip()" title="Export Project as ZIP" class="p-1 text-slate-400 hover:text-sky-300 rounded hover:bg-slate-800 transition text-xs">
+                                    ⬇️
+                                </button>
+                                <button onclick="toggleProjectExplorer()" title="Collapse Sidebar" class="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">
+                                    ◀
+                                </button>
                             </div>
-                            <div id="examplesListContainer" class="overflow-y-auto divide-y divide-slate-800 p-1">
-                                <div class="p-3 text-xs text-slate-500 text-center">Loading examples...</div>
+                        </div>
+
+                        <!-- Folder Label -->
+                        <div class="px-3 py-1.5 bg-slate-900/50 text-[11px] font-semibold text-slate-300 flex items-center space-x-1.5 border-b border-slate-800/60">
+                            <span>📂</span>
+                            <span id="sidebarProjectFolderName" class="truncate font-mono">robot_project/</span>
+                        </div>
+
+                        <!-- File Tree List Container -->
+                        <div id="sidebarFilesList" class="flex-1 overflow-y-auto p-1.5 space-y-0.5">
+                            <!-- Populated by JS -->
+                        </div>
+
+                        <!-- Sidebar Footer -->
+                        <div class="p-2 border-t border-slate-800/80 bg-slate-900/60 text-[10px] text-slate-400 flex items-center justify-between">
+                            <span id="sidebarFooterStats">1 file • Entry: main.py</span>
+                            <label title="Import file into project" class="cursor-pointer text-blue-400 hover:underline font-semibold">
+                                Import
+                                <input type="file" id="importFileInput" accept=".py,.json,.txt" class="hidden" onchange="handleFileImport(event)">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Whole-Page Monaco Editor Container -->
+                    <div id="editorContainer" class="flex-1 min-w-0 h-full transition-all"></div>
+                </div>
+
+                <!-- Robot Offline Notice Banner -->
+                <div id="robotOfflineNotice" class="hidden px-4 py-2 bg-amber-950/80 border-t border-amber-800 text-xs text-amber-300 flex items-center space-x-2 font-medium">
+                    <span>⚠️</span>
+                    <span><strong>Robot Currently Offline:</strong> You can write code, test syntax, and run 3D simulations. Physical execution will wait until the arm is online.</span>
+                </div>
+
+                <!-- Bottom Action Bar -->
+                <div class="p-3 sm:px-4 sm:py-3 bg-slate-850 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center space-x-2">
+                        <!-- Save Project Button -->
+                        <button id="btnSave" onclick="saveCodeLocally()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow">
+                            <span>💾 Save Project</span>
+                        </button>
+                        
+                        <!-- My Saved Projects Button -->
+                        <button id="btnMyProjects" onclick="openMyProjectsModal()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs sm:text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow border border-sky-500/30">
+                            <span>📂 My Projects</span>
+                            <span id="myProjectsCountBadge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-sky-600 text-white">0</span>
+                        </button>
+
+                        <!-- Examples Dropdown Button -->
+                        <div class="relative inline-block text-left">
+                            <button id="btnExamples" onclick="toggleExamplesMenu(event)" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow border border-slate-700">
+                                <span>📚 Examples ▾</span>
+                            </button>
+                            <div id="examplesDropdown" class="hidden absolute left-0 bottom-full mb-2 w-80 max-w-sm bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-96">
+                                <div class="px-3 py-2 bg-slate-850 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                                    <span id="examplesModalTitle">Lab Examples</span>
+                                    <button onclick="fetchExamples(true)" class="text-blue-400 hover:underline text-[10px]">Refresh</button>
+                                </div>
+                                <div id="examplesListContainer" class="overflow-y-auto divide-y divide-slate-800 p-1">
+                                    <div class="p-3 text-xs text-slate-500 text-center">Loading examples...</div>
+                                </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-3 text-slate-500 text-xs font-mono">
+                        <span id="studioBottomStatus">📁 Workspace Ready</span>
+                        <span>•</span>
+                        <span class="text-slate-400">Ctrl+S to save</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ========================================================= -->
+        <!-- VIEW 2: DEDICATED 3D SIMULATION & LIVE OUTPUT VIEW         -->
+        <!-- ========================================================= -->
+        <div id="viewSimulationOutput" class="hidden flex-1 flex flex-col p-2 sm:p-3 space-y-2.5 min-h-0 overflow-hidden">
+            
+            <!-- Output Header Banner -->
+            <div class="flex flex-wrap items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 gap-3 shadow-lg flex-shrink-0">
+                <div class="flex items-center space-x-3">
+                    <button onclick="switchMainPortalView('code')" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg transition flex items-center space-x-1.5 border border-sky-500/30">
+                        <span>◀ Back to Code Studio</span>
+                    </button>
+                    <div class="flex items-center space-x-2">
+                        <span id="outputRobotBadge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3 ARM</span>
+                        <span id="submissionStatus" class="text-xs font-bold text-white uppercase tracking-wider">Live Simulation &amp; Execution Monitor</span>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-2.5">
+                    <span id="statusBadge" class="hidden text-[10px] font-semibold px-2 py-0.5 rounded-full">PENDING</span>
+                    <button onclick="simulateCode()" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition flex items-center space-x-1">
+                        <span>🔄 Re-Simulate</span>
+                    </button>
+                    <button onclick="clearTerminal()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded transition">
+                        Clear Logs
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dual Workspace (Spacious 3D Arm + Deep Terminal) -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
+                
+                <!-- 3D Robot Arm Visualizer Panel (7 cols on lg) -->
+                <div class="lg:col-span-7 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-0">
+                    <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+                        <div class="flex items-center space-x-2">
+                            <span id="studentVisDot" class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
+                            <span id="studentVisTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">3D Simulation View</span>
+                        </div>
+                        <div class="flex items-center space-x-1.5">
+                            <button onclick="ur3Vis.setPhotoPose()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-sky-300 rounded transition font-medium">Photo</button>
+                            <button onclick="ur3Vis.setHomePose()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded transition font-medium">Home</button>
+                            <button onclick="ur3Vis.resetCamera()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded transition font-medium">Reset</button>
+                        </div>
+                    </div>
+                    <div id="ur3CanvasContainer" class="flex-1 relative bg-[#111622] min-h-0">
+                        <div class="absolute bottom-3 left-3 pointer-events-none bg-slate-900/85 backdrop-blur border border-slate-700 px-2.5 py-1 rounded text-xs font-mono text-slate-300 shadow">
+                            Joints: <span class="ur3AngleReadout text-sky-300 font-bold">0° | -80° | 100° | -110° | -90° | 0°</span>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex items-center space-x-3">
-                    <!-- Check Syntax Button -->
-                    <button id="btnSyntax" onclick="checkSyntax()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-semibold rounded-lg transition border border-slate-700 flex items-center space-x-1.5">
-                        <span>🔍 Check Syntax</span>
-                    </button>
-                    
-                    <!-- 3D Simulate Button -->
-                    <button id="btnSimulate" onclick="simulateCode()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center space-x-1.5">
-                        <span>🎮 Simulate in 3D</span>
-                    </button>
-
-                    <!-- Send for Execution Button -->
-                    <button id="btnSubmit" onclick="submitCode()" class="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-bold rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5">
-                        <span>🚀 Send for Execution</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Right: 3D Visualizer & Execution Log (5 cols) -->
-        <div class="xl:col-span-5 flex flex-col gap-6">
-            
-            <!-- 3D Robot Arm Visualizer Panel -->
-            <div class="bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden flex flex-col h-72">
-                <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
-                    <div class="flex items-center space-x-2">
-                        <span id="studentVisDot" class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
-                        <span id="studentVisTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">3D Simulation View</span>
+                <!-- Execution Status & Live Log Terminal (5 cols on lg) -->
+                <div class="lg:col-span-5 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-0">
+                    <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Execution Output &amp; Logs</span>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="copyTerminalLogs()" class="text-xs text-slate-400 hover:text-slate-200">Copy</button>
+                            <button onclick="clearTerminal()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
+                        </div>
                     </div>
-                    <div class="flex items-center space-x-1.5">
-                        <button onclick="ur3Vis.setPhotoPose()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-sky-300 rounded transition">Photo</button>
-                        <button onclick="ur3Vis.setHomePose()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded transition">Home</button>
-                        <button onclick="ur3Vis.resetCamera()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded transition">Reset</button>
-                    </div>
-                </div>
-                <div id="ur3CanvasContainer" class="flex-1 relative bg-[#111622]">
-                    <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
-                        Joints: <span class="ur3AngleReadout text-sky-300">0° | -80° | 100° | -110° | -90° | 0°</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Execution Status & Live Log Terminal -->
-            <div class="flex-1 min-h-[300px] flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
-                <div class="px-4 py-2.5 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
-                    <div class="flex items-center space-x-2">
-                        <span id="submissionStatus" class="text-xs font-bold uppercase tracking-wider text-slate-300">Execution Output</span>
-                        <span id="statusBadge" class="hidden text-[10px] font-semibold px-2 py-0.5 rounded-full">PENDING</span>
-                    </div>
-                    <button onclick="clearTerminal()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
-                </div>
-                <div id="terminal" class="flex-1 p-4 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
+                    <div id="terminal" class="flex-1 p-4 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white min-h-0">
 Welcome to Robotics Execution Console.
-Write your Python script, click "Save Code", and click "Send for Execution" to queue for the robot.
+Write your Python script or multi-file project in the Code Studio.
+When you run a 3D simulation or physical execution, trajectory playback and live robot logs will appear right here.
+                    </div>
                 </div>
+
             </div>
 
         </div>
+
     </main>
 
-    <!-- Student Projects History Modal -->
+    <!-- Student Projects & Workspaces Modal -->
     <div id="myProjectsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
             <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-850">
                 <div class="flex items-center space-x-2">
                     <span class="text-lg">📂</span>
                     <div>
-                        <h3 class="text-sm font-bold text-white">My Saved Projects &amp; Submissions</h3>
-                        <p class="text-[11px] text-slate-400">View your past routines or reload them into the editor</p>
+                        <h3 class="text-sm font-bold text-white">Project Workspaces &amp; History</h3>
+                        <p class="text-[11px] text-slate-400">Manage your project folders and view past submissions</p>
                     </div>
                 </div>
                 <button onclick="closeMyProjectsModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
             </div>
 
-            <div class="p-4 overflow-y-auto flex-1 min-h-0 space-y-3" id="myProjectsListContainer">
-                <div class="p-6 text-xs text-slate-500 text-center">Loading your saved projects...</div>
+            <!-- Modal Nav Tabs -->
+            <div class="flex border-b border-slate-800 bg-slate-900 px-5 pt-2 space-x-4">
+                <button id="tabBtnWorkspaceProjects" onclick="switchProjectsModalTab('workspaces')"
+                    class="pb-2 text-xs font-bold text-sky-400 border-b-2 border-sky-400 transition flex items-center space-x-1.5">
+                    <span>🗂️ Project Folders</span>
+                    <span id="workspaceCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-sky-900/80 text-sky-300 font-mono font-bold">1</span>
+                </button>
+                <button id="tabBtnSubmissionsHistory" onclick="switchProjectsModalTab('history')"
+                    class="pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5">
+                    <span>📜 Submissions History</span>
+                    <span id="historyCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-400 font-mono font-bold">0</span>
+                </button>
+            </div>
+
+            <div class="p-4 overflow-y-auto flex-1 min-h-0 space-y-3">
+                <!-- Workspaces Section -->
+                <div id="modalWorkspacesSection" class="space-y-3">
+                    <div class="flex items-center justify-between bg-slate-850 p-3 rounded-xl border border-slate-800">
+                        <div class="text-xs text-slate-300 font-medium">Create a new workspace folder for custom scripts and output data:</div>
+                        <button onclick="promptNewProjectFolder()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
+                            <span>➕ New Project Folder</span>
+                        </button>
+                    </div>
+                    <div id="modalWorkspacesList" class="space-y-2">
+                        <div class="p-6 text-xs text-slate-500 text-center">Loading project folders...</div>
+                    </div>
+                </div>
+
+                <!-- History Section -->
+                <div id="modalHistorySection" class="hidden space-y-3">
+                    <div id="myProjectsListContainer" class="space-y-3">
+                        <div class="p-6 text-xs text-slate-500 text-center">Loading your saved submissions...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create New File Modal -->
+    <div id="newFileModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <h3 class="text-sm font-bold text-white flex items-center space-x-1.5">
+                    <span>📄</span>
+                    <span>Create New File</span>
+                </h3>
+                <button onclick="closeNewFileModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1.5">File Type</label>
+                <div class="grid grid-cols-4 gap-2 text-center text-xs">
+                    <button type="button" onclick="setNewFileType('txt')" id="fileTypeBtn_txt" class="py-1.5 px-2 rounded-lg bg-blue-600/30 border border-blue-500 font-bold text-blue-300 transition">
+                        📄 .txt
+                    </button>
+                    <button type="button" onclick="setNewFileType('py')" id="fileTypeBtn_py" class="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-slate-200 transition">
+                        🐍 .py
+                    </button>
+                    <button type="button" onclick="setNewFileType('json')" id="fileTypeBtn_json" class="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-slate-200 transition">
+                        📊 .json
+                    </button>
+                    <button type="button" onclick="setNewFileType('custom')" id="fileTypeBtn_custom" class="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-slate-200 transition">
+                        📝 Other
+                    </button>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">File Name</label>
+                <input id="newFileNameInput" type="text" placeholder="e.g., data.txt, notes.txt, helpers.py"
+                    onkeydown="if(event.key==='Enter') confirmCreateFile()"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition font-mono">
+                <p id="newFileHint" class="text-[10px] text-slate-400 mt-1">Creating a text file (<code class="text-amber-300">.txt</code>). Python code can write to it with <code class="text-sky-300">open("filename.txt", "w")</code>.</p>
+            </div>
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button onclick="closeNewFileModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition">Cancel</button>
+                <button onclick="confirmCreateFile()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition shadow">Create File</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Project Modal (Shown when no project exists or when student clicks New Project) -->
+    <div id="newProjectModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div class="flex items-center space-x-3 border-b border-slate-800 pb-3">
+                <span class="text-2xl">📁</span>
+                <div>
+                    <h3 id="newProjectModalTitle" class="text-base font-bold text-white">Create New Project Folder</h3>
+                    <p id="newProjectModalSubtitle" class="text-xs text-slate-400">All code, scripts, and output files will be stored in this project folder.</p>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Project Name</label>
+                <input id="newProjectNameInput" type="text" placeholder="e.g., lab1_pick_and_place, routine_v1"
+                    onkeydown="if(event.key==='Enter') confirmCreateProject()"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition font-mono">
+                <p class="text-[11px] text-slate-500 mt-1.5">A new folder will be created with <code class="text-slate-300">main.py</code> ready to edit.</p>
+            </div>
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button id="btnCancelNewProject" onclick="closeNewProjectModal()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition">Cancel</button>
+                <button onclick="confirmCreateProject()" class="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5">
+                    <span>🚀 Create Project</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename File Modal -->
+    <div id="renameFileModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <h3 class="text-sm font-bold text-white flex items-center space-x-1.5">
+                    <span>✏️</span>
+                    <span>Rename File</span>
+                </h3>
+                <button onclick="closeRenameFileModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">New File Name</label>
+                <input id="renameFileNameInput" type="text"
+                    onkeydown="if(event.key==='Enter') confirmRenameFile()"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition font-mono">
+            </div>
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button onclick="closeRenameFileModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition">Cancel</button>
+                <button onclick="confirmRenameFile()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition shadow">Save</button>
             </div>
         </div>
     </div>
@@ -260,9 +523,9 @@ Write your Python script, click "Save Code", and click "Send for Execution" to q
                         ➕ New Student? Create an Account
                     </button>
                     <div class="pt-2 border-t border-slate-800/80">
-                        <button onclick="toggleAuthMode('manager')" class="w-full py-2 px-3 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 hover:from-amber-500/20 hover:to-indigo-500/20 border border-amber-500/30 hover:border-amber-400 rounded-xl text-xs font-bold text-amber-300 transition flex items-center justify-center space-x-2 shadow-sm">
-                            <span>🛠️ Access as Robot Manager</span>
-                        </button>
+                        <a href="/admin" class="w-full py-2 px-3 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 hover:from-amber-500/20 hover:to-indigo-500/20 border border-amber-500/30 hover:border-amber-400 rounded-xl text-xs font-bold text-amber-300 transition flex items-center justify-center space-x-2 shadow-sm">
+                            <span>🛠️ Access as Robot Manager &rarr;</span>
+                        </a>
                     </div>
                 </div>
             </div>
@@ -303,39 +566,7 @@ Write your Python script, click "Save Code", and click "Send for Execution" to q
                 </div>
             </div>
 
-            <!-- Robot Manager / Superadmin Login Form -->
-            <div id="managerFormSection" class="hidden space-y-4">
-                <div class="text-center space-y-1">
-                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-indigo-500/20 text-amber-400 border border-amber-500/40 text-2xl mb-1">🛠️</div>
-                    <h2 class="text-lg font-bold text-white">Robot Manager Access</h2>
-                    <p class="text-xs text-slate-400">Superadmin &amp; Dispatcher Management Portal</p>
-                </div>
-
-                <div id="managerAlert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Manager Username</label>
-                    <input id="managerUsername" type="text" placeholder="Enter manager username" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition font-mono">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
-                    <input id="managerPassword" type="password" placeholder="Enter manager password" onkeydown="if(event.key==='Enter') submitManagerLogin()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition font-mono">
-                </div>
-
-                <button id="btnManagerSubmit" onclick="submitManagerLogin()" class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-slate-950 hover:text-black font-extrabold text-sm rounded-lg shadow-lg shadow-amber-500/20 transition flex items-center justify-center space-x-1.5">
-                    <span>⚡ Unlock Manager Console</span>
-                </button>
-
-                <div class="text-center pt-2 border-t border-slate-800">
-                    <button onclick="toggleAuthMode('login')" class="text-xs text-slate-400 hover:text-white font-medium">
-                        &larr; Back to Student Login
-                    </button>
-                </div>
             </div>
-
-        </div>
-    </div>
 
     <!-- Monaco Loader -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
@@ -357,8 +588,94 @@ Write your Python script, click "Save Code", and click "Send for Execution" to q
         const STORAGE_PROG_KEY = "ur_student_prog_name_v3";
         const STORAGE_TOKEN_KEY = "ur_student_token";
         const STORAGE_USER_KEY = "ur_student_user";
+        const STORAGE_PROJECT_KEY = "ur_student_project_v5";
 
-        function buildDefaultCode(robotIp, model = 'ur') {
+        let currentPortalView = 'code';
+        let renameTargetFile = null;
+        let isExplorerOpen = true;
+
+        let projectState = {
+            folderName: "robot_project",
+            entry_point: "main.py",
+            active_file: "main.py",
+            files: {}
+        };
+
+        const FILE_STARTER_TEMPLATES = {
+            empty: "# New Empty File\n",
+            positions: `# Predefined Waypoints & Joint Configurations
+# Joint angles in radians: [base, shoulder, elbow, wrist1, wrist2, wrist3]
+import numpy as np
+
+HOME_Q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
+PICK_Q = [0.15, -1.20, 1.45, -1.80, -np.pi/2, 0.0]
+PLACE_Q = [-0.25, -1.10, 1.35, -1.80, -np.pi/2, 0.0]
+
+# TCP Cartesian poses in meters: [x, y, z, rx, ry, rz]
+HOME_POSE = [0.20, -0.20, 0.30, 2.22, -2.22, 0.0]
+`,
+            helpers: `# Helper Math & Pose Calculation Utilities
+import math
+
+def deg_to_rad(angles_deg):
+    """Converts a list of angles from degrees to radians."""
+    return [math.radians(a) for a in angles_deg]
+
+def rad_to_deg(angles_rad):
+    """Converts a list of angles from radians to degrees."""
+    return [round(math.degrees(a), 2) for a in angles_rad]
+
+def offset_pose(pose, dx=0.0, dy=0.0, dz=0.0):
+    """Returns a new pose offset along Cartesian axes in meters."""
+    new_pose = list(pose)
+    new_pose[0] += dx
+    new_pose[1] += dy
+    new_pose[2] += dz
+    return new_pose
+`
+        };
+
+        function switchMainPortalView(view) {
+            currentPortalView = view;
+            const codeView = document.getElementById("viewCodeStudio");
+            const simView = document.getElementById("viewSimulationOutput");
+            const btnCode = document.getElementById("tabNavCode");
+            const btnSim = document.getElementById("tabNavSim");
+
+            if (view === 'sim') {
+                if (codeView) codeView.classList.add("hidden");
+                if (simView) simView.classList.remove("hidden");
+                if (btnCode) btnCode.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800";
+                if (btnSim) btnSim.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30";
+                setTimeout(() => {
+                    if (ur3Vis && ur3Vis.onWindowResize) {
+                        ur3Vis.onWindowResize();
+                    }
+                }, 60);
+            } else {
+                if (simView) simView.classList.add("hidden");
+                if (codeView) codeView.classList.remove("hidden");
+                if (btnSim) btnSim.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800";
+                if (btnCode) btnCode.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-blue-600 text-white shadow-lg shadow-blue-600/30";
+                setTimeout(() => {
+                    if (editor) {
+                        editor.layout();
+                    }
+                }, 60);
+            }
+        }
+
+        function copyTerminalLogs() {
+            const term = document.getElementById("terminal");
+            if (term) {
+                navigator.clipboard.writeText(term.innerText).then(() => {
+                    appendStudentLog("\n[COPIED] Terminal logs copied to clipboard.\n");
+                }).catch(() => {});
+            }
+        }
+
+        function getDefaultTemplate(model) {
+            const robotIp = configuredIp || (model === 'niryo' ? '10.0.130.49' : '10.0.10.60');
             if (model === 'niryo') {
                 return `import time
 from pyniryo import NiryoRobot
@@ -449,14 +766,26 @@ print("Routine completed successfully!")
                 const isCurrentDefault = !currentCode || (currentCode === prevDefault);
 
                 if (isCurrentDefault) {
-                    editor.setValue(buildDefaultCode(configuredIp, model));
+                    const newStarter = buildDefaultCode(configuredIp, model);
+                    projectState.files["main.py"] = newStarter;
+                    if (projectState.active_file === "main.py") {
+                        editor.setValue(newStarter);
+                    }
                     saveCodeLocally();
+                    renderEditorTabs();
+                    renderProjectExplorer();
                     appendStudentLog(`\n[ROBOT] Switched to ${model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}. Starter template loaded.\n`);
                 } else if (confirmCodeSwitch) {
                     const modelName = model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3';
-                    if (confirm(`You switched active robot to ${modelName}.\n\nWould you like to load the starter template for ${modelName} into the editor?\n(Click Cancel to keep your current code)`)) {
-                        editor.setValue(buildDefaultCode(configuredIp, model));
+                    if (confirm(`You switched active robot to ${modelName}.\n\nWould you like to load the starter template for ${modelName} into main.py?\n(Click Cancel to keep your current code)`)) {
+                        const newStarter = buildDefaultCode(configuredIp, model);
+                        projectState.files["main.py"] = newStarter;
+                        if (projectState.active_file === "main.py") {
+                            editor.setValue(newStarter);
+                        }
                         saveCodeLocally();
+                        renderEditorTabs();
+                        renderProjectExplorer();
                         appendStudentLog(`\n[ROBOT] Switched to ${modelName}. Starter template loaded.\n`);
                     } else {
                         appendStudentLog(`\n[ROBOT] Switched target robot to ${modelName}. Keeping your current code.\n`);
@@ -471,6 +800,7 @@ print("Routine completed successfully!")
             const dotUR = document.getElementById("studentDotUR");
             const dotNiryo = document.getElementById("studentDotNiryo");
             const badge = document.getElementById("robotSelectedBadge");
+            const outBadge = document.getElementById("outputRobotBadge");
             const docsLink = document.getElementById("docsLink");
 
             if (model === 'niryo') {
@@ -488,7 +818,11 @@ print("Routine completed successfully!")
                 }
                 if (badge) {
                     badge.innerText = "NIRYO NED";
-                    badge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
+                    badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
+                }
+                if (outBadge) {
+                    outBadge.innerText = "NIRYO NED";
+                    outBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
                 }
                 if (docsLink) {
                     docsLink.href = "https://niryorobotics.github.io/pyniryo/v1.2.5/index.html";
@@ -509,7 +843,11 @@ print("Routine completed successfully!")
                 }
                 if (badge) {
                     badge.innerText = "UR3 ARM";
-                    badge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+                    badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+                }
+                if (outBadge) {
+                    outBadge.innerText = "UR3 ARM";
+                    outBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
                 }
                 if (docsLink) {
                     docsLink.href = "https://sdurobotics.gitlab.io/ur_rtde";
@@ -529,7 +867,7 @@ print("Routine completed successfully!")
             
             const savedName = localStorage.getItem(STORAGE_PROG_KEY);
             if (savedName) {
-                document.getElementById("programName").value = savedName;
+                // Program name unified with project name
             }
 
             // Check student authentication
@@ -656,7 +994,9 @@ print("Routine completed successfully!")
 
                 // Store admin tokens and info for immediate redirection
                 localStorage.setItem("ur_admin_token", data.token);
-                localStorage.setItem("ur_admin_user", JSON.stringify(data.user));
+                localStorage.setItem("ur_admin_user", data.user.username);
+                localStorage.setItem("ur_admin_role", data.user.role);
+                localStorage.setItem("ur_admin_perms", JSON.stringify(data.user.permissions || []));
                 localStorage.setItem(STORAGE_TOKEN_KEY, data.token);
                 localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data.user));
 
@@ -733,6 +1073,12 @@ print("Routine completed successfully!")
                 currentStudentUser = data.user;
                 localStorage.setItem(STORAGE_TOKEN_KEY, currentAuthToken);
                 localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(currentStudentUser));
+                if (data.user && (data.user.role === 'admin' || data.user.role === 'superadmin' || data.user.is_trusted)) {
+                    localStorage.setItem("ur_admin_token", currentAuthToken);
+                    localStorage.setItem("ur_admin_user", data.user.username);
+                    localStorage.setItem("ur_admin_role", data.user.role);
+                    localStorage.setItem("ur_admin_perms", JSON.stringify(data.user.permissions || []));
+                }
 
                 onStudentLoggedIn();
             } catch (e) {
@@ -799,6 +1145,7 @@ print("Routine completed successfully!")
             document.getElementById("loggedInStudentName").innerText = currentStudentUser.username;
             appendStudentLog(`\n[AUTH] Logged in as student "${currentStudentUser.username}". Sandbox unlocked.\n`, false);
             fetchStudentProjects();
+            fetchWorkspaceFolders();
         }
 
         function logoutStudent() {
@@ -817,8 +1164,197 @@ print("Routine completed successfully!")
         }
 
         // ==========================================
-        // Student Saved Projects History
+        // Student Saved Projects & Workspace Folders
         // ==========================================
+
+        let studentWorkspaceFolders = [];
+
+        async function fetchWorkspaceFolders() {
+            if (!currentStudentUser) return;
+            try {
+                const res = await fetch('/api/workspace/projects', {
+                    headers: { 'Authorization': `Bearer ${currentAuthToken}` }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                studentWorkspaceFolders = data.projects || [];
+
+                const select = document.getElementById("studentProjectSelect");
+                if (select) {
+                    select.innerHTML = studentWorkspaceFolders.map(p => 
+                        `<option value="${escapeHtml(p.name)}" ${p.name === (projectState.current_project || 'default') ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+                    ).join("");
+                }
+
+                const badge = document.getElementById("workspaceCountBadge");
+                if (badge) badge.innerText = studentWorkspaceFolders.length;
+
+                renderModalWorkspacesList(studentWorkspaceFolders);
+
+                if (studentWorkspaceFolders.length === 0) {
+                    openNewProjectModal(true);
+                }
+            } catch (e) {
+                console.error("Failed to fetch workspace folders:", e);
+            }
+        }
+
+        function renderModalWorkspacesList(projects) {
+            const list = document.getElementById("modalWorkspacesList");
+            if (!list) return;
+            if (!projects || projects.length === 0) {
+                list.innerHTML = `<div class="p-6 text-xs text-slate-500 text-center">No custom project folders created yet. Click "New Project Folder" above.</div>`;
+                return;
+            }
+            list.innerHTML = projects.map(p => {
+                const isCurrent = (p.name === (projectState.current_project || 'default'));
+                const modifiedStr = p.modified ? new Date(p.modified * 1000).toLocaleString() : 'N/A';
+                return `
+                    <div class="p-3 bg-slate-850 hover:bg-slate-800 rounded-xl border ${isCurrent ? 'border-sky-500/60 bg-sky-950/20' : 'border-slate-800'} transition flex items-center justify-between gap-3">
+                        <div class="flex items-center space-x-2.5 min-w-0">
+                            <span class="text-xl">📁</span>
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-xs font-bold text-white font-mono">${escapeHtml(p.name)}</span>
+                                    ${isCurrent ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-600 text-white">ACTIVE</span>' : ''}
+                                </div>
+                                <div class="text-[10px] text-slate-400 mt-0.5">${p.files_count || 0} file(s) • Modified: ${modifiedStr}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            ${!isCurrent ? `<button onclick="onSelectStudentProject('${escapeHtml(p.name)}'); closeMyProjectsModal();" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition">Open</button>` : '<span class="text-xs text-sky-400 font-semibold px-2">Current</span>'}
+                            ${p.name !== 'default' ? `<button onclick="deleteProjectFolder('${escapeHtml(p.name)}')" title="Delete Project Folder" class="p-1 px-2 text-rose-400 hover:text-rose-300 text-xs">🗑️</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        async function onSelectStudentProject(projectName) {
+            if (!projectName) return;
+            if (editor && projectState.active_file) {
+                projectState.files[projectState.active_file] = editor.getValue();
+            }
+            try {
+                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(projectName)}`, {
+                    headers: { 'Authorization': `Bearer ${currentAuthToken}` }
+                });
+                if (!res.ok) {
+                    alert("Could not load project folder.");
+                    return;
+                }
+                const data = await res.json();
+                projectState.current_project = projectName;
+                projectState.files = data.files || { "main.py": buildDefaultCode(configuredIp, currentRobotModel) };
+                projectState.entry_point = ("main.py" in projectState.files) ? "main.py" : Object.keys(projectState.files)[0];
+                projectState.active_file = projectState.entry_point;
+                saveProjectToStorage();
+
+                if (editor) {
+                    editor.setValue(projectState.files[projectState.active_file] || "");
+                }
+                renderEditorTabs();
+                renderProjectExplorer();
+
+                const select = document.getElementById("studentProjectSelect");
+                if (select) select.value = projectName;
+
+                appendStudentLog(`\n[WORKSPACE] Switched to project folder "${projectName}" (${Object.keys(projectState.files).length} files).\n`);
+                fetchWorkspaceFolders();
+            } catch (e) {
+                console.error("Error loading project folder:", e);
+            }
+        }
+
+        async function promptNewProjectFolder() {
+            const name = prompt("Enter a name for the new custom project folder (e.g., sorting_lab, vision_routine):");
+            if (!name || !name.trim()) return;
+            const clean = name.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+            try {
+                const res = await fetch('/api/workspace/projects', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAuthToken}`
+                    },
+                    body: JSON.stringify({ name: clean, template: currentRobotModel })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert("Could not create project folder: " + (data.detail || "Error"));
+                    return;
+                }
+                appendStudentLog(`\n[WORKSPACE] Created custom project folder "${clean}".\n`);
+                await onSelectStudentProject(clean);
+                await fetchWorkspaceFolders();
+            } catch (e) {
+                alert("Failed to create project folder: " + e.message);
+            }
+        }
+
+        async function deleteProjectFolder(projectName) {
+            if (projectName === 'default') {
+                alert("Cannot delete the default project folder.");
+                return;
+            }
+            if (!confirm(`Are you sure you want to delete the project folder "${projectName}" and all its files?`)) return;
+            try {
+                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(projectName)}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${currentAuthToken}` }
+                });
+                if (res.ok) {
+                    appendStudentLog(`\n[WORKSPACE] Deleted project folder "${projectName}".\n`);
+                    if (projectState.current_project === projectName) {
+                        await onSelectStudentProject('default');
+                    } else {
+                        await fetchWorkspaceFolders();
+                    }
+                }
+            } catch (e) {
+                alert("Failed to delete project folder: " + e.message);
+            }
+        }
+
+        async function syncActiveProjectToServer() {
+            if (!currentAuthToken || !projectState.current_project) return;
+            try {
+                await fetch(`/api/workspace/projects/${encodeURIComponent(projectState.current_project)}`, {
+                    method: 'PUT',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAuthToken}`
+                    },
+                    body: JSON.stringify({
+                        files: projectState.files,
+                        entry_point: projectState.entry_point
+                    })
+                });
+            } catch (e) {
+                console.warn("Could not sync project folder to server:", e);
+            }
+        }
+
+        function switchProjectsModalTab(tab) {
+            const btnWs = document.getElementById("tabBtnWorkspaceProjects");
+            const btnHist = document.getElementById("tabBtnSubmissionsHistory");
+            const secWs = document.getElementById("modalWorkspacesSection");
+            const secHist = document.getElementById("modalHistorySection");
+
+            if (tab === 'workspaces') {
+                if (btnWs) btnWs.className = "pb-2 text-xs font-bold text-sky-400 border-b-2 border-sky-400 transition flex items-center space-x-1.5";
+                if (btnHist) btnHist.className = "pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5";
+                if (secWs) secWs.classList.remove("hidden");
+                if (secHist) secHist.classList.add("hidden");
+                fetchWorkspaceFolders();
+            } else {
+                if (btnHist) btnHist.className = "pb-2 text-xs font-bold text-sky-400 border-b-2 border-sky-400 transition flex items-center space-x-1.5";
+                if (btnWs) btnWs.className = "pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5";
+                if (secHist) secHist.classList.remove("hidden");
+                if (secWs) secWs.classList.add("hidden");
+                fetchStudentProjects();
+            }
+        }
 
         async function fetchStudentProjects() {
             if (!currentStudentUser) return;
@@ -839,6 +1375,9 @@ print("Routine completed successfully!")
                         badge.classList.add("hidden");
                     }
                 }
+                const histBadge = document.getElementById("historyCountBadge");
+                if (histBadge) histBadge.innerText = myProjectsData.length;
+
                 renderMyProjectsList(myProjectsData);
             } catch (e) {
                 console.error("Failed to fetch student projects:", e);
@@ -847,7 +1386,9 @@ print("Routine completed successfully!")
 
         function openMyProjectsModal() {
             document.getElementById("myProjectsModal").classList.remove("hidden");
+            switchProjectsModalTab('workspaces');
             fetchStudentProjects();
+            fetchWorkspaceFolders();
         }
 
         function closeMyProjectsModal() {
@@ -916,12 +1457,585 @@ print("Routine completed successfully!")
                 if (projModel !== currentRobotModel) {
                     selectStudentRobotModel(projModel, false);
                 }
-                editor.setValue(proj.code);
-                document.getElementById("programName").value = proj.task_id;
-                saveCodeLocally();
+
+                // Restore multi-file project if available
+                let restoredFiles = null;
+                if (proj.files) {
+                    if (typeof proj.files === 'object') {
+                        restoredFiles = proj.files;
+                    } else if (typeof proj.files === 'string') {
+                        try {
+                            restoredFiles = JSON.parse(proj.files);
+                        } catch(e) {}
+                    }
+                }
+
+                if (restoredFiles && typeof restoredFiles === 'object' && Object.keys(restoredFiles).length > 0) {
+                    projectState.files = restoredFiles;
+                    projectState.entry_point = ("main.py" in restoredFiles) ? "main.py" : Object.keys(restoredFiles)[0];
+                    projectState.active_file = projectState.entry_point;
+                } else {
+                    projectState.files = {
+                        "main.py": proj.code || buildDefaultCode(configuredIp, projModel)
+                    };
+                    projectState.entry_point = "main.py";
+                    projectState.active_file = "main.py";
+                }
+
+                // task_id unified with project
+                saveProjectToStorage();
+                switchToFile(projectState.active_file);
+                renderEditorTabs();
+                renderProjectExplorer();
                 closeMyProjectsModal();
+                switchMainPortalView('code');
                 appendStudentLog(`\n[PROJECTS] Loaded project #${proj.id} ("${proj.task_id}") [${projModel.toUpperCase()}] into editor.\n`);
             }
+        }
+
+        // ==========================================
+        // Multi-File Project State Management
+        // ==========================================
+
+        function initProjectState() {
+            try {
+                const saved = localStorage.getItem(STORAGE_PROJECT_KEY);
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (parsed && parsed.files && typeof parsed.files === 'object' && Object.keys(parsed.files).length > 0) {
+                        projectState = parsed;
+                        if (!projectState.entry_point || !projectState.files[projectState.entry_point]) {
+                            projectState.entry_point = Object.keys(projectState.files)[0];
+                        }
+                        if (!projectState.active_file || !projectState.files[projectState.active_file]) {
+                            projectState.active_file = projectState.entry_point;
+                        }
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not load project state from storage:", e);
+            }
+
+            // Fallback: check legacy single code
+            const legacyCode = localStorage.getItem(STORAGE_CODE_KEY);
+            const initialCode = (legacyCode && legacyCode.trim()) ? legacyCode : buildDefaultCode(configuredIp, currentRobotModel);
+
+            projectState = {
+                folderName: "robot_project",
+                entry_point: "main.py",
+                active_file: "main.py",
+                files: {
+                    "main.py": initialCode
+                }
+            };
+            saveProjectToStorage();
+        }
+
+        function saveProjectToStorage() {
+            try {
+                localStorage.setItem(STORAGE_PROJECT_KEY, JSON.stringify(projectState));
+                if (projectState.files[projectState.entry_point]) {
+                    localStorage.setItem(STORAGE_CODE_KEY, projectState.files[projectState.entry_point]);
+                }
+            } catch (e) {
+                console.warn("Error saving project to storage:", e);
+            }
+        }
+
+        function saveCodeLocally() {
+            if (editor && projectState.active_file) {
+                projectState.files[projectState.active_file] = editor.getValue();
+            }
+            const progName = projectState.current_project || "default";
+            localStorage.setItem(STORAGE_PROG_KEY, progName);
+            saveProjectToStorage();
+            
+            const toast = document.getElementById("saveToast");
+            if (toast) {
+                toast.style.opacity = '1';
+                setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+            }
+        }
+
+        function switchToFile(filename) {
+            if (!projectState.files || !projectState.files[filename]) return;
+            if (editor && projectState.active_file) {
+                projectState.files[projectState.active_file] = editor.getValue();
+            }
+            projectState.active_file = filename;
+
+            if (editor) {
+                editor.setValue(projectState.files[filename] || "");
+                const ext = filename.split('.').pop().toLowerCase();
+                let lang = 'python';
+                if (ext === 'json') lang = 'json';
+                else if (ext === 'txt') lang = 'plaintext';
+                const model = editor.getModel();
+                if (model) {
+                    monaco.editor.setModelLanguage(model, lang);
+                }
+            }
+
+            const ind = document.getElementById("activeFileIndicator");
+            if (ind) {
+                const ext = filename.split('.').pop().toUpperCase();
+                ind.innerText = `${filename} (${ext})`;
+            }
+
+            saveProjectToStorage();
+            renderEditorTabs();
+            renderProjectExplorer();
+        }
+
+        function renderEditorTabs() {
+            const tabsContainer = document.getElementById("fileTabsList");
+            if (!tabsContainer || !projectState.files) return;
+
+            const fileNames = Object.keys(projectState.files);
+            tabsContainer.innerHTML = fileNames.map(f => {
+                const isActive = (f === projectState.active_file);
+                const isEntry = (f === projectState.entry_point);
+                const ext = f.split('.').pop().toLowerCase();
+                const icon = ext === 'json' ? '⚙️' : (ext === 'txt' ? '📄' : '🐍');
+
+                const activeClass = isActive
+                    ? "bg-slate-900 text-sky-400 font-bold border-t-2 border-sky-400 shadow-sm"
+                    : "bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800";
+
+                const entryBadge = isEntry
+                    ? '<span class="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-semibold" title="Main Entry Point">main</span>'
+                    : '';
+
+                const closeBtn = (fileNames.length > 1)
+                    ? `<button onclick="event.stopPropagation(); deleteFile('${escapeHtml(f)}')" title="Delete file" class="hover:text-rose-400 text-xs ml-1 px-1 rounded transition">&times;</button>`
+                    : '';
+
+                return `
+                    <div onclick="switchToFile('${escapeHtml(f)}')"
+                        class="px-2.5 py-1 rounded-t text-xs font-mono transition flex items-center space-x-1.5 cursor-pointer border-r border-slate-800/60 flex-shrink-0 ${activeClass}">
+                        <span>${icon}</span>
+                        <span>${escapeHtml(f)}</span>
+                        ${entryBadge}
+                        ${closeBtn}
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function renderProjectExplorer() {
+            const listEl = document.getElementById("sidebarFilesList");
+            const countBadge = document.getElementById("tabFilesCountBadge");
+            const navBadge = document.getElementById("navFileCountBadge");
+            const statsEl = document.getElementById("sidebarFooterStats");
+            const folderEl = document.getElementById("sidebarProjectFolderName");
+
+            if (!projectState.files) return;
+            const fileNames = Object.keys(projectState.files);
+            const count = fileNames.length;
+
+            if (countBadge) countBadge.innerText = count;
+            if (navBadge) navBadge.innerText = `${count} file${count > 1 ? 's' : ''}`;
+            if (statsEl) statsEl.innerText = `${count} file${count > 1 ? 's' : ''} • Entry: ${projectState.entry_point}`;
+            if (folderEl) folderEl.innerText = `${projectState.folderName || 'robot_project'}/`;
+
+            if (!listEl) return;
+            listEl.innerHTML = fileNames.map(f => {
+                const isActive = (f === projectState.active_file);
+                const isEntry = (f === projectState.entry_point);
+                const ext = f.split('.').pop().toLowerCase();
+                const icon = ext === 'json' ? '⚙️' : (ext === 'txt' ? '📄' : '🐍');
+
+                const activeClass = isActive
+                    ? "bg-slate-800 text-sky-400 font-semibold border-l-2 border-sky-400"
+                    : "text-slate-300 hover:bg-slate-900 hover:text-white";
+
+                return `
+                    <div onclick="switchToFile('${escapeHtml(f)}')"
+                        class="group px-2.5 py-1.5 rounded text-xs font-mono flex items-center justify-between cursor-pointer transition ${activeClass}">
+                        <div class="flex items-center space-x-1.5 truncate">
+                            <span class="text-xs">${icon}</span>
+                            <span class="truncate">${escapeHtml(f)}</span>
+                            ${isEntry ? '<span class="text-[9px] px-1 py-0.2 bg-amber-500/20 text-amber-300 rounded font-semibold" title="Entry Point">main</span>' : ''}
+                        </div>
+                        <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
+                            ${!isEntry && ext === 'py' ? `<button onclick="event.stopPropagation(); setFileAsEntryPoint('${escapeHtml(f)}')" title="Set as Entry Point" class="text-slate-400 hover:text-amber-300 text-[11px] p-0.5">⭐</button>` : ''}
+                            <button onclick="event.stopPropagation(); openRenameFileModal('${escapeHtml(f)}')" title="Rename file" class="text-slate-400 hover:text-blue-300 text-[11px] p-0.5">✏️</button>
+                            ${fileNames.length > 1 ? `<button onclick="event.stopPropagation(); deleteFile('${escapeHtml(f)}')" title="Delete file" class="text-slate-400 hover:text-rose-400 text-[11px] p-0.5">🗑️</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function toggleProjectExplorer() {
+            const sidebar = document.getElementById("projectExplorerSidebar");
+            if (!sidebar) return;
+            if (sidebar.classList.contains("hidden")) {
+                sidebar.classList.remove("hidden");
+                isExplorerOpen = true;
+            } else {
+                sidebar.classList.add("hidden");
+                isExplorerOpen = false;
+            }
+            setTimeout(() => {
+                if (editor) editor.layout();
+            }, 60);
+        }
+
+        let selectedNewFileType = 'txt';
+
+        function setNewFileType(type) {
+            selectedNewFileType = type;
+            ['txt', 'py', 'json', 'custom'].forEach(t => {
+                const btn = document.getElementById(`fileTypeBtn_${t}`);
+                if (btn) {
+                    if (t === type) {
+                        btn.className = "py-1.5 px-2 rounded-lg bg-blue-600/30 border border-blue-500 font-bold text-blue-300 transition";
+                    } else {
+                        btn.className = "py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-slate-200 transition";
+                    }
+                }
+            });
+            const input = document.getElementById("newFileNameInput");
+            const hint = document.getElementById("newFileHint");
+            if (type === 'txt') {
+                if (input) input.placeholder = "e.g., notes.txt, readings.txt";
+                if (hint) hint.innerHTML = 'Creating a text file (<code class="text-amber-300">.txt</code>). Python code can write to it with <code class="text-sky-300">open("filename.txt", "w")</code>.';
+            } else if (type === 'py') {
+                if (input) input.placeholder = "e.g., helpers.py, coordinates.py";
+                if (hint) hint.innerHTML = 'Creating a Python script (<code class="text-sky-300">.py</code>). You can import functions into <code class="text-amber-300">main.py</code>.';
+            } else if (type === 'json') {
+                if (input) input.placeholder = "e.g., config.json, points.json";
+                if (hint) hint.innerHTML = 'Creating a JSON data file (<code class="text-emerald-300">.json</code>). Can be parsed with <code class="text-sky-300">json.load()</code>.';
+            } else {
+                if (input) input.placeholder = "e.g., trajectory.csv, readme.md";
+                if (hint) hint.innerHTML = 'Creating a custom file. Specify any filename with its extension.';
+            }
+        }
+
+        function openNewFileModal(defaultType = 'txt') {
+            const modal = document.getElementById("newFileModal");
+            const input = document.getElementById("newFileNameInput");
+            if (modal && input) {
+                input.value = "";
+                setNewFileType(defaultType);
+                modal.classList.remove("hidden");
+                input.focus();
+            }
+        }
+
+        function closeNewFileModal() {
+            const modal = document.getElementById("newFileModal");
+            if (modal) modal.classList.add("hidden");
+        }
+
+        function confirmCreateFile() {
+            const input = document.getElementById("newFileNameInput");
+            if (!input) return;
+
+            let name = input.value.trim();
+            if (!name) {
+                alert("Please enter a file name.");
+                return;
+            }
+
+            if (!name.includes(".")) {
+                if (selectedNewFileType === 'txt') name += ".txt";
+                else if (selectedNewFileType === 'json') name += ".json";
+                else if (selectedNewFileType === 'py') name += ".py";
+            }
+
+            const cleanName = name.replace(/[^a-zA-Z0-9_.-]/g, "");
+            if (!cleanName) {
+                alert("Invalid file name. Use letters, numbers, underscores, and dots.");
+                return;
+            }
+
+            if (projectState.files[cleanName] !== undefined) {
+                alert(`File "${cleanName}" already exists in the project.`);
+                return;
+            }
+
+            let initialContent = "";
+            if (cleanName.endsWith('.py')) {
+                initialContent = `# ${cleanName}\n# Created for project: ${projectState.current_project}\n\n`;
+            } else if (cleanName.endsWith('.json')) {
+                initialContent = "{\n  \n}\n";
+            } else if (cleanName.endsWith('.txt')) {
+                initialContent = "";
+            }
+
+            projectState.files[cleanName] = initialContent;
+            closeNewFileModal();
+            saveProjectToStorage();
+            switchToFile(cleanName);
+            syncActiveProjectToServer();
+            appendStudentLog(`\n[PROJECT] Created new file: "${cleanName}".\n`);
+        }
+
+        let isInitialProjectCreation = false;
+
+        function openNewProjectModal(isInitial = false) {
+            isInitialProjectCreation = isInitial;
+            const modal = document.getElementById("newProjectModal");
+            const input = document.getElementById("newProjectNameInput");
+            const title = document.getElementById("newProjectModalTitle");
+            const subtitle = document.getElementById("newProjectModalSubtitle");
+            const cancelBtn = document.getElementById("btnCancelNewProject");
+
+            if (modal && input) {
+                if (isInitial) {
+                    if (title) title.innerText = "Create Your First Project";
+                    if (subtitle) subtitle.innerText = "No project found. Choose a name for your first project to get started:";
+                    if (cancelBtn) cancelBtn.classList.add("hidden");
+                    input.value = "my_robot_project";
+                } else {
+                    if (title) title.innerText = "Create New Project Folder";
+                    if (subtitle) subtitle.innerText = "All code, scripts, and output files will be stored in this project folder.";
+                    if (cancelBtn) cancelBtn.classList.remove("hidden");
+                    input.value = "";
+                }
+                modal.classList.remove("hidden");
+                input.focus();
+                input.select();
+            }
+        }
+
+        function closeNewProjectModal() {
+            if (isInitialProjectCreation && (!studentWorkspaceFolders || studentWorkspaceFolders.length === 0)) {
+                confirmCreateProject();
+                return;
+            }
+            const modal = document.getElementById("newProjectModal");
+            if (modal) modal.classList.add("hidden");
+        }
+
+        async function confirmCreateProject() {
+            const input = document.getElementById("newProjectNameInput");
+            let rawName = input ? input.value.trim() : "";
+            if (!rawName) rawName = "my_robot_project";
+            const clean = rawName.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+            try {
+                const res = await fetch('/api/workspace/projects', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAuthToken}`
+                    },
+                    body: JSON.stringify({ name: clean, template: currentRobotModel })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert("Could not create project folder: " + (data.detail || "Error"));
+                    return;
+                }
+                const modal = document.getElementById("newProjectModal");
+                if (modal) modal.classList.add("hidden");
+                isInitialProjectCreation = false;
+                appendStudentLog(`\n[WORKSPACE] Created project folder "${clean}".\n`);
+                await fetchWorkspaceFolders();
+                await onSelectStudentProject(clean);
+            } catch (e) {
+                alert("Failed to create project folder: " + e.message);
+            }
+        }
+
+        async function promptRenameCurrentProject() {
+            const current = projectState.current_project || "default";
+            if (current === 'default') {
+                alert("The default project cannot be renamed. Create a new project folder instead.");
+                return;
+            }
+            const newName = prompt(`Enter new name for project folder "${current}":`, current);
+            if (!newName || !newName.trim() || newName.trim() === current) return;
+            const clean = newName.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+
+            try {
+                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(current)}/rename`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAuthToken}`
+                    },
+                    body: JSON.stringify({ new_name: clean })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert("Failed to rename project: " + (data.detail || "Error"));
+                    return;
+                }
+                appendStudentLog(`\n[WORKSPACE] Renamed project from "${current}" to "${clean}".\n`);
+                await fetchWorkspaceFolders();
+                await onSelectStudentProject(clean);
+            } catch (e) {
+                alert("Rename failed: " + e.message);
+            }
+        }
+
+
+        function openRenameFileModal(filename) {
+            renameTargetFile = filename;
+            const modal = document.getElementById("renameFileModal");
+            const input = document.getElementById("renameFileNameInput");
+            if (modal && input) {
+                input.value = filename;
+                modal.classList.remove("hidden");
+                input.focus();
+            }
+        }
+
+        function closeRenameFileModal() {
+            renameTargetFile = null;
+            const modal = document.getElementById("renameFileModal");
+            if (modal) modal.classList.add("hidden");
+        }
+
+        function confirmRenameFile() {
+            if (!renameTargetFile) return;
+            const input = document.getElementById("renameFileNameInput");
+            if (!input) return;
+
+            let newName = input.value.trim().replace(/[^a-zA-Z0-9_.-]/g, "");
+            if (!newName) {
+                alert("Please enter a valid file name.");
+                return;
+            }
+
+            if (newName === renameTargetFile) {
+                closeRenameFileModal();
+                return;
+            }
+
+            if (projectState.files[newName]) {
+                alert(`File "${newName}" already exists in the project.`);
+                return;
+            }
+
+            if (editor && projectState.active_file === renameTargetFile) {
+                projectState.files[renameTargetFile] = editor.getValue();
+            }
+
+            const content = projectState.files[renameTargetFile];
+            delete projectState.files[renameTargetFile];
+            projectState.files[newName] = content;
+
+            if (projectState.entry_point === renameTargetFile) {
+                projectState.entry_point = newName;
+            }
+            if (projectState.active_file === renameTargetFile) {
+                projectState.active_file = newName;
+            }
+
+            closeRenameFileModal();
+            saveProjectToStorage();
+            renderEditorTabs();
+            renderProjectExplorer();
+            switchToFile(projectState.active_file);
+            appendStudentLog(`\n[PROJECT] Renamed "${renameTargetFile}" -> "${newName}".\n`);
+        }
+
+        function deleteFile(filename) {
+            const fileNames = Object.keys(projectState.files);
+            if (fileNames.length <= 1) {
+                alert("Cannot delete the only file in the project. Projects must contain at least one file.");
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            delete projectState.files[filename];
+
+            if (projectState.entry_point === filename) {
+                const otherPy = Object.keys(projectState.files).find(f => f.endsWith('.py'));
+                projectState.entry_point = otherPy || Object.keys(projectState.files)[0];
+            }
+
+            if (projectState.active_file === filename) {
+                projectState.active_file = projectState.entry_point || Object.keys(projectState.files)[0];
+            }
+
+            saveProjectToStorage();
+            switchToFile(projectState.active_file);
+            renderEditorTabs();
+            renderProjectExplorer();
+            appendStudentLog(`\n[PROJECT] Deleted file "${filename}".\n`);
+        }
+
+        function setFileAsEntryPoint(filename) {
+            if (!filename.endsWith('.py')) {
+                alert("Only Python (.py) files can be set as the main entry point.");
+                return;
+            }
+            projectState.entry_point = filename;
+            saveProjectToStorage();
+            renderEditorTabs();
+            renderProjectExplorer();
+            appendStudentLog(`\n[PROJECT] "${filename}" is now set as the project's Main Entry Point.\n`);
+        }
+
+        async function exportProjectZip() {
+            if (typeof JSZip === "undefined") {
+                alert("JSZip library is still loading. Please try again in a moment.");
+                return;
+            }
+
+            if (editor && projectState.active_file) {
+                projectState.files[projectState.active_file] = editor.getValue();
+            }
+
+            const zip = new JSZip();
+            const folderName = projectState.folderName || "robot_project";
+            const folder = zip.folder(folderName);
+
+            for (const [fname, fcontent] of Object.entries(projectState.files)) {
+                folder.file(fname, fcontent || "");
+            }
+
+            const meta = {
+                project_name: projectState.current_project || folderName,
+                entry_point: projectState.entry_point,
+                robot_model: currentRobotModel,
+                exported_at: new Date().toISOString()
+            };
+            folder.file("project_manifest.json", JSON.stringify(meta, null, 2));
+
+            const blob = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${folderName}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            appendStudentLog(`\n[PROJECT] Exported "${folderName}.zip" containing ${Object.keys(projectState.files).length} files.\n`);
+        }
+
+        function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                let cleanName = file.name.replace(/[^a-zA-Z0-9_.-]/g, "");
+                if (projectState.files[cleanName]) {
+                    if (!confirm(`File "${cleanName}" already exists. Overwrite?`)) {
+                        event.target.value = "";
+                        return;
+                    }
+                }
+                projectState.files[cleanName] = content;
+                saveProjectToStorage();
+                switchToFile(cleanName);
+                appendStudentLog(`\n[PROJECT] Imported external file: "${cleanName}" (${file.size} bytes).\n`);
+                event.target.value = "";
+            };
+            reader.readAsText(file);
         }
 
         // ==========================================
@@ -936,7 +2050,6 @@ print("Routine completed successfully!")
                 allRobotIps.ur = confData.ur_ip || confData.robot_ip || '10.0.10.60';
                 allRobotIps.niryo = confData.niryo_ip || '10.0.130.49';
 
-                // Check saved user choice in localStorage, fallback to server config
                 const savedModel = localStorage.getItem(STORAGE_ROBOT_KEY);
                 if (savedModel && (savedModel === 'ur' || savedModel === 'niryo')) {
                     currentRobotModel = savedModel;
@@ -953,30 +2066,42 @@ print("Routine completed successfully!")
                 console.error("Config fetch error:", e);
             }
 
-            let savedCode = localStorage.getItem(STORAGE_CODE_KEY);
-            const initialCode = savedCode || buildDefaultCode(configuredIp, currentRobotModel);
+            initProjectState();
+
+            const initialCode = projectState.files[projectState.active_file] || "";
 
             editor = monaco.editor.create(document.getElementById('editorContainer'), {
                 value: initialCode,
                 language: 'python',
                 theme: 'vs-dark',
                 automaticLayout: true,
-                minimap: { enabled: false },
+                minimap: { enabled: true, maxColumn: 80 },
                 fontSize: 13,
                 fontFamily: "Fira Code, Menlo, Monaco, Consolas, monospace",
                 lineNumbers: "on",
                 scrollBeyondLastLine: false,
-                tabSize: 4
+                tabSize: 4,
+                scrollbar: {
+                    vertical: 'visible',
+                    horizontal: 'auto',
+                    verticalScrollbarSize: 10,
+                    horizontalScrollbarSize: 10,
+                    alwaysConsumeMouseWheel: false
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                if (editor) editor.layout();
             });
 
             editor.onDidChangeModelContent(() => {
-                const code = editor.getValue();
-                localStorage.setItem(STORAGE_CODE_KEY, code);
+                if (projectState.active_file) {
+                    projectState.files[projectState.active_file] = editor.getValue();
+                    saveProjectToStorage();
+                }
             });
 
-            document.getElementById("programName").addEventListener("input", (e) => {
-                localStorage.setItem(STORAGE_PROG_KEY, e.target.value);
-            });
+// programName input listener removed
 
             editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
                 saveCodeLocally();
@@ -993,6 +2118,9 @@ print("Routine completed successfully!")
                     editor.trigger('keyboard', 'type', { text: ' ' });
                 }
             });
+
+            renderEditorTabs();
+            renderProjectExplorer();
 
             checkRobotStatus();
             fetchExamples();
@@ -1015,21 +2143,21 @@ print("Routine completed successfully!")
 
         function resetEditorToDefault() {
             const modelLabel = (currentRobotModel === 'niryo') ? 'Niryo Ned' : 'Universal Robots UR3';
-            if (confirm(`Reset editor to default ${modelLabel} starting template? Any unsaved edits will be lost.`)) {
-                editor.setValue(buildDefaultCode(configuredIp, currentRobotModel));
-                saveCodeLocally();
+            if (confirm(`Reset project files to default ${modelLabel} template? Any unsaved edits will be lost.`)) {
+                projectState = {
+                    folderName: "robot_project",
+                    entry_point: "main.py",
+                    active_file: "main.py",
+                    files: {
+                        "main.py": buildDefaultCode(configuredIp, currentRobotModel)
+                    }
+                };
+                editor.setValue(projectState.files["main.py"]);
+                saveProjectToStorage();
+                renderEditorTabs();
+                renderProjectExplorer();
+                appendStudentLog(`\n[PROJECT] Reset project to default ${modelLabel} starter template.\n`);
             }
-        }
-
-        function saveCodeLocally() {
-            const code = editor.getValue();
-            const progName = document.getElementById("programName").value;
-            localStorage.setItem(STORAGE_CODE_KEY, code);
-            localStorage.setItem(STORAGE_PROG_KEY, progName);
-            
-            const toast = document.getElementById("saveToast");
-            toast.style.opacity = '1';
-            setTimeout(() => { toast.style.opacity = '0'; }, 2000);
         }
 
         async function checkRobotStatus() {
@@ -1051,79 +2179,133 @@ print("Routine completed successfully!")
                     statusDiv.className = "flex items-center space-x-2 text-xs text-rose-300 bg-rose-950/80 border border-rose-600 px-3 py-1.5 rounded-full transition-all animate-pulse";
                     pingDot.className = "w-2 h-2 rounded-full bg-rose-500 animate-ping";
                     pingText.innerText = `${modelLabel} EMERGENCY STOPPED`;
-                    notice.classList.remove("hidden");
+                    if (notice) notice.classList.remove("hidden");
                 } else if (isRobotReady) {
                     statusDiv.className = "flex items-center space-x-2 text-xs text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-3 py-1.5 rounded-full transition-all";
                     pingDot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
                     pingText.innerText = `${modelLabel} Ready (${data.ip})`;
-                    notice.classList.add("hidden");
+                    if (notice) notice.classList.add("hidden");
                 } else {
                     statusDiv.className = "flex items-center space-x-2 text-xs text-rose-400 bg-rose-950/60 border border-rose-800 px-3 py-1.5 rounded-full transition-all";
                     pingDot.className = "w-2 h-2 rounded-full bg-rose-500";
                     pingText.innerText = `${modelLabel} Offline (${data.ip} - No Ping)`;
-                    notice.classList.remove("hidden");
+                    if (notice) notice.classList.remove("hidden");
                 }
             } catch (err) {
                 isRobotReady = false;
                 statusDiv.className = "flex items-center space-x-2 text-xs text-rose-400 bg-rose-950/60 border border-rose-800 px-3 py-1.5 rounded-full transition-all";
                 pingDot.className = "w-2 h-2 rounded-full bg-rose-500";
                 pingText.innerText = "Server Disconnected";
-                notice.classList.remove("hidden");
+                if (notice) notice.classList.remove("hidden");
             }
         }
 
         async function checkSyntax() {
-            const code = editor.getValue();
+            if (editor && projectState.active_file) {
+                projectState.files[projectState.active_file] = editor.getValue();
+            }
+            saveProjectToStorage();
+
             const btn = document.getElementById("btnSyntax");
-            btn.disabled = true;
-            btn.innerHTML = "<span>⏳ Checking...</span>";
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = "<span>⏳ Checking...</span>";
+            }
 
             try {
+                const entryCode = projectState.files[projectState.entry_point] || (editor ? editor.getValue() : "");
                 const res = await fetch('/api/check-syntax', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code })
+                    body: JSON.stringify({ 
+                        code: entryCode,
+                        files: projectState.files,
+                        entry_point: projectState.entry_point,
+                        robot_model: currentRobotModel
+                    })
                 });
                 const data = await res.json();
                 
                 clearTerminal();
                 if (data.valid) {
-                    appendStudentLog("✓ SYNTAX & SAFETY CHECK PASSED!\nNo hazardous OS / system calls detected.\nYour code is ready for simulation and execution.\n");
+                    appendStudentLog("✓ SYNTAX & SAFETY CHECK PASSED!\nNo hazardous OS / system calls detected across project files.\nAll project modules and cross-file references verified safe.\n");
                 } else {
                     appendStudentLog("✗ SYNTAX OR SAFETY VIOLATIONS DETECTED:\n" + data.errors.map(e => " - " + e).join("\n") + "\n\nPlease correct these issues before submitting.\n");
                 }
             } catch (err) {
                 appendStudentLog("[ERROR] Failed to contact server for syntax check: " + err.message + "\n");
             } finally {
-                btn.disabled = false;
-                btn.innerHTML = "<span>🔍 Check Syntax</span>";
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = "<span>🔍 Check Syntax</span>";
+                }
             }
         }
 
         async function simulateCode() {
-            const code = editor.getValue();
-            if (!code.trim()) {
-                alert("Please write or paste code first.");
+            if (editor && projectState.active_file) {
+                projectState.files[projectState.active_file] = editor.getValue();
+            }
+            saveProjectToStorage();
+
+            const entryCode = projectState.files[projectState.entry_point] || (editor ? editor.getValue() : "");
+            if (!entryCode || !entryCode.trim()) {
+                alert(`Entry file "${projectState.entry_point}" is empty. Please add code before simulating.`);
                 return;
             }
 
+            // Automatically switch to Simulation & Live Output View!
+            switchMainPortalView('sim');
+
+            const navBadge = document.getElementById("navSimStatusBadge");
+            if (navBadge) {
+                navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-indigo-600 text-white animate-pulse";
+                navBadge.innerText = "SIMULATING";
+                navBadge.classList.remove("hidden");
+            }
+
             const btn = document.getElementById("btnSimulate");
-            btn.disabled = true;
-            btn.innerHTML = "<span>⏳ Simulating...</span>";
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = "<span>⏳ Simulating...</span>";
+            }
+
+            clearTerminal();
+            const progTitle = projectState.current_project || "default";
+            appendStudentLog(`[SIMULATOR] Starting isolated trajectory calculation for "${progTitle}"...\n`);
+            appendStudentLog(`[PROJECT] Entry: ${projectState.entry_point} • Files: ${Object.keys(projectState.files).join(", ")}\n\n`);
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000);
 
             try {
                 const res = await fetch('/api/simulate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code, robot_model: currentRobotModel })
+                    body: JSON.stringify({ 
+                        code: entryCode,
+                        files: projectState.files,
+                        entry_point: projectState.entry_point,
+                        robot_model: currentRobotModel 
+                    }),
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
 
                 const data = await res.json();
                 if (!res.ok || data.success === false) {
-                    clearTerminal();
                     const errMsg = data.error || (data.errors ? data.errors.join("\n") : data.detail) || "Simulation failed";
                     appendStudentLog("✗ SIMULATION ERROR:\n" + errMsg + "\n");
+                    if (navBadge) {
+                        navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-rose-900/80 text-rose-300";
+                        navBadge.innerText = "ERROR";
+                    }
                     return;
+                }
+
+                if (navBadge) {
+                    navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-emerald-900/80 text-emerald-300";
+                    navBadge.innerText = "READY";
                 }
 
                 // Auto-switch visualizer if robot model detected in code
@@ -1133,7 +2315,6 @@ print("Routine completed successfully!")
                     ur3Vis.setRobotModel(currentRobotModel);
                 }
 
-                clearTerminal();
                 const modelName = (data.robot_model === 'niryo') ? 'Niryo Ned' : 'UR3';
                 appendStudentLog(`=== 3D TRAJECTORY SIMULATION (${modelName}) ===\n`);
                 if (data.logs && data.logs.length > 0) {
@@ -1156,11 +2337,36 @@ print("Routine completed successfully!")
                 } else {
                     appendStudentLog("[INFO] Routine completed (no motion waypoints commanded).\n");
                 }
+
+                // Capture any sandbox output files generated during simulation
+                if (data.output_files && Object.keys(data.output_files).length > 0) {
+                    let createdList = [];
+                    for (const [fname, fcontent] of Object.entries(data.output_files)) {
+                        projectState.files[fname] = fcontent;
+                        createdList.push(fname);
+                    }
+                    saveProjectToStorage();
+                    renderEditorTabs();
+                    renderProjectExplorer();
+                    appendStudentLog(`\n📁 [SANDBOX I/O] Generated file(s) saved to workspace: ${createdList.join(", ")}\n`);
+                    syncActiveProjectToServer();
+                }
             } catch (err) {
-                appendStudentLog("[ERROR] Simulation call failed: " + err.message + "\n");
+                clearTimeout(timeoutId);
+                if (err.name === 'AbortError') {
+                    appendStudentLog("[ERROR] Simulation timed out (server took > 20s to respond). Check for infinite while-loops in your code.\n");
+                } else {
+                    appendStudentLog("[ERROR] Simulation call failed: " + err.message + "\n");
+                }
+                if (navBadge) {
+                    navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-rose-900/80 text-rose-300";
+                    navBadge.innerText = "ERROR";
+                }
             } finally {
-                btn.disabled = false;
-                btn.innerHTML = "<span>🎮 Simulate in 3D</span>";
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = "<span>🎮 Simulate in 3D</span>";
+                }
             }
         }
 
@@ -1170,20 +2376,34 @@ print("Routine completed successfully!")
                 return;
             }
 
-            const programName = document.getElementById("programName").value.trim();
-            const code = editor.getValue();
+            const programName = projectState.current_project || "default";
 
-            if (!programName) {
-                alert("Please enter a Program Name (Execution Name).");
-                document.getElementById("programName").focus();
+            if (editor && projectState.active_file) {
+                projectState.files[projectState.active_file] = editor.getValue();
+            }
+            saveProjectToStorage();
+
+            const entryCode = projectState.files[projectState.entry_point] || (editor ? editor.getValue() : "");
+            if (!entryCode || !entryCode.trim()) {
+                alert(`Entry file "${projectState.entry_point}" is empty. Please add code before sending for execution.`);
                 return;
             }
 
-            saveCodeLocally();
+            // Automatically switch to Simulation & Live Output View!
+            switchMainPortalView('sim');
+
+            const navBadge = document.getElementById("navSimStatusBadge");
+            if (navBadge) {
+                navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-blue-600 text-white animate-pulse";
+                navBadge.innerText = "QUEUED";
+                navBadge.classList.remove("hidden");
+            }
 
             const btn = document.getElementById("btnSubmit");
-            btn.disabled = true;
-            btn.innerText = "Sending...";
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = "Sending...";
+            }
 
             try {
                 const response = await fetch('/api/submit', {
@@ -1195,8 +2415,11 @@ print("Routine completed successfully!")
                     body: JSON.stringify({ 
                         student_name: currentStudentUser.username,
                         program_name: programName, 
+                        project_name: projectState.current_project || "default",
                         task_id: programName, 
-                        code,
+                        code: entryCode,
+                        files: projectState.files,
+                        entry_point: projectState.entry_point,
                         robot_model: currentRobotModel
                     })
                 });
@@ -1204,6 +2427,10 @@ print("Routine completed successfully!")
                 const data = await response.json();
                 if (!response.ok) {
                     alert("Submission Blocked: " + (data.errors ? data.errors.join("\n") : data.detail));
+                    if (navBadge) {
+                        navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-rose-900/80 text-rose-300";
+                        navBadge.innerText = "BLOCKED";
+                    }
                     return;
                 }
 
@@ -1214,13 +2441,19 @@ print("Routine completed successfully!")
                 
                 const offlineHint = !isRobotReady ? " (NOTE: Robot is offline; program will execute once physical robot is ready)" : "";
                 appendStudentLog(`[INFO] Program "${programName}" submitted by ${currentStudentUser.username} as #${currentSubId}${offlineHint}. Awaiting instructor approval...\n`, false);
+                appendStudentLog(`[PROJECT] Multi-File Bundle (${Object.keys(projectState.files).length} files, Entry: ${projectState.entry_point}) packaged successfully.\n\n`, false);
                 connectLogStream(currentSubId);
 
                 // Animate routine in 3D visualizer immediately upon submission
                 fetch('/api/simulate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code })
+                    body: JSON.stringify({ 
+                        code: entryCode,
+                        files: projectState.files,
+                        entry_point: projectState.entry_point,
+                        robot_model: currentRobotModel
+                    })
                 }).then(r => r.json()).then(simData => {
                     if (simData.success && simData.waypoints && simData.waypoints.length > 0 && ur3Vis) {
                         if (simData.robot_model && simData.robot_model !== ur3Vis.currentModel) {
@@ -1234,9 +2467,15 @@ print("Routine completed successfully!")
                 fetchStudentProjects();
             } catch (err) {
                 alert("Error sending for execution: " + err.message);
+                if (navBadge) {
+                    navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-rose-900/80 text-rose-300";
+                    navBadge.innerText = "FAILED";
+                }
             } finally {
-                btn.disabled = false;
-                btn.innerHTML = "<span>🚀 Send for Execution</span>";
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = "<span>🚀 Send for Execution</span>";
+                }
             }
         }
 

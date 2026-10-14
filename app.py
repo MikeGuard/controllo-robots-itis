@@ -15,15 +15,18 @@ from typing import Dict, List, Optional, Set, Any
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Header, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import json
 
 import database
 import config
 from execution_engine import engine
 from safety import validate_python_code
 from simulator import simulate_script, run_simulation_isolated
+import workspace
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -41,6 +44,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="UR Robotics Lab Platform", lifespan=lifespan)
+
+# Allow CORS for student and instructor browser dashboards
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # Connected WebSockets for log broadcasting
@@ -53,6 +66,8 @@ admin_sockets: Set[WebSocket] = set()
 class SyntaxCheckRequest(BaseModel):
     code: str
     robot_model: Optional[str] = None
+    files: Optional[Dict[str, str]] = None
+    entry_point: Optional[str] = "main.py"
 
 
 class SubmissionRequest(BaseModel):
@@ -61,6 +76,9 @@ class SubmissionRequest(BaseModel):
     task_id: Optional[str] = ""
     code: str
     robot_model: Optional[str] = "ur"
+    files: Optional[Dict[str, str]] = None
+    entry_point: Optional[str] = "main.py"
+    project_name: Optional[str] = None
 
 
 class CreateExampleRequest(BaseModel):
@@ -75,11 +93,42 @@ class AdminSendCodeRequest(BaseModel):
     code: str
     execute_now: Optional[bool] = False
     task_id: Optional[str] = "Admin"
+    files: Optional[Dict[str, str]] = None
+    entry_point: Optional[str] = "main.py"
+    project_name: Optional[str] = None
+    robot_model: Optional[str] = None
+
+
+class WorkspaceCreateRequest(BaseModel):
+    name: str
+    files: Optional[Dict[str, str]] = None
+    entry_point: Optional[str] = "main.py"
+    robot_model: Optional[str] = None
+    template: Optional[str] = None
+
+
+class WorkspaceSaveRequest(BaseModel):
+    files: Dict[str, str]
+    entry_point: Optional[str] = None
+    robot_model: Optional[str] = None
+
+
+class WorkspaceRenameRequest(BaseModel):
+    new_name: str
+
+
+
+class TrustedUpdateRequest(BaseModel):
+    trusted: bool
+    permissions: Optional[List[str]] = None
 
 
 class UpdateSubmissionRequest(BaseModel):
     code: Optional[str] = None
     program_name: Optional[str] = None
+    files: Optional[Dict[str, str]] = None
+    entry_point: Optional[str] = None
+    robot_model: Optional[str] = None
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -127,9 +176,10 @@ async def get_instructor_dashboard():
 
 # --- Helper Functions ---
 
-# Short-lived cache so many open dashboards polling every few seconds don't each spawn a ping
+# Short-lived cache and locks so multiple dashboard polls don't spawn redundant pings
 _reachability_cache: Dict[tuple, tuple] = {}
-_REACHABILITY_TTL_SEC = 2.0
+_reachability_locks: Dict[tuple, asyncio.Lock] = {}
+_REACHABILITY_TTL_SEC = 2.5
 
 
 async def check_robot_reachability(ip: Optional[str] = None, model: Optional[str] = None, use_cache: bool = True):
@@ -148,42 +198,68 @@ async def check_robot_reachability(ip: Optional[str] = None, model: Optional[str
         target_model = "niryo" if target_ip == config.NIRYO_IP else "ur"
 
     cache_key = (target_ip, target_model)
-    now_ts = asyncio.get_running_loop().time()
+    loop = asyncio.get_running_loop()
+    now_ts = loop.time()
     cached = _reachability_cache.get(cache_key)
-    if use_cache and cached and now_ts - cached[0] < _REACHABILITY_TTL_SEC:
+    if use_cache and cached and (now_ts - cached[0] < _REACHABILITY_TTL_SEC):
         return cached[1]
 
-    ping_ok = False
-    try:
-        ping_timeout = "1000" if sys.platform == "darwin" else "1"
-        proc = await asyncio.create_subprocess_exec(
-            "ping", "-c", "1", "-W", ping_timeout, target_ip,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL
-        )
-        await proc.wait()
-        ping_ok = (proc.returncode == 0)
-    except Exception:
+    # In-flight lock to deduplicate concurrent requests for identical target
+    if cache_key not in _reachability_locks:
+        _reachability_locks[cache_key] = asyncio.Lock()
+    lock = _reachability_locks[cache_key]
+
+    async with lock:
+        now_ts = loop.time()
+        cached = _reachability_cache.get(cache_key)
+        if use_cache and cached and (now_ts - cached[0] < _REACHABILITY_TTL_SEC):
+            return cached[1]
+
         ping_ok = False
+        try:
+            # -n disables reverse DNS lookup which otherwise causes 3-5s delays on local IPs
+            if sys.platform == "darwin":
+                cmd = ["ping", "-n", "-c", "1", "-W", "800", target_ip]
+            elif sys.platform == "win32":
+                cmd = ["ping", "-n", "1", "-w", "800", target_ip]
+            else:
+                cmd = ["ping", "-n", "-c", "1", "-W", "1", target_ip]
 
-    # Check ports: Niryo 9090 vs UR 30004/30002
-    port_ok = False
-    if not ping_ok:
-        ports = [config.NIRYO_PORT] if target_model == "niryo" else [config.ROBOT_RTDE_PORT, config.ROBOT_SECONDARY_PORT]
-        for port in ports:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
             try:
-                _, writer = await asyncio.wait_for(asyncio.open_connection(target_ip, port), timeout=0.5)
-                writer.close()
-                await writer.wait_closed()
-                port_ok = True
-                break
-            except Exception:
-                continue
+                await asyncio.wait_for(proc.wait(), timeout=1.0)
+                ping_ok = (proc.returncode == 0)
+            except asyncio.TimeoutError:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                ping_ok = False
+        except Exception:
+            ping_ok = False
 
-    is_ready = ping_ok or port_ok
-    result = (is_ready, ping_ok, port_ok)
-    _reachability_cache[cache_key] = (now_ts, result)
-    return result
+        # Fast TCP port verification fallback (Niryo 9090 vs UR 30004/30002)
+        port_ok = False
+        if not ping_ok:
+            ports = [config.NIRYO_PORT] if target_model == "niryo" else [config.ROBOT_RTDE_PORT, config.ROBOT_SECONDARY_PORT]
+            for port in ports:
+                try:
+                    _, writer = await asyncio.wait_for(asyncio.open_connection(target_ip, port), timeout=0.35)
+                    writer.close()
+                    await writer.wait_closed()
+                    port_ok = True
+                    break
+                except Exception:
+                    continue
+
+        is_ready = ping_ok or port_ok
+        result = (is_ready, ping_ok, port_ok)
+        _reachability_cache[cache_key] = (now_ts, result)
+        return result
 
 
 # --- Authentication Endpoints ---
@@ -287,7 +363,7 @@ async def login_user(payload: LoginRequest):
         perms = ["*"]
     elif role == "admin":
         perms = user.get("permissions") or []
-        if not perms:
+        if not perms and not user.get("is_trusted"):
             perms = ["can_execute", "can_emergency_stop", "can_edit_config", "can_manage_examples", "can_manage_students", "can_direct_send"]
     else:
         perms = []
@@ -298,17 +374,22 @@ async def login_user(payload: LoginRequest):
         "id": user["id"],
         "username": user["username"],
         "role": role,
-        "permissions": perms
+        "permissions": perms,
+        "is_trusted": bool(user.get("is_trusted"))
     }
 
     return {
         "status": "success",
         "token": token,
+        "role": role,
+        "username": user["username"],
+        "permissions": perms,
         "user": {
             "id": user["id"],
             "username": user["username"],
             "role": role,
-            "permissions": perms
+            "permissions": perms,
+            "is_trusted": bool(user.get("is_trusted"))
         }
     }
 
@@ -321,7 +402,14 @@ async def get_current_user(authorization: Optional[str] = Header(default=None)):
 
     token = authorization.replace("Bearer ", "").strip()
     if token in active_sessions:
-        return {"authenticated": True, "user": active_sessions[token]}
+        session = active_sessions[token]
+        return {
+            "authenticated": True,
+            "role": session.get("role"),
+            "username": session.get("username"),
+            "permissions": session.get("permissions", []),
+            "user": session
+        }
     return {"authenticated": False}
 
 
@@ -456,6 +544,139 @@ async def update_permissions_endpoint(
     return {"status": "updated", "id": user_id, "permissions": payload.permissions}
 
 
+# --- Trusted Students (students promoted to limited admins) ---
+
+@app.post("/api/admin/users/{user_id}/trusted")
+async def set_trusted_student_endpoint(
+    user_id: int,
+    payload: TrustedUpdateRequest,
+    authorization: Optional[str] = Header(default=None)
+):
+    """Superadmin promotes an approved student to a trusted student (admin) or demotes them back."""
+    session = verify_any_admin(authorization)
+    if session.get("role") != "superadmin":
+        raise HTTPException(status_code=403, detail="Only Superadmin can manage trusted students.")
+
+    result = await database.set_user_trusted(user_id, payload.trusted, payload.permissions)
+    if not result:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot change trust for this user (must be an approved student, or an existing trusted student to demote)."
+        )
+
+    # Sync live sessions so the change applies immediately
+    for tok, sess in list(active_sessions.items()):
+        if sess.get("id") == user_id:
+            if payload.trusted:
+                sess["role"] = "admin"
+                sess["is_trusted"] = True
+                sess["permissions"] = payload.permissions if payload.permissions is not None else database.TRUSTED_DEFAULT_PERMISSIONS
+            else:
+                active_sessions.pop(tok, None)
+
+    await broadcast_to_admins({"type": "admin_created" if payload.trusted else "user_status_changed", "id": user_id})
+    return {"status": "updated", **result}
+
+
+# --- Project Workspaces (one folder per project, per user) ---
+
+def _workspace_owner(authorization: Optional[str], owner: Optional[str] = None) -> str:
+    """Resolves whose workspace is being accessed. Only admins may access another user's workspace."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    token = authorization.replace("Bearer ", "").strip()
+    session = active_sessions.get(token)
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session. Please log in again.")
+    if owner and owner.strip() and owner.strip().lower() != session["username"].lower():
+        if session.get("role") not in ("admin", "superadmin"):
+            raise HTTPException(status_code=403, detail="You can only access your own projects.")
+        return owner.strip()
+    return session["username"]
+
+
+def _ws_error(e: Exception) -> HTTPException:
+    return HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/workspace/projects")
+async def list_workspace_projects(owner: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
+    user = _workspace_owner(authorization, owner)
+    try:
+        return {"owner": user, "projects": workspace.list_projects(user)}
+    except workspace.WorkspaceError as e:
+        raise _ws_error(e)
+
+
+@app.post("/api/workspace/projects")
+async def create_workspace_project(
+    payload: WorkspaceCreateRequest,
+    owner: Optional[str] = None,
+    authorization: Optional[str] = Header(default=None)
+):
+    user = _workspace_owner(authorization, owner)
+    try:
+        return workspace.create_project(
+            user,
+            payload.name,
+            payload.files,
+            payload.entry_point or "main.py",
+            payload.robot_model,
+            payload.template
+        )
+    except workspace.WorkspaceError as e:
+        raise _ws_error(e)
+
+
+@app.get("/api/workspace/projects/{name}")
+async def get_workspace_project(name: str, owner: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
+    user = _workspace_owner(authorization, owner)
+    try:
+        return workspace.load_project(user, name)
+    except workspace.WorkspaceError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.put("/api/workspace/projects/{name}")
+async def save_workspace_project(
+    name: str,
+    payload: WorkspaceSaveRequest,
+    owner: Optional[str] = None,
+    authorization: Optional[str] = Header(default=None)
+):
+    user = _workspace_owner(authorization, owner)
+    try:
+        return workspace.save_project(user, name, payload.files, payload.entry_point, payload.robot_model)
+    except workspace.WorkspaceError as e:
+        raise _ws_error(e)
+
+
+@app.delete("/api/workspace/projects/{name}")
+async def delete_workspace_project(name: str, owner: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
+    user = _workspace_owner(authorization, owner)
+    try:
+        if not workspace.delete_project(user, name):
+            raise HTTPException(status_code=404, detail="Project not found.")
+    except workspace.WorkspaceError as e:
+        raise _ws_error(e)
+    return {"status": "deleted", "name": name}
+
+
+@app.post("/api/workspace/projects/{name}/rename")
+async def rename_workspace_project(
+    name: str,
+    payload: WorkspaceRenameRequest,
+    owner: Optional[str] = None,
+    authorization: Optional[str] = Header(default=None)
+):
+    user = _workspace_owner(authorization, owner)
+    try:
+        return workspace.rename_project(user, name, payload.new_name)
+    except workspace.WorkspaceError as e:
+        raise _ws_error(e)
+
+
+
 # --- Robot Configuration & Status ---
 
 @app.post("/api/config")
@@ -532,56 +753,77 @@ async def get_config():
 @app.get("/api/robot-status")
 async def get_robot_status(ip: Optional[str] = None, model: Optional[str] = None):
     """
-    Pings the requested or active robot IP and checks connectivity.
-    If ping or port probe fails, robot is NOT ready.
+    Pings robot IPs and checks connectivity concurrently for both arms.
+    Returns status for the target model as well as concurrent status for both UR3 and Niryo.
     """
+    ur_task = check_robot_reachability(config.UR_IP, model="ur")
+    niryo_task = check_robot_reachability(config.NIRYO_IP, model="niryo")
+    (ur_ready, ur_ping, ur_port), (niryo_ready, niryo_ping, niryo_port) = await asyncio.gather(ur_task, niryo_task)
+
     target_model = (model or "").strip().lower()
     if target_model not in ("ur", "niryo"):
-        target_model = None
+        target_model = config.ROBOT_MODEL
 
     if ip:
         target_ip = ip.strip()
         target_model = target_model or ("niryo" if target_ip == config.NIRYO_IP else "ur")
     elif target_model == "niryo":
         target_ip = config.NIRYO_IP
-    elif target_model == "ur":
-        target_ip = config.UR_IP
     else:
-        target_ip = config.ROBOT_IP
-        target_model = config.ROBOT_MODEL
+        target_ip = config.UR_IP
 
-    is_ready, ping_ok, port_ok = await check_robot_reachability(target_ip, model=target_model)
+    is_ready = niryo_ready if target_model == "niryo" else ur_ready
+    ping_ok = niryo_ping if target_model == "niryo" else ur_ping
+    port_ok = niryo_port if target_model == "niryo" else ur_port
 
-    if engine.is_emergency_halted:
-        return {
-            "ip": target_ip,
-            "robot_model": target_model,
-            "is_ready": False,
-            "ping_ok": ping_ok,
-            "port_ok": port_ok,
-            "is_emergency_halted": True,
-            "status_text": "EMERGENCY STOPPED",
-            "message": f"EMERGENCY STOP ACTIVE: {engine.emergency_halt_reason or 'Halted by Supervisor'}"
-        }
+    target_halted = engine.is_emergency_halted(target_model)
 
     return {
         "ip": target_ip,
         "robot_model": target_model,
-        "is_ready": is_ready,
+        "is_ready": is_ready and not target_halted,
         "ping_ok": ping_ok,
         "port_ok": port_ok,
-        "is_emergency_halted": False,
-        "status_text": "READY" if is_ready else "NOT READY",
-        "message": f"Robot ({target_model.upper()}) at {target_ip} is online and ready." if is_ready else f"Robot ({target_model.upper()}) at {target_ip} did not respond to ping. Not ready."
+        "is_emergency_halted": target_halted,
+        "is_executing": engine.is_model_executing(target_model),
+        "status_text": "EMERGENCY STOPPED" if target_halted else ("READY" if is_ready else "NOT READY"),
+        "message": (
+            f"EMERGENCY STOP ACTIVE on {target_model.upper()}" if target_halted
+            else (f"Robot ({target_model.upper()}) at {target_ip} is online and ready." if is_ready else f"Robot ({target_model.upper()}) at {target_ip} did not respond to ping. Not ready.")
+        ),
+        "robots": {
+            "ur": {
+                "model": "ur",
+                "label": "UR3 Arm",
+                "ip": config.UR_IP,
+                "is_ready": ur_ready and not engine.is_emergency_halted("ur"),
+                "ping_ok": ur_ping,
+                "port_ok": ur_port,
+                "is_executing": engine.is_model_executing("ur"),
+                "active_submission_id": engine.active_submission_id("ur"),
+                "is_emergency_halted": engine.is_emergency_halted("ur")
+            },
+            "niryo": {
+                "model": "niryo",
+                "label": "Niryo Ned",
+                "ip": config.NIRYO_IP,
+                "is_ready": niryo_ready and not engine.is_emergency_halted("niryo"),
+                "ping_ok": niryo_ping,
+                "port_ok": niryo_port,
+                "is_executing": engine.is_model_executing("niryo"),
+                "active_submission_id": engine.active_submission_id("niryo"),
+                "is_emergency_halted": engine.is_emergency_halted("niryo")
+            }
+        }
     }
 
 
 @app.post("/api/emergency-reset")
-async def reset_emergency_stop(authorization: Optional[str] = Header(default=None)):
+async def reset_emergency_stop(model: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
     """Allows instructor to clear the emergency halt latch and return robot status to normal."""
     verify_admin_permission(authorization, "can_emergency_stop")
-    engine.reset_emergency()
-    await broadcast_to_admins({"type": "emergency_reset"})
+    engine.reset_emergency(model)
+    await broadcast_to_admins({"type": "emergency_reset", "robot_model": model or "all"})
     return {"status": "ok", "message": "Emergency stop cleared."}
 
 
@@ -589,7 +831,23 @@ async def reset_emergency_stop(authorization: Optional[str] = Header(default=Non
 
 @app.post("/api/check-syntax")
 async def check_syntax(payload: SyntaxCheckRequest):
-    valid, errors = validate_python_code(payload.code)
+    files = payload.files or {}
+    project_modules = {os.path.splitext(f)[0] for f in files.keys() if f.endswith(".py")}
+
+    valid = True
+    errors = []
+
+    if files:
+        for fname, fcontent in files.items():
+            if fname.endswith(".py"):
+                f_valid, f_errors = validate_python_code(fcontent or "", project_modules=project_modules)
+                if not f_valid:
+                    valid = False
+                    for err in f_errors:
+                        errors.append(f"[{fname}] {err}")
+    else:
+        valid, errors = validate_python_code(payload.code or "", project_modules=project_modules)
+
     return {"valid": valid, "errors": errors}
 
 
@@ -597,16 +855,42 @@ async def check_syntax(payload: SyntaxCheckRequest):
 async def simulate_code(payload: SyntaxCheckRequest):
     """
     Simulates code execution in a mock environment and returns trajectory waypoints
-    for smooth 3D browser visualization.
+    for smooth 3D browser visualization. Supports multi-file project simulation.
     """
-    valid, errors = validate_python_code(payload.code)
+    files = payload.files or {}
+    project_modules = {os.path.splitext(f)[0] for f in files.keys() if f.endswith(".py")}
+    entry_point = (payload.entry_point or "main.py").strip()
+
+    valid = True
+    errors = []
+
+    if files:
+        for fname, fcontent in files.items():
+            if fname.endswith(".py"):
+                f_valid, f_errors = validate_python_code(fcontent or "", project_modules=project_modules)
+                if not f_valid:
+                    valid = False
+                    for err in f_errors:
+                        errors.append(f"[{fname}] {err}")
+    else:
+        valid, errors = validate_python_code(payload.code or "", project_modules=project_modules)
+
     if not valid:
         return JSONResponse(
             status_code=422,
-            content={"success": False, "detail": "Safety check failed.", "errors": errors}
+            content={"success": False, "detail": "Safety or syntax check failed.", "errors": errors}
         )
 
-    res = await run_simulation_isolated(payload.code, robot_model=payload.robot_model)
+    code_to_run = payload.code
+    if files and entry_point in files and files[entry_point].strip():
+        code_to_run = files[entry_point]
+
+    res = await run_simulation_isolated(
+        code_to_run,
+        robot_model=payload.robot_model,
+        files=payload.files,
+        entry_point=entry_point
+    )
     return res
 
 
@@ -615,7 +899,7 @@ async def simulate_code(payload: SyntaxCheckRequest):
 @app.post("/api/submit")
 async def submit_code(payload: SubmissionRequest):
     """
-    Submits student code for execution.
+    Submits student code or multi-file project for execution.
     Requires student_name and program_name, and enforces program name uniqueness per student.
     """
     student_name = (payload.student_name or "").strip()
@@ -634,23 +918,47 @@ async def submit_code(payload: SubmissionRequest):
             detail=f"You have already submitted a program named '{program_name}'. Please choose a new or versioned program name."
         )
 
-    valid, errors = validate_python_code(payload.code)
+    files = payload.files or {}
+    project_modules = {os.path.splitext(f)[0] for f in files.keys() if f.endswith(".py")}
+    entry_point = (payload.entry_point or "main.py").strip()
+
+    valid = True
+    errors = []
+    if files:
+        for fname, fcontent in files.items():
+            if fname.endswith(".py"):
+                f_valid, f_errors = validate_python_code(fcontent or "", project_modules=project_modules)
+                if not f_valid:
+                    valid = False
+                    for err in f_errors:
+                        errors.append(f"[{fname}] {err}")
+    else:
+        valid, errors = validate_python_code(payload.code or "", project_modules=project_modules)
+
     if not valid:
         return JSONResponse(
             status_code=422,
             content={"detail": "Safety or syntax check failed.", "errors": errors}
         )
 
+    code_to_save = payload.code
+    if files and entry_point in files and files[entry_point].strip():
+        code_to_save = files[entry_point]
+
     # Determine robot model
+    all_text = code_to_save + " " + " ".join(files.values())
     model = (payload.robot_model or "").strip().lower()
     if model not in ("ur", "niryo"):
-        model = "niryo" if ("pyniryo" in payload.code or "NiryoRobot" in payload.code) else "ur"
+        model = "niryo" if ("pyniryo" in all_text or "NiryoRobot" in all_text) else "ur"
 
     sub_id = await database.create_submission(
         student_name=student_name,
         task_id=program_name,
-        code=payload.code,
-        robot_model=model
+        code=code_to_save,
+        robot_model=model,
+        files=payload.files,
+        entry_point=payload.entry_point or "main.py",
+        project_name=(payload.project_name or None)
     )
 
     # Notify instructor dashboard of new submission
@@ -676,10 +984,14 @@ async def list_submissions(request: Request):
     rows = await database.get_all_submissions()
     payload = {
         "submissions": rows,
-        "is_executing": engine.is_executing,
-        "active_submission_id": engine.current_submission_id
+        "is_executing": engine.is_any_executing(),
+        "is_executing_ur": engine.is_model_executing("ur"),
+        "is_executing_niryo": engine.is_model_executing("niryo"),
+        "active_submission_id": engine.active_submission_id("ur") or engine.active_submission_id("niryo"),
+        "active_submission_ur": engine.active_submission_id("ur"),
+        "active_submission_niryo": engine.active_submission_id("niryo")
     }
-    # ETag lets the 2s dashboard poll revalidate cheaply instead of re-downloading all code/logs
+    # ETag lets the dashboard poll revalidate cheaply instead of re-downloading all code/logs
     import hashlib, json as _json
     body = _json.dumps(payload, separators=(",", ":"), default=str)
     etag = '"' + hashlib.md5(body.encode("utf-8")).hexdigest() + '"'
@@ -746,12 +1058,17 @@ async def get_admin_student_projects(username: str, authorization: Optional[str]
     return {"student": clean_username, "projects": projects}
 
 
-async def launch_submission_execution(sub_id: int, code_str: str, robot_model: Optional[str] = None):
-    engine.reset_emergency()
-    # Ensure config targets the robot specified for this submission
-    if robot_model in ("ur", "niryo"):
-        config.ROBOT_MODEL = robot_model
-        config.ROBOT_IP = config.NIRYO_IP if robot_model == "niryo" else config.UR_IP
+async def launch_submission_execution(
+    sub_id: int,
+    code_str: str,
+    robot_model: Optional[str] = None,
+    files: Optional[Dict[str, str]] = None,
+    entry_point: Optional[str] = "main.py",
+    workspace_owner: Optional[str] = None,
+    workspace_project: Optional[str] = None
+):
+    active_model = robot_model or getattr(config, "ROBOT_MODEL", "ur")
+    engine.reset_emergency(active_model)
 
     async def log_broadcaster(msg: str):
         # Broadcast to any student or instructor listening to this submission
@@ -762,16 +1079,30 @@ async def launch_submission_execution(sub_id: int, code_str: str, robot_model: O
                 except Exception:
                     active_log_sockets[sub_id].discard(ws)
 
+    async def persist_outputs(outputs: Dict[str, str]):
+        if not (workspace_owner and workspace_project):
+            return
+        saved = await asyncio.to_thread(workspace.merge_files, workspace_owner, workspace_project, outputs)
+        if saved:
+            await broadcast_to_admins({
+                "type": "workspace_files_updated",
+                "owner": workspace_owner,
+                "project": workspace_project,
+                "files": list(saved.keys())
+            })
+
     # Launch execution in background task
     async def run_task():
-        active_model = robot_model or getattr(config, "ROBOT_MODEL", "ur")
         await broadcast_to_admins({"type": "execution_started", "id": sub_id, "robot_model": active_model})
         try:
             await engine.execute_submission(
                 submission_id=sub_id,
                 code_str=code_str,
                 log_callback=log_broadcaster,
-                robot_model=active_model
+                robot_model=active_model,
+                files=files,
+                entry_point=entry_point or "main.py",
+                on_outputs=persist_outputs if (workspace_owner and workspace_project) else None
             )
         except Exception as e:
             print(f"[Execution Task Exception] sub #{sub_id}: {e}")
@@ -789,46 +1120,69 @@ async def approve_submission(sub_id: int, authorization: Optional[str] = Header(
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
 
-    if engine.is_executing:
-        raise HTTPException(status_code=409, detail="A script is already running on the robot.")
+    sub_files = sub.get("files")
+    if isinstance(sub_files, str) and sub_files.strip():
+        try:
+            sub_files = json.loads(sub_files)
+        except Exception:
+            sub_files = None
 
-    sub_model = sub.get("robot_model") or ("niryo" if ("pyniryo" in sub["code"] or "NiryoRobot" in sub["code"]) else "ur")
+    all_code = sub.get("code", "") + " " + " ".join((sub_files or {}).values())
+    sub_model = sub.get("robot_model") or ("niryo" if ("pyniryo" in all_code or "NiryoRobot" in all_code) else "ur")
+    model_name = "Niryo Ned" if sub_model == "niryo" else "UR3"
+
+    if engine.is_model_executing(sub_model):
+        raise HTTPException(status_code=409, detail=f"A script is already running on {model_name}.")
+
     target_ip = config.NIRYO_IP if sub_model == "niryo" else config.UR_IP
-
     is_ready, _, _ = await check_robot_reachability(target_ip, model=sub_model, use_cache=False)
     if not is_ready:
-        model_name = "Niryo Ned" if sub_model == "niryo" else "UR3"
         raise HTTPException(
             status_code=503,
             detail=f"{model_name} at {target_ip} is offline (no ping). Cannot execute."
         )
 
-    # Update active robot model and config so top selector and supervisor reflect it!
-    config.ROBOT_MODEL = sub_model
-    config.ROBOT_IP = target_ip
-    await broadcast_to_admins({
-        "type": "config_updated",
-        "robot_model": sub_model,
-        "robot_ip": target_ip,
-        "ur_ip": config.UR_IP,
-        "niryo_ip": config.NIRYO_IP
-    })
+    ws_project = sub.get("project_name")
+    ws_owner = sub.get("student_name") if ws_project else None
+    if ws_owner and ws_owner.startswith("Admin ("):
+        ws_owner = None
 
-    await launch_submission_execution(sub_id, sub["code"], robot_model=sub_model)
+    await launch_submission_execution(
+        sub_id,
+        sub["code"],
+        robot_model=sub_model,
+        files=sub_files,
+        entry_point=sub.get("entry_point") or "main.py",
+        workspace_owner=ws_owner,
+        workspace_project=ws_project
+    )
     return {"status": "started", "message": f"Execution launched for submission #{sub_id} on {sub_model.upper()}"}
 
 
 @app.post("/api/admin/send-code")
 async def admin_send_code(payload: AdminSendCodeRequest, authorization: Optional[str] = Header(default=None)):
     """
-    Allows the instructor to directly send/execute custom code from the admin dashboard.
+    Allows the instructor to directly send/execute custom code or multi-file project from the admin dashboard.
     """
     if payload.execute_now:
-        verify_admin_permission(authorization, "can_direct_send")
+        admin_session = verify_admin_permission(authorization, "can_direct_send")
     else:
-        verify_any_admin(authorization)
+        admin_session = verify_any_admin(authorization)
     prog_name = (payload.program_name or "Admin Routine").strip()
-    valid, errors = validate_python_code(payload.code)
+
+    files = payload.files or {}
+    project_modules = {os.path.splitext(f)[0] for f in files.keys() if f.endswith(".py")}
+
+    valid, errors = validate_python_code(payload.code, project_modules=project_modules)
+    if files:
+        for fname, fcontent in files.items():
+            if fname.endswith(".py"):
+                f_valid, f_errors = validate_python_code(fcontent, project_modules=project_modules)
+                if not f_valid:
+                    valid = False
+                    for err in f_errors:
+                        errors.append(f"[{fname}] {err}")
+
     if not valid:
         return JSONResponse(
             status_code=422,
@@ -836,42 +1190,46 @@ async def admin_send_code(payload: AdminSendCodeRequest, authorization: Optional
         )
 
     # Detect robot model from code
-    detected_model = "niryo" if ("pyniryo" in payload.code or "NiryoRobot" in payload.code) else "ur"
+    all_text = payload.code + " " + " ".join(files.values())
+    detected_model = "niryo" if ("pyniryo" in all_text or "NiryoRobot" in all_text) else "ur"
+    if (payload.robot_model or "").strip().lower() in ("ur", "niryo") and not ("pyniryo" in all_text or "NiryoRobot" in all_text or "rtde" in all_text):
+        detected_model = payload.robot_model.strip().lower()
     target_ip = config.NIRYO_IP if detected_model == "niryo" else config.UR_IP
+    ws_project = (payload.project_name or "").strip() or None
 
     sub_id = await database.create_submission(
         student_name=f"Admin ({prog_name})",
         task_id="Admin",
         code=payload.code,
-        robot_model=detected_model
+        robot_model=detected_model,
+        files=payload.files,
+        entry_point=payload.entry_point or "main.py",
+        project_name=ws_project
     )
 
     if payload.execute_now:
+        model_name = "Niryo Ned" if detected_model == "niryo" else "UR3"
         is_ready, _, _ = await check_robot_reachability(target_ip, model=detected_model, use_cache=False)
         if not is_ready:
-            model_name = "Niryo Ned" if detected_model == "niryo" else "UR3"
             raise HTTPException(
                 status_code=503,
                 detail=f"{model_name} at {target_ip} is offline. Script added to queue as #{sub_id} but not started."
             )
-        if engine.is_executing:
+        if engine.is_model_executing(detected_model):
             raise HTTPException(
                 status_code=409,
-                detail=f"Another script is currently executing. Added as #{sub_id}."
+                detail=f"Another script is currently executing on {model_name}. Added as #{sub_id}."
             )
 
-        # Update active robot model and config
-        config.ROBOT_MODEL = detected_model
-        config.ROBOT_IP = target_ip
-        await broadcast_to_admins({
-            "type": "config_updated",
-            "robot_model": detected_model,
-            "robot_ip": target_ip,
-            "ur_ip": config.UR_IP,
-            "niryo_ip": config.NIRYO_IP
-        })
-
-        await launch_submission_execution(sub_id, payload.code, robot_model=detected_model)
+        await launch_submission_execution(
+            sub_id,
+            payload.code,
+            robot_model=detected_model,
+            files=payload.files,
+            entry_point=payload.entry_point or "main.py",
+            workspace_owner=admin_session["username"] if ws_project else None,
+            workspace_project=ws_project
+        )
         return {
             "status": "started",
             "submission_id": sub_id,
@@ -897,18 +1255,40 @@ async def update_submission_endpoint(sub_id: int, payload: UpdateSubmissionReque
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
 
+    files = payload.files or {}
+    project_modules = {os.path.splitext(f)[0] for f in files.keys() if f.endswith(".py")}
+
     if payload.code is not None:
-        valid, errors = validate_python_code(payload.code)
+        valid, errors = validate_python_code(payload.code, project_modules=project_modules)
         if not valid:
             return JSONResponse(
                 status_code=422,
                 content={"detail": "Syntax check failed on edited code.", "errors": errors}
             )
 
+    if files:
+        for fname, fcontent in files.items():
+            if fname.endswith(".py"):
+                f_valid, f_errors = validate_python_code(fcontent, project_modules=project_modules)
+                if not f_valid:
+                    return JSONResponse(
+                        status_code=422,
+                        content={"detail": f"Syntax check failed in [{fname}].", "errors": f_errors}
+                    )
+
+    detected_model = payload.robot_model
+    if not detected_model:
+        all_text = (payload.code or "") + " " + " ".join(files.values())
+        if payload.code is not None or files:
+            detected_model = "niryo" if ("pyniryo" in all_text or "NiryoRobot" in all_text) else "ur"
+
     await database.update_submission_code(
         sub_id=sub_id,
         code=payload.code,
-        student_name=payload.program_name
+        program_name=payload.program_name,
+        robot_model=detected_model,
+        files=payload.files,
+        entry_point=payload.entry_point
     )
     await broadcast_to_admins({"type": "submission_updated", "id": sub_id})
     return {"status": "updated", "id": sub_id}
@@ -948,10 +1328,13 @@ async def clear_all_submissions_endpoint(authorization: Optional[str] = Header(d
 
 
 @app.post("/api/abort")
-async def abort_robot(authorization: Optional[str] = Header(default=None)):
+async def abort_robot(model: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
     verify_admin_permission(authorization, "can_emergency_stop")
-    await engine.abort_current("Instructor pressed Emergency Abort button.")
-    await broadcast_to_admins({"type": "aborted"})
+    if model in ("ur", "niryo"):
+        await engine.abort_model(model, "Instructor pressed Emergency Abort button.")
+    else:
+        await engine.abort_all("Instructor pressed Emergency Abort button.")
+    await broadcast_to_admins({"type": "aborted", "robot_model": model or "all"})
     return {"status": "aborted", "message": "Emergency Stop sent to execution engine and robot."}
 
 

@@ -77,8 +77,11 @@ class RobotArm:
 
         if online:
             try:
-                import rtde_control
-                import rtde_receive
+                try:
+                    import rtde_control
+                    import rtde_receive
+                except ModuleNotFoundError:
+                    from ur_rtde import rtde_control, rtde_receive
                 self.rtde_r = rtde_receive.RTDEReceiveInterface(self.ip)
                 self.rtde_c = rtde_control.RTDEControlInterface(self.ip)
                 print(f"[RobotArm] Successfully connected to PHYSICAL robot at {self.ip}.", flush=True)

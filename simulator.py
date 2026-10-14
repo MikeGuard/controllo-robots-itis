@@ -5,11 +5,18 @@ Damped Least Squares Inverse Kinematics so moveJ and moveL produce
 physically accurate, linear, and orientation-consistent trajectories.
 """
 
+import os
+import tempfile
+import shutil
 import math
 import sys
+import time
 import types
 from typing import Any, Dict, List, Tuple, Optional
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sandbox_io
 
 # Standard UR3 DH parameters [a, d, alpha]
 DH_UR3 = [
@@ -624,9 +631,15 @@ class MockNiryoRobot:
         return lambda *a, **kw: True
 
 
-def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[str, Any]:
+def simulate_script(
+    code_str: str,
+    robot_model: Optional[str] = None,
+    files: Optional[Dict[str, str]] = None,
+    entry_point: Optional[str] = "main.py"
+) -> Dict[str, Any]:
     """
     Simulates Python code in an isolated scope with accurate UR3 & Niryo mock kinematics.
+    Supports multi-file projects where entry_point imports other project modules.
     Returns generated trajectory waypoints and captured output logs.
     Guarantees no physical robot I/O or network connections are triggered during simulation.
     """
@@ -740,6 +753,17 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
     old_wrap = sys.modules.get("ur_wrapper")
     old_niryo = sys.modules.get("pyniryo")
 
+    old_time = sys.modules.get("time")
+    mock_time_mod = types.ModuleType("time")
+    for attr in dir(time):
+        if not attr.startswith("__"):
+            try:
+                setattr(mock_time_mod, attr, getattr(time, attr))
+            except Exception:
+                pass
+    mock_time_mod.sleep = safe_mock_sleep
+    sys.modules["time"] = mock_time_mod
+
     sys.modules["rtde_control"] = mock_ctrl_mod
     sys.modules["rtde_receive"] = mock_recv_mod
     sys.modules["rtde_io"] = mock_io_mod
@@ -755,7 +779,7 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
         "np": np,
         "numpy": np,
         "math": math,
-        "time": type("MockTime", (), {"sleep": safe_mock_sleep}),
+        "time": mock_time_mod,
         "RTDEControl": lambda *a, **kw: controller,
         "RTDEControlInterface": lambda *a, **kw: controller,
         "RTDEReceive": lambda *a, **kw: receiver,
@@ -771,33 +795,88 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
         "printf": mock_printf,
     }
 
-    # Detect robot model from code content or explicit model hint
-    if "pyniryo" in code_str or "NiryoRobot" in code_str:
+    temp_sim_dir = None
+    output_files: Dict[str, str] = {}
+    try:
+        temp_sim_dir = tempfile.mkdtemp(prefix="sim_proj_")
+        for fname, fcontent in (files or {}).items():
+            clean_name = os.path.basename(fname.strip())
+            if clean_name:
+                mod_name = os.path.splitext(clean_name)[0]
+                sys.modules.pop(mod_name, None)
+                fpath = os.path.join(temp_sim_dir, clean_name)
+                with open(fpath, "w", encoding="utf-8") as f:
+                    f.write(fcontent or "")
+        if temp_sim_dir not in sys.path:
+            sys.path.insert(0, temp_sim_dir)
+        if files and isinstance(files, dict) and len(files) > 0:
+            entry_file = (entry_point or "main.py").strip()
+            if entry_file in files and files[entry_file].strip():
+                code_str = files[entry_file]
+        # Confine open() of student code to the sandbox directory (worker process only)
+        sandbox_io.install(temp_sim_dir, student_filenames=("<string>",))
+        sim_builtins["open"] = builtins.open
+    except Exception as e:
+        captured_logs.append(f"[SIMULATOR WARNING] Could not mount project files: {e}")
+
+    # Detect robot model from code content, project files, or explicit model hint
+    all_code_text = code_str + " " + " ".join((files or {}).values())
+    if "pyniryo" in all_code_text or "NiryoRobot" in all_code_text:
         detected_model = "niryo"
-    elif "rtde_control" in code_str or "rtde_receive" in code_str or "rtde_io" in code_str or "RTDEControl" in code_str or "RTDEIO" in code_str or "ur_wrapper" in code_str:
+    elif "rtde_control" in all_code_text or "rtde_receive" in all_code_text or "rtde_io" in all_code_text or "RTDEControl" in all_code_text or "RTDEIO" in all_code_text or "ur_wrapper" in all_code_text:
         detected_model = "ur"
     elif robot_model in ("ur", "niryo"):
         detected_model = robot_model
     else:
         detected_model = "ur"
 
+    def _sanitize_floats(obj):
+        if isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return 0.0
+            return round(obj, 6)
+        elif isinstance(obj, list):
+            return [_sanitize_floats(x) for x in obj]
+        elif isinstance(obj, dict):
+            return {k: _sanitize_floats(v) for k, v in obj.items()}
+        return obj
+
     try:
         exec(code_str, sim_globals)
+        if temp_sim_dir:
+            output_files = sandbox_io.collect_outputs(temp_sim_dir, files or {})
         return {
             "success": True,
             "robot_model": detected_model,
-            "waypoints": waypoints,
-            "logs": captured_logs
+            "waypoints": _sanitize_floats(waypoints),
+            "logs": captured_logs,
+            "output_files": output_files
         }
     except Exception as e:
+        if temp_sim_dir:
+            output_files = sandbox_io.collect_outputs(temp_sim_dir, files or {})
         return {
             "success": False,
             "robot_model": detected_model,
             "error": str(e),
-            "waypoints": waypoints,
-            "logs": captured_logs
+            "waypoints": _sanitize_floats(waypoints),
+            "logs": captured_logs,
+            "output_files": output_files
         }
     finally:
+        # Clean up temporary mounted project directory
+        if temp_sim_dir:
+            try:
+                if temp_sim_dir in sys.path:
+                    sys.path.remove(temp_sim_dir)
+                if files:
+                    for fname in files.keys():
+                        mod_name = os.path.splitext(os.path.basename(fname.strip()))[0]
+                        sys.modules.pop(mod_name, None)
+                shutil.rmtree(temp_sim_dir, ignore_errors=True)
+            except Exception:
+                pass
+
         # Restore socket
         if old_socket_cls:
             socket.socket = old_socket_cls
@@ -833,13 +912,23 @@ def simulate_script(code_str: str, robot_model: Optional[str] = None) -> Dict[st
             sys.modules["pyniryo"] = old_niryo
         else:
             sys.modules.pop("pyniryo", None)
+        if old_time is not None:
+            sys.modules["time"] = old_time
+        else:
+            sys.modules.pop("time", None)
 
 
-async def run_simulation_isolated(code_str: str, robot_model: Optional[str] = None, timeout_sec: float = 8.0) -> Dict[str, Any]:
+async def run_simulation_isolated(
+    code_str: str,
+    robot_model: Optional[str] = None,
+    files: Optional[Dict[str, str]] = None,
+    entry_point: Optional[str] = "main.py"
+) -> Dict[str, Any]:
     """
     Runs the 3D kinematics simulation completely isolated in a separate Python subprocess.
     Ensures 100% responsiveness of the main FastAPI server, preventing any event-loop or GIL blockage,
     and guarantees zero mutation/pollution of core server sys.modules or socket handlers.
+    Includes a 15-second safety timeout to prevent infinite loops from hanging the connection.
     """
     import asyncio
     import json
@@ -848,7 +937,12 @@ async def run_simulation_isolated(code_str: str, robot_model: Optional[str] = No
 
     sim_script = os.path.abspath(__file__)
     work_dir = os.path.dirname(sim_script)
-    payload_json = json.dumps({"code": code_str, "robot_model": robot_model})
+    payload_json = json.dumps({
+        "code": code_str,
+        "robot_model": robot_model,
+        "files": files,
+        "entry_point": entry_point or "main.py"
+    })
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -862,7 +956,7 @@ async def run_simulation_isolated(code_str: str, robot_model: Optional[str] = No
         try:
             stdout_data, stderr_data = await asyncio.wait_for(
                 proc.communicate(input=payload_json.encode("utf-8")),
-                timeout=timeout_sec
+                timeout=15.0
             )
         except asyncio.TimeoutError:
             try:
@@ -873,7 +967,7 @@ async def run_simulation_isolated(code_str: str, robot_model: Optional[str] = No
             return {
                 "success": False,
                 "robot_model": robot_model or "ur",
-                "error": f"Simulation timed out (> {timeout_sec}s). Please verify there are no infinite while loops or excessive delays in your script.",
+                "error": "Simulation execution timed out (15-second limit exceeded). Please verify your code does not contain infinite loops (e.g. while True).",
                 "waypoints": [],
                 "logs": []
             }
@@ -928,7 +1022,9 @@ if __name__ == "__main__":
         data = json.loads(raw_in)
         code_input = data.get("code", "")
         model_input = data.get("robot_model", None)
-        res = simulate_script(code_input, robot_model=model_input)
+        files_input = data.get("files", None)
+        entry_input = data.get("entry_point", "main.py")
+        res = simulate_script(code_input, robot_model=model_input, files=files_input, entry_point=entry_input)
         print(json.dumps(res))
     except Exception as err:
         print(json.dumps({
