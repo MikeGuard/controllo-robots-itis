@@ -10,6 +10,7 @@
     <!-- Monaco Editor CDN -->
     <link rel="stylesheet" data-name="vs/editor/editor.main"
         href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
     <!-- Three.js and OrbitControls for 3D Visualizer -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -60,7 +61,7 @@
     </div>
 
     <!-- Top Navigation / Dual-Robot Supervisor Bar -->
-    <header class="bg-slate-900 border-b border-slate-800 px-6 py-3 flex flex-wrap items-center justify-between gap-4 shadow-2xl sticky top-0 z-40">
+    <header id="adminHeader" class="hidden bg-slate-900 border-b border-slate-800 px-6 py-3 flex flex-wrap items-center justify-between gap-4 shadow-2xl sticky top-0 z-40">
         <!-- Brand & Admin Identity -->
         <div class="flex items-center space-x-3">
             <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-600 flex items-center justify-center font-black text-white shadow-lg text-sm tracking-wider">
@@ -72,8 +73,8 @@
                     <span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Dual-Arm</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs text-slate-400">
-                    <span>Admin: <strong id="adminUsernameDisplay" class="text-slate-200 font-mono">mike</strong></span>
-                    <span id="adminRoleBadge" class="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">Superadmin</span>
+                    <span>Admin: <strong id="adminUsernameDisplay" class="text-slate-200 font-mono">—</strong></span>
+                    <span id="adminRoleBadge" class="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-slate-800 text-slate-400 border border-slate-700">LOCKED</span>
                 </div>
             </div>
         </div>
@@ -117,6 +118,13 @@
 
         <!-- Right: Essential Action Controls -->
         <div class="flex items-center flex-wrap gap-2.5">
+            <!-- Student Sandbox Switch -->
+            <a href="/"
+                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 hover:text-sky-200 text-xs font-semibold rounded-lg border border-slate-700 shadow transition flex items-center space-x-1.5"
+                title="Switch to Student Sandbox View">
+                <span>🎓 Student Sandbox</span>
+            </a>
+
             <!-- Documentation -->
             <a id="adminDocsLink" href="https://sdurobotics.gitlab.io/ur_rtde" target="_blank" rel="noopener noreferrer"
                 class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-lg border border-slate-700 transition flex items-center space-x-1"
@@ -161,371 +169,545 @@
         </div>
     </header>
 
-    <!-- Admin Workspace Tabs: Edit Code | Simulate | Run -->
-    <nav class="px-5 py-2.5 bg-slate-900/95 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3" aria-label="Admin workspace sections">
-        <div class="flex items-center space-x-2">
-            <button id="adminTabCode" onclick="switchAdminTab('code')"
-                class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
-                <span>💻</span><span>Code Studio</span>
-                <span id="adminTabFilesBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-300">1 file</span>
-            </button>
-            <button id="adminTabSim" onclick="switchAdminTab('sim')"
-                class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
-                <span>🎮</span><span>Simulate</span>
-                <span id="adminTabSimBadge" class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-400">IDLE</span>
-            </button>
-            <button id="adminTabRun" onclick="switchAdminTab('run')"
-                class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
-                <span>🚀</span><span>Run &amp; Queue</span>
-                <span id="adminTabRunBadge" class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-400">0</span>
-            </button>
-        </div>
-        <div id="adminTabHint" class="text-[11px] text-slate-500 hidden md:block"></div>
-    </nav>
+    <!-- Authenticated App Container (Hidden until unlocked with password) -->
+    <div id="adminAppContainer" class="hidden flex-1 min-h-0 flex flex-col">
 
-    <main class="flex-1 min-h-0 flex flex-col">
+        <!-- Admin Workspace Tabs: Projects & Queue | Code Studio | Simulate | Run & Telemetry -->
+        <nav class="px-5 py-2.5 bg-slate-900/95 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 flex-shrink-0" aria-label="Admin workspace sections">
+            <div class="flex items-center space-x-2">
+                <button id="adminTabProjects" onclick="switchAdminTab('projects')"
+                    class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30">
+                    <span>📁</span><span>Projects &amp; Queue</span>
+                    <span id="adminTabProjectsBadge" class="px-2 py-0.5 rounded-full text-[10px] bg-indigo-500/30 text-indigo-200">0</span>
+                </button>
+                <button id="adminTabCode" onclick="switchAdminTab('code')"
+                    class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
+                    <span>💻</span><span>Code Studio</span>
+                    <span id="adminTabFilesBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-300">1 file</span>
+                </button>
+                <button id="adminTabSim" onclick="switchAdminTab('sim')"
+                    class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
+                    <span>🎮</span><span>Simulate</span>
+                    <span id="adminTabSimBadge" class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-400">IDLE</span>
+                </button>
+                <button id="adminTabRun" onclick="switchAdminTab('run')"
+                    class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
+                    <span>🚀</span><span>Run &amp; Telemetry</span>
+                    <span id="adminTabRunBadge" class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-400">IDLE</span>
+                </button>
+            </div>
+            <div id="adminTabHint" class="text-[11px] text-slate-500 hidden md:flex items-center space-x-3">
+                <span id="quickActiveStatusText" class="text-slate-400 font-mono">System Ready</span>
+            </div>
+        </nav>
 
-        <!-- ===================== TAB 1: CODE STUDIO ===================== -->
-        <section id="adminViewCode" class="hidden flex-1 p-3 sm:p-4 min-h-0" aria-label="Code Studio">
-            <div class="flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-2xl overflow-hidden" style="height: calc(100vh - 190px); min-height: 540px;">
+        <main class="flex-1 min-h-0 flex flex-col">
 
-                <!-- Project + Run Toolbar -->
-                <div class="px-4 py-2.5 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
-                    <div class="flex items-center flex-wrap gap-2.5">
-                        <label for="studioProjectSelect" class="text-xs font-bold text-slate-400">📁 Project</label>
-                        <select id="studioProjectSelect" onchange="studioSwitchProject(this.value)"
-                            class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono max-w-[200px]"></select>
-                        <button onclick="studioNewProject()" title="Create a new project folder"
-                            class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition">➕ New</button>
-                        <button onclick="studioDeleteProject()" title="Delete this project folder"
-                            class="px-2 py-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 text-xs rounded-lg border border-slate-700 transition">🗑️</button>
-                        <span class="text-slate-700">|</span>
-                        <label for="creatorProgName" class="text-xs font-semibold text-slate-400">Name</label>
-                        <input id="creatorProgName" type="text" placeholder="e.g., Admin Routine" value="Admin Routine"
-                            class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium w-40 transition">
-                        <label for="creatorModelSelect" class="text-xs font-semibold text-slate-400">Target</label>
-                        <select id="creatorModelSelect" onchange="onStudioModelChange()"
-                            class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition font-medium">
-                            <option value="ur">UR3 Arm</option>
-                            <option value="niryo">Niryo Ned</option>
-                        </select>
-                        <span id="studioSaveToast" class="text-xs text-emerald-400 font-medium opacity-0 transition-opacity duration-300 whitespace-nowrap">✓ Saved</span>
+            <!-- ===================== VIEW 1: FULL SCREEN TECHNICAL PROJECTS TABLE ===================== -->
+            <section id="adminViewProjects" class="flex-1 p-3 sm:p-5 min-h-0 flex flex-col space-y-3" aria-label="Projects and Execution Queue">
+                <!-- Top Technical Control & Filter Bar -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-lg flex-shrink-0">
+                    <div class="flex items-center flex-wrap gap-2.5 flex-1 min-w-[280px]">
+                        <div class="relative flex-1 min-w-[200px] max-w-md">
+                            <span class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-500 text-xs">🔍</span>
+                            <input id="queueSearchInput" type="text" placeholder="Search by student, project name, task or code..."
+                                oninput="filterSubmissionsTable()"
+                                class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono">
+                        </div>
+
+                        <!-- Target Model Filter -->
+                        <div class="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-xs">
+                            <button id="filterModelAll" onclick="setSubmissionsModelFilter('all')" class="px-2.5 py-1 rounded font-bold bg-indigo-600 text-white transition">All Models</button>
+                            <button id="filterModelUR" onclick="setSubmissionsModelFilter('ur')" class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition">UR3</button>
+                            <button id="filterModelNiryo" onclick="setSubmissionsModelFilter('niryo')" class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition">Niryo</button>
+                        </div>
+
+                        <!-- Status Filter -->
+                        <div class="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-xs">
+                            <button id="filterStatusAll" onclick="setSubmissionsStatusFilter('all')" class="px-2.5 py-1 rounded font-bold bg-slate-800 text-white transition">All Status</button>
+                            <button id="filterStatusPending" onclick="setSubmissionsStatusFilter('pending')" class="px-2.5 py-1 rounded text-amber-400 hover:bg-slate-850 transition">Pending</button>
+                            <button id="filterStatusRunning" onclick="setSubmissionsStatusFilter('running')" class="px-2.5 py-1 rounded text-sky-400 hover:bg-slate-850 transition">Running</button>
+                            <button id="filterStatusCompleted" onclick="setSubmissionsStatusFilter('completed')" class="px-2.5 py-1 rounded text-emerald-400 hover:bg-slate-850 transition">Completed</button>
+                        </div>
                     </div>
 
+                    <!-- Stats & Actions -->
                     <div class="flex items-center flex-wrap gap-2">
-                        <div class="relative inline-block text-left">
-                            <button id="btnCreatorTemplates" onclick="toggleCreatorTemplatesMenu(event)"
-                                class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
-                                <span>📋 Templates ▾</span>
-                            </button>
-                            <div id="creatorTemplatesDropdown"
-                                class="hidden absolute right-0 mt-1 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
-                                <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-indigo-400 uppercase">UR Arm Presets (RTDE)</div>
-                                <div class="py-1 text-xs">
-                                    <button onclick="loadCreatorTemplate('default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">📄 Default UR_RTDE Script</button>
-                                    <button onclick="loadCreatorTemplate('cartesian')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">1. Cartesian Probe (moveJ + moveL)</button>
-                                    <button onclick="loadCreatorTemplate('square')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">2. Square Contour Path</button>
-                                    <button onclick="loadCreatorTemplate('joint')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">3. Joint Articulation (moveJ)</button>
-                                    <button onclick="loadCreatorTemplate('gripper')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">4. Gripper / Digital Output</button>
-                                </div>
-                                <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-cyan-400 uppercase">Niryo One Presets (pyniryo)</div>
-                                <div class="py-1 text-xs">
-                                    <button onclick="loadCreatorTemplate('niryo_default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">🤖 Default Niryo Routine</button>
-                                    <button onclick="loadCreatorTemplate('niryo_pick')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">1. Niryo Pick &amp; Place</button>
-                                    <button onclick="loadCreatorTemplate('niryo_joint')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">2. Niryo Joint Articulation</button>
-                                    <button onclick="loadCreatorTemplate('niryo_gripper')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">3. Niryo Gripper Tool Test</button>
-                                </div>
-                            </div>
-                        </div>
-                        <button onclick="studioSaveNow()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition">💾 Save</button>
-                        <button id="btnStudioCheck" onclick="checkCreatorSyntax()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition">🔍 Check Syntax</button>
-                        <button id="btnSimulateCreator" onclick="simulateCreatorCode()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition">🎮 Simulate</button>
-                        <button onclick="sendCreatorCode(false)" title="Add to execution queue as pending"
-                            class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 text-xs font-bold rounded-lg border border-sky-500/30 transition">📥 Add to Queue</button>
-                        <button onclick="sendCreatorCode(true)" title="Send and immediately run on the physical robot"
-                            class="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold rounded-lg shadow-lg shadow-emerald-600/30 transition">🚀 Execute Now</button>
-                    </div>
-                </div>
-
-                <!-- File tabs -->
-                <div class="px-2 py-1 bg-slate-850/95 flex items-center justify-between border-b border-slate-800 text-xs text-slate-400 select-none flex-shrink-0">
-                    <div class="flex items-center space-x-1.5 overflow-x-auto py-0.5 flex-1 min-w-0">
-                        <button onclick="studioToggleExplorer()" title="Toggle project file explorer"
-                            class="px-2.5 py-1 rounded text-xs font-semibold transition flex items-center space-x-1.5 bg-slate-800 text-sky-400 hover:bg-slate-700 mr-1 border border-slate-700/80">
-                            <span>📁</span><span class="font-mono text-[11px]">Explorer</span>
-                        </button>
-                        <div id="studioFileTabs" class="flex items-center space-x-1 overflow-x-auto"></div>
-                        <button onclick="studioNewFile()" title="Create new file"
-                            class="px-2 py-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded text-xs font-bold transition">+</button>
-                    </div>
-                    <span id="studioActiveIndicator" class="font-mono text-[11px] text-slate-400 hidden md:inline pl-2">main.py (Python)</span>
-                </div>
-
-                <!-- Explorer + Editor -->
-                <div class="flex flex-1 min-h-0 relative overflow-hidden bg-slate-950">
-                    <div id="studioExplorer" class="w-60 flex-shrink-0 bg-slate-950 border-r border-slate-800 flex flex-col select-none">
-                        <div class="px-3 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
-                            <span class="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 font-mono">Project Files</span>
-                            <div class="flex items-center space-x-1">
-                                <button onclick="studioNewFile()" title="New file" class="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">➕</button>
-                            </div>
-                        </div>
-                        <div class="px-3 py-1.5 bg-slate-900/50 text-[11px] font-semibold text-slate-300 flex items-center space-x-1.5 border-b border-slate-800/60">
-                            <span>📂</span><span id="studioFolderName" class="truncate font-mono">admin_project/</span>
-                        </div>
-                        <div id="studioFilesList" class="flex-1 overflow-y-auto p-1.5 space-y-0.5"></div>
-                        <div class="p-2 border-t border-slate-800/80 bg-slate-900/60 text-[10px] text-slate-400 flex items-center justify-between">
-                            <span id="studioFooterStats">1 file • Entry: main.py</span>
-                            <label title="Import file into project" class="cursor-pointer text-blue-400 hover:underline font-semibold">
-                                Import
-                                <input type="file" accept=".py,.json,.txt,.csv,.md" class="hidden" onchange="studioImportFile(event)">
-                            </label>
-                        </div>
-                    </div>
-                    <div id="studioEditorContainer" class="flex-1 min-w-0 h-full"></div>
-                </div>
-            </div>
-        </section>
-
-        <!-- ===================== TAB 2: SIMULATE ===================== -->
-        <section id="adminViewSim" class="hidden flex-1 p-3 sm:p-5 min-h-0 space-y-4" aria-label="3D Simulation">
-            <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 shadow-lg">
-                <div class="flex items-center space-x-2 min-w-0">
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Simulation Source</span>
-                    <span id="simSourceLabel" class="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-800 text-sky-300 border border-slate-700 truncate">No program simulated yet</span>
-                </div>
-                <div class="flex items-center flex-wrap gap-2">
-                    <button onclick="simulateStudioProject()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition">▶ Simulate Studio Project</button>
-                    <button id="btnSimulateAdmin" onclick="simulateSelected()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold rounded-lg border border-sky-500/30 transition">▶ Simulate Selected Queue Item</button>
-                    <button onclick="clearSimTerminal()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition">Clear Output</button>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 xl:grid-cols-12 gap-4">
-
-                <div class="xl:col-span-8 bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden flex flex-col" style="height: calc(100vh - 270px); min-height: 460px;">
-                    <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
-                        <div class="flex items-center space-x-2">
-                            <span id="visModelDot" class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
-                            <span id="visModelTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">3D Simulator (UR3)</span>
-                        </div>
-                        <div class="flex items-center space-x-1">
-                            <button onclick="adminUr3Vis.setPhotoPose()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-sky-300 rounded transition">Photo</button>
-                            <button onclick="adminUr3Vis.setHomePose()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Home</button>
-                            <button onclick="adminUr3Vis.resetCamera()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Reset</button>
-                        </div>
-                    </div>
-                    <div id="adminUr3CanvasContainer" class="flex-1 relative bg-[#181e29] min-h-0">
-                        <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
-                            Joints: <span class="ur3AngleReadout text-sky-300">0° | -80° | 100° | -110° | -90° | 0°</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden" style="height: calc(100vh - 270px); min-height: 460px;">
-                    <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
-                        <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Simulation Output</span>
-                        <button onclick="clearSimTerminal()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
-                    </div>
-                    <div id="simTerminal" class="flex-1 p-3 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white min-h-0">[SIMULATOR] Ready. Simulate the Code Studio project or a queued program.
-</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- ===================== TAB 3: RUN & QUEUE ===================== -->
-        <section id="adminViewRun" class="hidden flex-1 p-3 sm:p-5 grid grid-cols-1 xl:grid-cols-12 gap-5 min-h-0" aria-label="Execution Queue">
-        <!-- Left: Queue & Programs List (5 cols) -->
-        <div class="xl:col-span-5 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[500px]">
-            <div class="p-3.5 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                    <h2 class="text-xs font-bold uppercase tracking-wider text-slate-200">Execution Queue</h2>
-                    <span id="queueCountBadge" class="px-2 py-0.2 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">0</span>
-                </div>
-                <div class="flex items-center space-x-2">
-                    <button onclick="switchAdminTab('code')"
-                        class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow transition flex items-center space-x-1">
-                        <span>✍️ Open Code Studio</span>
-                    </button>
-                    <button onclick="clearAllSubmissions()"
-                        class="text-xs text-rose-400 hover:text-rose-300 hover:underline">Clear All</button>
-                    <span class="text-slate-700">|</span>
-                    <button onclick="fetchSubmissions()" class="text-xs text-blue-400 hover:underline">Refresh</button>
-                </div>
-            </div>
-
-            <!-- Table of submissions -->
-            <div class="flex-1 overflow-y-auto max-h-[calc(100vh-170px)]">
-                <table class="w-full text-left text-xs">
-                    <thead class="bg-slate-850/90 text-slate-400 uppercase tracking-wider font-semibold sticky top-0 z-10 backdrop-blur">
-                        <tr>
-                            <th class="p-3">#</th>
-                            <th class="p-3">Program Name</th>
-                            <th class="p-3">Student</th>
-                            <th class="p-3">Status</th>
-                            <th class="p-3">Time</th>
-                            <th class="p-3 text-right">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="submissionsTable" class="divide-y divide-slate-800/80 font-normal">
-                        <tr>
-                            <td colspan="6" class="p-4 text-center text-slate-500">Loading queue...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-            <div class="xl:col-span-7 flex flex-col space-y-5">
-            <!-- Code Inspector & Studio Card -->
-            <div class="flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden flex-1">
-
-                <!-- Primary Mode Tabs -->
-                <div class="px-4 py-2.5 bg-slate-850 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
-                    <div class="flex items-center space-x-2">
-                        <span id="btnTabInspect" class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 bg-indigo-600/20 text-indigo-200 border border-indigo-500/30">
-                            <span>📋 Program Inspector &amp; In-Place Editor</span>
+                        <span class="text-xs font-mono text-slate-400 mr-2 flex items-center space-x-2">
+                            <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300">Total: <strong id="statTotalSubs" class="text-white">0</strong></span>
+                            <span class="px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/60">Pending: <strong id="statPendingSubs" class="text-amber-200">0</strong></span>
                         </span>
-                    </div>
-                    <div class="flex items-center space-x-2">
-                        <!-- Fullscreen / Expand Editor Toggle -->
-                        <button id="btnToggleExpand" onclick="toggleEditorExpand()" title="Toggle taller editor view"
-                            class="p-1 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 text-xs transition flex items-center space-x-1">
-                            <span>⛶ Adapt Height</span>
+                        <button onclick="newStudioBlankProject()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
+                            <span>➕ New Routine</span>
+                        </button>
+                        <button onclick="fetchSubmissions()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-bold rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                            <span>🔄 Refresh</span>
+                        </button>
+                        <button onclick="clearAllSubmissions()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
+                            🗑️ Clear All
                         </button>
                     </div>
                 </div>
 
-                <!-- Sub-Header 1: INSPECTOR SUB-HEADER (Active in 'inspect' tab) -->
-                <div id="inspectorSubHeader" class="p-3.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-900/90">
-                    <div class="min-w-0">
-                        <div class="flex items-center space-x-2 flex-wrap">
-                            <h3 id="inspectTitle" class="text-sm font-bold text-slate-100 truncate">No Program Selected</h3>
-                            <span id="inspectArmBadge" class="hidden px-2 py-0.2 rounded text-[10px] font-extrabold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>
-                            <span id="inspectStatusBadge" class="hidden px-2 py-0.2 rounded text-[10px] font-semibold uppercase bg-slate-800 text-slate-300">PENDING</span>
-                        </div>
-                        <p id="inspectSub" class="text-xs text-slate-400 mt-0.5 truncate">Select a program from the execution queue to inspect, edit or run</p>
-                    </div>
-
-                    <!-- Inspector Actions Toolbar -->
-                    <div id="inspectorActions" class="hidden flex items-center flex-wrap gap-2">
-                        <!-- View / Edit In-Place Mode Switcher -->
-                        <div class="inline-flex rounded-lg bg-slate-800 p-0.5 border border-slate-700 text-xs mr-1">
-                            <button id="btnModeView" onclick="setInspectorEditMode(false)"
-                                class="px-2.5 py-1 rounded-md font-bold bg-indigo-600 text-white transition shadow">
-                                👁️ View
-                            </button>
-                            <button id="btnModeEdit" onclick="setInspectorEditMode(true)"
-                                class="px-2.5 py-1 rounded-md font-bold text-slate-400 hover:text-white transition">
-                                ✏️ Edit
-                            </button>
-                        </div>
-
-                        <!-- Standard View Actions -->
-                        <div id="inspectorViewButtons" class="flex items-center space-x-2">
-                            <!-- Copy to Studio -->
-                            <button onclick="copyCurrentToStudio()" title="Clone this program into the Code Studio"
-                                class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
-                                📋 Edit in Studio
-                            </button>
-                            <!-- Save as Example -->
-                            <button onclick="saveCurrentAsExample()" title="Save code to shared example templates"
-                                class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-lg border border-slate-700 transition">
-                                ⭐ Example
-                            </button>
-                            <!-- Reject -->
-                            <button onclick="rejectSelected()"
-                                class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-rose-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
-                                Reject
-                            </button>
-                            <!-- Delete -->
-                            <button onclick="deleteSelected()"
-                                class="p-1.5 px-2 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-lg border border-slate-700 text-xs transition">
-                                🗑️
-                            </button>
-                            <!-- 3D Simulate -->
-                            <button id="btnSimulateAdmin" onclick="simulateSelected()"
-                                class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg transition flex items-center space-x-1">
-                                <span>🎮 Simulate</span>
-                            </button>
-                            <!-- Execute on Robot -->
-                            <button id="btnApprove" onclick="approveSelected()"
-                                class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center space-x-1">
-                                <span>▶ Execute</span>
-                            </button>
-                        </div>
-
-                        <!-- In-Place Edit Actions -->
-                        <div id="inspectorEditButtons" class="hidden flex items-center space-x-2">
-                            <button onclick="cancelInspectorEdits()"
-                                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 transition">
-                                Cancel
-                            </button>
-                            <button onclick="simulateInspectorCode()"
-                                class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition">
-                                🎮 Simulate Edit
-                            </button>
-                            <button onclick="saveInspectorEdits(false)"
-                                class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
-                                <span>💾 Save Changes</span>
-                            </button>
-                            <button onclick="saveInspectorEdits(true)"
-                                class="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center space-x-1">
-                                <span>🚀 Save &amp; Execute</span>
-                            </button>
-                        </div>
+                <!-- Full-Screen Technical Table -->
+                <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl shadow-xl overflow-hidden flex flex-col min-h-0">
+                    <div class="flex-1 overflow-y-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-850/95 text-slate-300 uppercase tracking-wider font-bold text-[11px] sticky top-0 z-10 backdrop-blur border-b border-slate-800">
+                                <tr>
+                                    <th class="p-3.5 w-16 text-center">#ID</th>
+                                    <th class="p-3.5">Project / Routine Name</th>
+                                    <th class="p-3.5">Student / Author</th>
+                                    <th class="p-3.5">Date &amp; Time Sent</th>
+                                    <th class="p-3.5 text-center">Files</th>
+                                    <th class="p-3.5 text-center">LOC</th>
+                                    <th class="p-3.5">Status</th>
+                                    <th class="p-3.5 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="projectsFullTableBody" class="divide-y divide-slate-800/80 font-normal">
+                                <tr>
+                                    <td colspan="8" class="p-8 text-center text-slate-500 font-mono">Loading projects queue...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
+            </section>
 
-                <!-- In-Place Edit Mode Banner -->
-                <div id="inspectorEditBanner" class="hidden px-4 py-2 bg-amber-950/70 border-b border-amber-800/80 text-xs text-amber-200 flex items-center justify-between font-medium">
-                    <div class="flex items-center space-x-2">
-                        <span>✏️</span>
-                        <span><strong>In-Place Edit Active:</strong> You are directly modifying this program. Click <em>"Save Changes"</em> to persist your edits to the queue database.</span>
-                    </div>
-                    <button onclick="cancelInspectorEdits()" class="text-amber-400 hover:text-white underline text-[11px]">Discard</button>
-                </div>
-
-                <!-- Multi-File Inspector Tab Bar -->
-                <div id="inspectorFileTabBar" class="hidden px-2 py-1 bg-slate-950/90 border-b border-slate-800 flex items-center space-x-1.5 overflow-x-auto text-xs"></div>
-
-                <!-- Monaco Code Viewer Container (Adapts height to length of page) -->
-                <div id="inspectEditorContainer" class="flex-1 min-h-[460px] h-[calc(100vh-420px)] transition-all"></div>
-            </div>
-
-                <!-- Execution Live Terminal -->
-                <div class="h-80 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
-                    <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <!-- ===================== VIEW 2: CODE STUDIO (PREVIEW & IN-PLACE EDITOR) ===================== -->
+            <section id="adminViewCode" class="hidden flex-1 p-3 sm:p-4 min-h-0 flex flex-col space-y-2" aria-label="Code Studio">
+                <!-- Preview Context Banner (Identifies currently loaded project) -->
+                <div id="studioPreviewContextBanner" class="px-4 py-2 bg-slate-900 border border-slate-800 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs shadow flex-shrink-0">
+                    <div class="flex items-center space-x-2.5">
+                        <button onclick="switchAdminTab('projects')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 rounded-lg text-xs font-bold transition flex items-center space-x-1 border border-slate-700">
+                            <span>←</span><span>Back to Projects Table</span>
+                        </button>
+                        <span class="text-slate-700">|</span>
                         <div class="flex items-center space-x-2">
-                            <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Terminal</span>
-                            <div class="inline-flex rounded-lg bg-slate-800 p-0.5 border border-slate-700 text-[11px]">
-                                <button id="termTabAll" onclick="setTerminalFilter('all')"
-                                    class="px-2 py-0.5 rounded font-medium bg-blue-600 text-white transition">All</button>
-                                <button id="termTabPrints" onclick="setTerminalFilter('prints')"
-                                    class="px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition flex items-center space-x-1">
-                                    <span>💬 Printf</span>
-                                    <span id="printCountBadge" class="hidden ml-1 px-1 bg-sky-500/20 text-sky-300 rounded text-[9px]">0</span>
+                            <span class="text-slate-400 font-semibold uppercase text-[10px] tracking-wider">Previewing:</span>
+                            <span id="studioLoadedSubBadge" class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">#New - Admin Routine</span>
+                            <span id="studioLoadedAuthorBadge" class="px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-sky-400">Student: Instructor</span>
+                            <span id="studioLoadedModelBadge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-300">UR3</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span id="studioSaveToast" class="text-xs text-emerald-400 font-medium opacity-0 transition-opacity duration-300 whitespace-nowrap">✓ Saved to Database</span>
+                    </div>
+                </div>
+
+                <!-- Editor Workspace Card -->
+                <div class="flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-2xl overflow-hidden flex-1 min-h-0">
+                    <!-- Project + Run Toolbar -->
+                    <div class="px-4 py-2.5 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+                        <div class="flex items-center flex-wrap gap-2.5">
+                            <label for="studioProjectSelect" class="text-xs font-bold text-slate-400">📁 Workspace</label>
+                            <select id="studioProjectSelect" onchange="studioSwitchProject(this.value)"
+                                class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono max-w-[180px]"></select>
+                            <button onclick="studioNewProject()" title="Create a new project folder"
+                                class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition">➕ New</button>
+                            <button onclick="studioDeleteProject()" title="Delete this project folder"
+                                class="px-2 py-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 text-xs rounded-lg border border-slate-700 transition">🗑️</button>
+                            <span class="text-slate-700">|</span>
+                            <label for="creatorProgName" class="text-xs font-semibold text-slate-400">Name</label>
+                            <input id="creatorProgName" type="text" placeholder="e.g., Admin Routine" value="Admin Routine"
+                                class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium w-40 transition">
+                            <label for="creatorModelSelect" class="text-xs font-semibold text-slate-400">Target</label>
+                            <select id="creatorModelSelect" onchange="onStudioModelChange()"
+                                class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition font-medium">
+                                <option value="ur">UR3 Arm</option>
+                                <option value="niryo">Niryo Ned</option>
+                            </select>
+                        </div>
+
+                        <div class="flex items-center flex-wrap gap-2">
+                            <!-- Templates dropdown -->
+                            <div class="relative inline-block text-left">
+                                <button id="btnCreatorTemplates" onclick="toggleCreatorTemplatesMenu(event)"
+                                    class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
+                                    <span>📋 Templates ▾</span>
                                 </button>
-                                <button id="termTabCodePrints" onclick="scanCodePrintCommands()"
-                                    class="px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition">
-                                    🔍 In Code
-                                </button>
+                                <div id="creatorTemplatesDropdown"
+                                    class="hidden absolute right-0 mt-1 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
+                                    <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-indigo-400 uppercase">UR Arm Presets (RTDE)</div>
+                                    <div class="py-1 text-xs">
+                                        <button onclick="loadCreatorTemplate('default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">📄 Default UR_RTDE Script</button>
+                                        <button onclick="loadCreatorTemplate('cartesian')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">1. Cartesian Probe (moveJ + moveL)</button>
+                                        <button onclick="loadCreatorTemplate('square')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">2. Square Contour Path</button>
+                                        <button onclick="loadCreatorTemplate('joint')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">3. Joint Articulation (moveJ)</button>
+                                        <button onclick="loadCreatorTemplate('gripper')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">4. Gripper / Digital Output</button>
+                                    </div>
+                                    <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-cyan-400 uppercase">Niryo One Presets (pyniryo)</div>
+                                    <div class="py-1 text-xs">
+                                        <button onclick="loadCreatorTemplate('niryo_default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">🤖 Default Niryo Routine</button>
+                                        <button onclick="loadCreatorTemplate('niryo_pick')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">1. Niryo Pick &amp; Place</button>
+                                        <button onclick="loadCreatorTemplate('niryo_joint')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">2. Niryo Joint Articulation</button>
+                                        <button onclick="loadCreatorTemplate('niryo_gripper')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">3. Niryo Gripper Tool Test</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button onclick="studioSaveNow()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                                <span>💾</span><span>Save</span>
+                            </button>
+                            <button onclick="sendCreatorCode(false)" title="Add to execution queue without immediate launch"
+                                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                                <span>📥</span><span>Send to Queue</span>
+                            </button>
+                            <button id="btnStudioCheck" onclick="checkCreatorSyntax()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                                <span>🔍</span><span>Check Syntax</span>
+                            </button>
+                            <button id="btnSimulateCreator" onclick="simulateCreatorCode()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center space-x-1">
+                                <span>🎮</span><span>Simulate 3D</span>
+                            </button>
+                            <!-- Big Action: Run on Physical Robot & Switch to Run Page -->
+                            <button id="btnExecuteStudioProject" onclick="executeCurrentStudioProject()"
+                                class="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center space-x-1.5 ring-2 ring-emerald-500/40">
+                                <span>🚀 Run on Physical Robot</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- File Tabs Bar -->
+                    <div class="px-2 py-1 bg-slate-850/95 flex items-center justify-between border-b border-slate-800 text-xs text-slate-400 select-none flex-shrink-0">
+                        <div class="flex items-center space-x-1.5 overflow-x-auto py-0.5 flex-1 min-w-0">
+                            <button onclick="studioToggleExplorer()" title="Toggle project file explorer"
+                                class="px-2.5 py-1 rounded text-xs font-semibold transition flex items-center space-x-1.5 bg-slate-800 text-sky-400 hover:bg-slate-700 mr-1 border border-slate-700/80">
+                                <span>📁</span><span class="font-mono text-[11px]">Explorer</span>
+                            </button>
+                            <div id="studioFileTabs" class="flex items-center space-x-1 overflow-x-auto"></div>
+                            <button onclick="studioNewFile()" title="Create new file"
+                                class="px-2 py-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded text-xs font-bold transition">+</button>
+                        </div>
+                        <span id="studioActiveIndicator" class="font-mono text-[11px] text-slate-400 hidden md:inline pl-2">main.py (Python)</span>
+                    </div>
+
+                    <!-- Explorer + Monaco Editor Container -->
+                    <div class="flex flex-1 min-h-0 relative overflow-hidden bg-slate-950">
+                        <div id="studioExplorer" class="w-60 flex-shrink-0 bg-slate-950 border-r border-slate-800 flex flex-col select-none">
+                            <div class="px-3 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
+                                <span class="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 font-mono">Project Files</span>
+                                <div class="flex items-center space-x-1">
+                                    <button onclick="studioNewFile()" title="New file" class="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">➕</button>
+                                </div>
+                            </div>
+                            <div class="px-3 py-1.5 bg-slate-900/50 text-[11px] font-semibold text-slate-300 flex items-center space-x-1.5 border-b border-slate-800/60">
+                                <span>📂</span><span id="studioFolderName" class="truncate font-mono">admin_project/</span>
+                            </div>
+                            <div id="studioFilesList" class="flex-1 overflow-y-auto p-1.5 space-y-0.5"></div>
+                            <div class="p-2 border-t border-slate-800/80 bg-slate-900/60 text-[10px] text-slate-400 flex items-center justify-between">
+                                <span id="studioFooterStats">1 file • Entry: main.py</span>
+                                <label title="Import file into project" class="cursor-pointer text-blue-400 hover:underline font-semibold">
+                                    Import
+                                    <input type="file" accept=".py,.json,.txt,.csv,.md" class="hidden" onchange="studioImportFile(event)">
+                                </label>
                             </div>
                         </div>
-                        <div class="flex items-center space-x-2">
-                            <span id="termActiveStreamLabel" class="text-[10px] text-slate-400 font-mono">Stream: none</span>
-                            <button onclick="clearAdminTerminal()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
-                        </div>
-                    </div>
-                    <div id="adminTerminal"
-                        class="flex-1 p-3 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
-                        [Supervisor] System ready. Select a program from the queue to inspect or execute.
+                        <div id="studioEditorContainer" class="flex-1 min-w-0 h-full"></div>
                     </div>
                 </div>
-            </div>
-        </section>
+            </section>
 
-    </main>
+            <!-- ===================== VIEW 3: 3D TRAJECTORY SIMULATOR ===================== -->
+            <section id="adminViewSim" class="hidden flex-1 p-3 sm:p-5 min-h-0 space-y-4" aria-label="3D Simulation">
+                <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 shadow-lg flex-shrink-0">
+                    <div class="flex items-center space-x-2 min-w-0">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Simulation Source:</span>
+                        <span id="simSourceLabel" class="px-2.5 py-0.5 rounded text-[11px] font-mono bg-slate-800 text-sky-300 border border-slate-700 truncate">No program simulated yet</span>
+                    </div>
+                    <div class="flex items-center flex-wrap gap-2">
+                        <!-- Playback Speed Control -->
+                        <div class="flex items-center space-x-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs text-slate-400">
+                            <span class="text-[10px] uppercase font-bold text-slate-500">Speed:</span>
+                            <button onclick="setSimSpeed(0.5)" class="sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono hover:text-white transition">0.5x</button>
+                            <button onclick="setSimSpeed(1.0)" class="sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-indigo-400 transition">1.0x</button>
+                            <button onclick="setSimSpeed(2.0)" class="sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono hover:text-white transition">2.0x</button>
+                        </div>
+                        <button onclick="simulateStudioProject()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition">▶ Simulate Studio Code</button>
+                        <button onclick="clearSimTerminal()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition">Clear Output</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-0">
+                    <div class="xl:col-span-8 bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden flex flex-col min-h-[460px]">
+                        <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <span id="visModelDot" class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
+                                <span id="visModelTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">3D Simulator Digital Twin</span>
+                            </div>
+                            <div class="flex items-center space-x-1">
+                                <button onclick="if(adminUr3Vis) adminUr3Vis.setPhotoPose()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-sky-300 rounded transition">Photo</button>
+                                <button onclick="if(adminUr3Vis) adminUr3Vis.setHomePose()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Home</button>
+                                <button onclick="if(adminUr3Vis) adminUr3Vis.resetCamera()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Reset</button>
+                            </div>
+                        </div>
+                        <div id="adminUr3CanvasContainer" class="flex-1 relative bg-[#181e29] min-h-0">
+                            <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
+                                Joints: <span class="ur3AngleReadout text-sky-300">0° | -90° | 90° | -90° | -90° | 0°</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[460px]">
+                        <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Simulation Output</span>
+                            <button onclick="clearSimTerminal()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
+                        </div>
+                        <div id="simTerminal" class="flex-1 p-3 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white min-h-0">
+[SIMULATOR] Ready. Select a project and click Simulate.
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===================== VIEW 4: DEDICATED RUN PAGE (TELEMETRY, ANALYTICS, TERMINAL & DEBUG) ===================== -->
+            <section id="adminViewRun" class="hidden flex-1 p-3 sm:p-5 min-h-0 flex flex-col space-y-4 overflow-y-auto" aria-label="Execution and Real-Time Telemetry">
+                <!-- Top Run Status & Emergency Control Banner -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xl flex-shrink-0">
+                    <div class="flex items-center space-x-3.5">
+                        <div id="runStatusPulseCircle" class="w-3.5 h-3.5 rounded-full bg-slate-600 shrink-0"></div>
+                        <div>
+                            <div class="flex items-center space-x-2 flex-wrap">
+                                <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Execution Status:</span>
+                                <span id="runActiveProgramLabel" class="text-sm font-black text-white font-mono">IDLE — Ready for execution</span>
+                                <span id="runActiveModelBadge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700">UR3 ARM</span>
+                                <div class="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-[11px] ml-1">
+                                    <button id="btnRunModelUR" onclick="switchRunModel('ur')" class="px-2 py-0.5 rounded font-bold bg-indigo-600 text-white transition">UR3</button>
+                                    <button id="btnRunModelNiryo" onclick="switchRunModel('niryo')" class="px-2 py-0.5 rounded text-slate-400 hover:text-white transition">Niryo</button>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-3 text-xs text-slate-400 mt-0.5">
+                                <span id="runActiveAuthor">Author: None</span>
+                                <span class="text-slate-700">•</span>
+                                <span id="runElapsedTime" class="font-mono text-emerald-400 font-bold">Elapsed: 00:00</span>
+                                <span class="text-slate-700">•</span>
+                                <span id="runActiveStreamInfo" class="font-mono text-slate-500">Log stream: idle</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Safety & Execution Actions -->
+                    <div class="flex items-center flex-wrap gap-2.5">
+                        <button id="btnRunResetEStop" onclick="resetEmergencyStop()" class="hidden px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-amber-600/30 flex items-center space-x-1 transition">
+                            <span>🔄 Reset E-Stop</span>
+                        </button>
+                        <button onclick="abortRobot('Run Page ABORT Button')" class="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-extrabold tracking-wider uppercase rounded-lg shadow-lg shadow-red-600/30 flex items-center space-x-1.5 transition animate-pulse">
+                            <span>🛑 EMERGENCY ABORT</span>
+                            <span class="px-1 py-0.2 rounded bg-black/40 text-[9px] font-mono border border-white/20 font-bold">SPACE</span>
+                        </button>
+                        <button onclick="resetTelemetryAnalytics()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 transition" title="Reset distance and speed counters">
+                            📊 Reset Stats
+                        </button>
+                        <button onclick="clearAdminTerminal()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs rounded-lg transition">
+                            Clear Logs
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4 Real-Time Analytics & Telemetry Cards Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-shrink-0">
+                    <!-- Card 1: Speed & Dynamics Analytics -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col justify-between">
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-3">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Speed &amp; Dynamics</span>
+                            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded">LIVE</span>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex items-baseline space-x-2">
+                                <span id="telSpeedNum" class="text-3xl font-black font-mono text-emerald-400">0.000</span>
+                                <span class="text-xs text-slate-400 font-bold">m/s</span>
+                                <span class="text-xs text-slate-500 font-mono">(<span id="telSpeedMm">0</span> mm/s)</span>
+                            </div>
+                            <!-- Dynamic Speed Bar -->
+                            <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                                <div id="telSpeedBar" class="bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-500 h-2 rounded-full transition-all duration-200" style="width: 0%"></div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-xs pt-1">
+                                <div>
+                                    <span class="text-slate-500 text-[10px] uppercase block">Peak Speed:</span>
+                                    <span id="telMaxSpeed" class="font-mono text-slate-200 font-semibold">0.000 m/s</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 text-[10px] uppercase block">Average Speed:</span>
+                                    <span id="telAvgSpeed" class="font-mono text-slate-200 font-semibold">0.000 m/s</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 text-[10px] uppercase block">Path Traveled:</span>
+                                    <span id="telPathLen" class="font-mono text-indigo-300 font-semibold">0.00 m</span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 text-[10px] uppercase block">Motion Time:</span>
+                                    <span id="telMovingTime" class="font-mono text-slate-200 font-semibold">0.0 s</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Cartesian TCP Pose -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col justify-between">
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-3">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Cartesian Pose (TCP)</span>
+                            <span id="telTargetModelLabel" class="text-[10px] font-mono text-slate-400 uppercase">UR3</span>
+                        </div>
+                        <div class="space-y-2 text-xs font-mono">
+                            <div class="grid grid-cols-3 gap-2">
+                                <div class="bg-slate-950 p-2 rounded-lg border border-slate-800/80 text-center">
+                                    <span class="text-rose-400 font-bold block text-[10px]">X (mm)</span>
+                                    <span id="telPosX" class="text-sm font-bold text-white">0.0</span>
+                                </div>
+                                <div class="bg-slate-950 p-2 rounded-lg border border-slate-800/80 text-center">
+                                    <span class="text-emerald-400 font-bold block text-[10px]">Y (mm)</span>
+                                    <span id="telPosY" class="text-sm font-bold text-white">0.0</span>
+                                </div>
+                                <div class="bg-slate-950 p-2 rounded-lg border border-slate-800/80 text-center">
+                                    <span class="text-sky-400 font-bold block text-[10px]">Z (mm)</span>
+                                    <span id="telPosZ" class="text-sm font-bold text-white">0.0</span>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 text-[11px] pt-1 text-slate-400">
+                                <div>Rx: <span id="telRotRx" class="text-slate-200 font-semibold">0.00°</span></div>
+                                <div>Ry: <span id="telRotRy" class="text-slate-200 font-semibold">0.00°</span></div>
+                                <div>Rz: <span id="telRotRz" class="text-slate-200 font-semibold">0.00°</span></div>
+                            </div>
+                            <div class="text-[10px] text-slate-500 pt-1 flex items-center justify-between">
+                                <span>Speed Scaling: <strong id="telSpeedScale" class="text-slate-300">100%</strong></span>
+                                <span>Force: <strong id="telTcpForce" class="text-slate-300">0.0 N</strong></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: 6-DOF Joint Angles & Velocities -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col justify-between">
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">6-DOF Joints &amp; Speeds</span>
+                            <span class="text-[10px] font-mono text-slate-400">J1..J6</span>
+                        </div>
+                        <div class="space-y-1.5 text-[11px] font-mono">
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-400 font-semibold">J1 Base:</span>
+                                <span id="telQ0" class="text-sky-300 font-bold">0.0°</span>
+                                <span id="telQd0" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-400 font-semibold">J2 Shoulder:</span>
+                                <span id="telQ1" class="text-sky-300 font-bold">-90.0°</span>
+                                <span id="telQd1" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-400 font-semibold">J3 Elbow:</span>
+                                <span id="telQ2" class="text-sky-300 font-bold">90.0°</span>
+                                <span id="telQd2" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-400 font-semibold">J4 Wrist 1:</span>
+                                <span id="telQ3" class="text-sky-300 font-bold">-90.0°</span>
+                                <span id="telQd3" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-400 font-semibold">J5 Wrist 2:</span>
+                                <span id="telQ4" class="text-sky-300 font-bold">-90.0°</span>
+                                <span id="telQd4" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-400 font-semibold">J6 Wrist 3:</span>
+                                <span id="telQ5" class="text-sky-300 font-bold">0.0°</span>
+                                <span id="telQd5" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card 4: Hardware Health & Diagnostics -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col justify-between">
+                        <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Diagnostics &amp; Health</span>
+                            <span id="telConnectedPill" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">CONNECTED</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs">
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-400 text-[11px]">Robot Mode:</span>
+                                <span id="telRobotMode" class="font-bold font-mono text-emerald-400 uppercase text-[11px]">RUNNING</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-400 text-[11px]">Safety State:</span>
+                                <span id="telSafetyMode" class="font-bold font-mono text-sky-300 uppercase text-[11px]">NORMAL</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-400 text-[11px]">Joint Temps:</span>
+                                <span id="telJointTemp" class="font-mono text-slate-300 text-[11px]">31° | 32° | 30°</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-slate-400 text-[11px]">Voltage / Current:</span>
+                                <span id="telPower" class="font-mono text-slate-300 text-[11px]">48.1V • 1.2A</span>
+                            </div>
+                            <div class="pt-1 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
+                                <span class="text-slate-400">Protective Stop:</span>
+                                <span id="telProtectiveStop" class="font-bold text-slate-500">NO</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dual Console Section: Live Script Terminal & Robot Controller Debug -->
+                <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-[380px]">
+                    <!-- Left: Program Execution Output Terminal -->
+                    <div class="xl:col-span-6 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[350px]">
+                        <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Script Terminal (stdout/stderr)</span>
+                                <div class="inline-flex rounded-lg bg-slate-800 p-0.5 border border-slate-700 text-[11px]">
+                                    <button id="termTabAll" onclick="setTerminalFilter('all')"
+                                        class="px-2 py-0.5 rounded font-medium bg-blue-600 text-white transition">All</button>
+                                    <button id="termTabPrints" onclick="setTerminalFilter('prints')"
+                                        class="px-2 py-0.5 rounded font-medium text-slate-400 hover:text-slate-200 transition flex items-center space-x-1">
+                                        <span>💬 Prints</span>
+                                        <span id="printCountBadge" class="hidden ml-1 px-1 bg-sky-500/20 text-sky-300 rounded text-[9px]">0</span>
+                                    </button>
+                                    <button id="termTabErrors" onclick="setTerminalFilter('errors')"
+                                        class="px-2 py-0.5 rounded font-medium text-slate-400 hover:text-rose-400 transition">
+                                        ⚠️ Errors
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span id="termActiveStreamLabel" class="text-[10px] text-slate-400 font-mono">Stream: none</span>
+                                <button onclick="clearAdminTerminal()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
+                            </div>
+                        </div>
+                        <div id="adminTerminal"
+                            class="flex-1 p-3 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
+[Supervisor] System ready. Run a program from Code Studio or select an item from the Projects queue.
+                        </div>
+                    </div>
+
+                    <!-- Right: Low-Level Robot Debug Console & Dashboard Hub -->
+                    <div class="xl:col-span-6 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[350px]">
+                        <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Robot Controller Debug Stream</span>
+                                <span class="px-1.5 py-0.2 rounded text-[10px] bg-slate-800 text-slate-400 font-mono">RTDE &amp; Supervisor</span>
+                            </div>
+                            <button onclick="clearDebugConsole()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
+                        </div>
+                        <!-- Debug Log Stream -->
+                        <div id="robotDebugConsole"
+                            class="flex-1 p-3 bg-slate-950 font-mono text-xs text-sky-300 overflow-y-auto whitespace-pre-wrap selection:bg-sky-900 selection:text-white">
+[Controller] Connected to Robot Hardware Debug Watchdog.
+                        </div>
+                        <!-- Dashboard Query Prompt -->
+                        <div class="p-2 bg-slate-900 border-t border-slate-800 flex items-center space-x-2">
+                            <span class="text-xs font-mono text-slate-500 font-bold">&gt;</span>
+                            <input id="dashboardQueryInput" type="text" placeholder="Query controller (e.g., robotmode, safetymode, polyscopeversion)..."
+                                onkeydown="if(event.key==='Enter') executeDashboardCommand()"
+                                class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 font-mono">
+                            <button onclick="executeDashboardCommand()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition">
+                                Query
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
 
     <!-- IP Configuration Modal -->
     <div id="ipConfigModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
@@ -560,7 +742,7 @@
     </div>
 
     <!-- Admin Login Screen / Gate -->
-    <div id="adminLoginModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4">
+    <div id="adminLoginModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950 p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl p-6 space-y-5">
             <div class="text-center space-y-1">
                 <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-indigo-600/20 text-amber-400 border border-amber-500/30 text-2xl mb-1">🔐</div>
@@ -828,9 +1010,12 @@
     <!-- Monaco Loader -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
     <script>
-        let viewer;
+        let viewer = null;
+        let studioEditor = null;
         let selectedSubId = null;
         let activeLogSocket = null;
+        let telemetrySocket = null;
+        let telemetryPollInterval = null;
         let submissionsList = [];
 
         // Dual Robot State
@@ -843,19 +1028,28 @@
         let isEmergencyHaltedUR = false;
         let isEmergencyHaltedNiryo = false;
 
-        let activeRobotModel = 'ur'; // default focus: 'ur' | 'niryo'
+        let activeRobotModel = 'ur'; // 'ur' | 'niryo'
         let urIp = '10.0.10.60';
         let niryoIp = '10.0.130.49';
         let adminUr3Vis = null;
 
-        // Code Editor & Workspace State
-        let currentRightTab = 'inspect'; // 'inspect' | 'studio'
-        let isInspectorEditing = false;
-        let originalSelectedCode = "";
-        let isEditorExpanded = false;
+        // Auth & Identity State (Strictly session-scoped; password required for admin access)
+        function getUnifiedAuthToken() {
+            // Never inherit student tokens or persistent localStorage credentials
+            return sessionStorage.getItem("ur_admin_token") || "";
+        }
+        // Purge legacy persistent admin token from localStorage to prevent unauthenticated access
+        try { localStorage.removeItem("ur_admin_token"); } catch(_) {}
+        let currentAdminToken = getUnifiedAuthToken();
+        let currentAdminUser = "";
+        let currentAdminRole = "";
+        let currentAdminPermissions = [];
 
-        let studioEditor = null;
-        let currentAdminTab = 'run'; // 'code' | 'sim' | 'run'
+        // Workspace & Tabs State
+        let currentAdminTab = 'projects'; // 'projects' | 'code' | 'sim' | 'run'
+        let submissionsModelFilter = 'all'; // 'all' | 'ur' | 'niryo'
+        let submissionsStatusFilter = 'all'; // 'all' | 'pending' | 'running' | 'completed'
+
         let adminProjectState = {
             current_project: "admin_default",
             entry_point: "main.py",
@@ -863,6 +1057,13 @@
             files: {}
         };
         let isStudioExplorerOpen = true;
+
+        // Run Page Execution & Telemetry State
+        let runExecutionTimer = null;
+        let runExecutionStartTime = 0;
+        let activeRunModel = 'ur';
+        let terminalLogs = [];
+        let terminalFilter = 'all';
 
         // Templates for New Script Studio
         const CREATOR_TEMPLATES = {
@@ -1046,101 +1247,71 @@ printf("Gripper test finished.")
         // --- DOM Initialization ---
         window.addEventListener("DOMContentLoaded", () => {
             adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
-        });
-
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
-        require(['vs/editor/editor.main'], function () {
-            viewer = monaco.editor.create(document.getElementById('inspectEditorContainer'), {
-                value: "# Select a program from the queue to preview code or switch to New Script Studio",
-                language: 'python',
-                theme: 'vs-dark',
-                readOnly: true,
-                automaticLayout: true,
-                minimap: { enabled: true, maxColumn: 80 },
-                fontSize: 13,
-                fontFamily: "Fira Code, Menlo, Monaco, Consolas, monospace",
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-                tabSize: 4,
-                scrollbar: {
-                    vertical: 'visible',
-                    horizontal: 'auto',
-                    verticalScrollbarSize: 10,
-                    horizontalScrollbarSize: 10,
-                    alwaysConsumeMouseWheel: false
-                }
-            });
-
-            const studioCont = document.getElementById('studioEditorContainer');
-            if (studioCont) {
-                studioEditor = monaco.editor.create(studioCont, {
-                    value: CREATOR_TEMPLATES.default(urIp),
-                    language: 'python',
-                    theme: 'vs-dark',
-                    readOnly: false,
-                    automaticLayout: true,
-                    minimap: { enabled: true, maxColumn: 80 },
-                    fontSize: 13,
-                    fontFamily: "Fira Code, Menlo, Monaco, Consolas, monospace",
-                    lineNumbers: "on",
-                    scrollBeyondLastLine: false,
-                    tabSize: 4,
-                    scrollbar: {
-                        vertical: 'visible',
-                        horizontal: 'auto',
-                        verticalScrollbarSize: 10,
-                        horizontalScrollbarSize: 10
-                    }
-                });
-
-                studioEditor.onDidChangeModelContent(() => {
-                    if (adminProjectState.active_file) {
-                        adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-                    }
-                });
-
-                studioEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () {
-                    studioSaveNow();
-                });
-            }
-
-            window.addEventListener('resize', () => {
-                if (viewer) viewer.layout();
-            });
-
-            viewer.onDidChangeModelContent(() => {
-                if (currentRightTab === 'studio') {
-                    saveStudioDraftLocally();
-                }
-            });
-
-            // Ctrl/Cmd + S to save in Edit mode or check in Studio mode
-            viewer.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () {
-                if (currentRightTab === 'inspect' && isInspectorEditing) {
-                    saveInspectorEdits(false);
-                } else if (currentRightTab === 'studio') {
-                    checkCreatorSyntax();
-                }
-            });
-
-            // Spacebar emergency stop guard
-            viewer.addCommand(monaco.KeyCode.Space, function () {
-                const isExecutingAny = isExecutingUR || isExecutingNiryo;
-                if ((currentRightTab === 'inspect' && !isInspectorEditing) || isExecutingAny) {
-                    abortRobot("SPACE Key (inside Code Inspector)");
-                } else {
-                    viewer.trigger('keyboard', 'type', { text: ' ' });
-                }
-            });
-
+            // Check auth immediately on DOM load
             checkAdminAuth();
-            loadConfig();
-            checkRobotPing();
-            fetchSubmissions();
-            setInterval(checkRobotPing, 3000);
-            setInterval(fetchSubmissions, 2000);
-            connectAdminSocket();
+            initMonacoEditor();
         });
+
+        function initMonacoEditor() {
+            if (typeof require === 'undefined') {
+                setTimeout(initMonacoEditor, 80);
+                return;
+            }
+            try {
+                require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+                require(['vs/editor/editor.main'], function () {
+                    const studioCont = document.getElementById('studioEditorContainer');
+                    if (studioCont) {
+                        studioEditor = monaco.editor.create(studioCont, {
+                            value: CREATOR_TEMPLATES.default(urIp),
+                            language: 'python',
+                            theme: 'vs-dark',
+                            readOnly: false,
+                            automaticLayout: true,
+                            minimap: { enabled: true, maxColumn: 80 },
+                            fontSize: 13,
+                            fontFamily: "Fira Code, Menlo, Monaco, Consolas, monospace",
+                            lineNumbers: "on",
+                            scrollBeyondLastLine: false,
+                            tabSize: 4,
+                            scrollbar: {
+                                vertical: 'visible',
+                                horizontal: 'auto',
+                                verticalScrollbarSize: 10,
+                                horizontalScrollbarSize: 10
+                            }
+                        });
+                        viewer = studioEditor;
+
+                        studioEditor.onDidChangeModelContent(() => {
+                            if (adminProjectState.active_file) {
+                                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
+                            }
+                        });
+
+                        studioEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () {
+                            studioSaveNow();
+                        });
+
+                        // Spacebar emergency stop guard inside editor when robot is running
+                        studioEditor.addCommand(monaco.KeyCode.Space, function () {
+                            const isExecutingAny = isExecutingUR || isExecutingNiryo;
+                            if (isExecutingAny) {
+                                abortRobot("SPACE Key (inside editor during execution)");
+                            } else {
+                                studioEditor.trigger('keyboard', 'type', { text: ' ' });
+                            }
+                        });
+                    }
+
+                    window.addEventListener('resize', () => {
+                        if (studioEditor) studioEditor.layout();
+                    });
+                });
+            } catch (err) {
+                console.error("Monaco initialization error:", err);
+            }
+        }
 
         // ==========================================
         // --- Tab & Workspace Switching ---
@@ -1148,10 +1319,12 @@ printf("Gripper test finished.")
 
         function switchAdminTab(tab) {
             currentAdminTab = tab;
+            const viewProjects = document.getElementById("adminViewProjects");
             const viewCode = document.getElementById("adminViewCode");
             const viewSim = document.getElementById("adminViewSim");
             const viewRun = document.getElementById("adminViewRun");
 
+            const tabProjects = document.getElementById("adminTabProjects");
             const tabCode = document.getElementById("adminTabCode");
             const tabSim = document.getElementById("adminTabSim");
             const tabRun = document.getElementById("adminTabRun");
@@ -1159,34 +1332,40 @@ printf("Gripper test finished.")
             const activeClass = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30";
             const inactiveClass = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800";
 
+            if (viewProjects) viewProjects.classList.toggle("hidden", tab !== 'projects');
+            if (viewCode) viewCode.classList.toggle("hidden", tab !== 'code');
+            if (viewSim) viewSim.classList.toggle("hidden", tab !== 'sim');
+            if (viewRun) viewRun.classList.toggle("hidden", tab !== 'run');
+
+            if (tabProjects) tabProjects.className = tab === 'projects' ? activeClass : inactiveClass;
+            if (tabCode) tabCode.className = tab === 'code' ? activeClass : inactiveClass;
+            if (tabSim) tabSim.className = tab === 'sim' ? activeClass : inactiveClass;
+            if (tabRun) tabRun.className = tab === 'run' ? activeClass : inactiveClass;
+
             if (tab === 'code') {
-                if (viewCode) viewCode.classList.remove("hidden");
-                if (viewSim) viewSim.classList.add("hidden");
-                if (viewRun) viewRun.classList.add("hidden");
-                if (tabCode) tabCode.className = activeClass;
-                if (tabSim) tabSim.className = inactiveClass;
-                if (tabRun) tabRun.className = inactiveClass;
-                setTimeout(() => { if (studioEditor) studioEditor.layout(); }, 100);
+                setTimeout(() => { if (studioEditor) studioEditor.layout(); }, 60);
             } else if (tab === 'sim') {
-                if (viewSim) viewSim.classList.remove("hidden");
-                if (viewCode) viewCode.classList.add("hidden");
-                if (viewRun) viewRun.classList.add("hidden");
-                if (tabSim) tabSim.className = activeClass;
-                if (tabCode) tabCode.className = inactiveClass;
-                if (tabRun) tabRun.className = inactiveClass;
                 setTimeout(() => {
                     if (adminUr3Vis && typeof adminUr3Vis.onWindowResize === 'function') {
                         adminUr3Vis.onWindowResize();
                     }
-                }, 100);
-            } else { // 'run'
-                if (viewRun) viewRun.classList.remove("hidden");
-                if (viewCode) viewCode.classList.add("hidden");
-                if (viewSim) viewSim.classList.add("hidden");
-                if (tabRun) tabRun.className = activeClass;
-                if (tabCode) tabCode.className = inactiveClass;
-                if (tabSim) tabSim.className = inactiveClass;
-                setTimeout(() => { if (viewer) viewer.layout(); }, 100);
+                }, 60);
+            } else if (tab === 'run') {
+                const targetModel = activeRunModel || activeRobotModel || 'ur';
+                startRunTelemetryMonitoring(targetModel);
+                const activeId = (targetModel === 'niryo') ? activeSubNiryo : activeSubUR;
+                if (activeId) {
+                    attachLogStream(activeId);
+                    const sub = submissionsList.find(s => s.id === activeId);
+                    if (sub) {
+                        const label = document.getElementById("runActiveProgramLabel");
+                        if (label) label.innerText = `RUNNING #${sub.id} — ${sub.task_id || sub.project_name || 'Routine'}`;
+                        const authorSpan = document.getElementById("runActiveAuthor");
+                        if (authorSpan) authorSpan.innerText = `Author: ${sub.student_name || 'User'}`;
+                        const modelBadge = document.getElementById("runActiveModelBadge");
+                        if (modelBadge) modelBadge.innerText = (sub.robot_model || targetModel).toUpperCase();
+                    }
+                }
             }
         }
 
@@ -1605,229 +1784,112 @@ printf("Gripper test finished.")
             }
         }
 
-        function switchRightTab(tab) {
-            currentRightTab = tab;
-            const btnInspect = document.getElementById("btnTabInspect");
-            const btnStudio = document.getElementById("btnTabStudio");
-            const inspectSub = document.getElementById("inspectorSubHeader");
-            const studioSub = document.getElementById("studioSubHeader");
-            const editBanner = document.getElementById("inspectorEditBanner");
+        // ==========================================
+        // --- Technical Projects Helpers ---
+        // ==========================================
 
-            if (tab === 'inspect') {
-                btnInspect.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 bg-indigo-600 text-white shadow";
-                btnStudio.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 text-slate-400 hover:text-white hover:bg-slate-800";
-                inspectSub.classList.remove("hidden");
-                studioSub.classList.add("hidden");
-
-                if (selectedSubId) {
-                    const sub = submissionsList.find(s => s.id === selectedSubId);
-                    if (sub) {
-                        viewer.setValue(sub.code);
-                        originalSelectedCode = sub.code;
-                    }
-                } else {
-                    viewer.setValue("# Select a program from the queue to preview code or switch to New Script Studio");
-                }
-                setInspectorEditMode(false);
-            } else {
-                btnStudio.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 bg-indigo-600 text-white shadow";
-                btnInspect.className = "px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center space-x-1.5 text-slate-400 hover:text-white hover:bg-slate-800";
-                studioSub.classList.remove("hidden");
-                inspectSub.classList.add("hidden");
-                editBanner.classList.add("hidden");
-
-                // Make editor editable for studio
-                viewer.updateOptions({ readOnly: false });
-                const savedDraft = localStorage.getItem("ur_admin_code_draft");
-                const targetModel = document.getElementById("creatorModelSelect").value;
-                const targetIp = (targetModel === 'niryo') ? niryoIp : urIp;
-
-                if (savedDraft && savedDraft.trim().length > 0) {
-                    viewer.setValue(savedDraft);
-                } else {
-                    viewer.setValue(targetModel === 'niryo' ? CREATOR_TEMPLATES.niryo_default(targetIp) : CREATOR_TEMPLATES.default(targetIp));
-                }
-                viewer.focus();
-            }
-            setTimeout(() => { if (viewer) viewer.layout(); }, 150);
-        }
-
-        function setInspectorEditMode(isEdit) {
-            isInspectorEditing = isEdit;
-            const btnView = document.getElementById("btnModeView");
-            const btnEdit = document.getElementById("btnModeEdit");
-            const viewBtns = document.getElementById("inspectorViewButtons");
-            const editBtns = document.getElementById("inspectorEditButtons");
-            const editBanner = document.getElementById("inspectorEditBanner");
-
-            if (isEdit) {
-                if (!selectedSubId) {
-                    alert("Please select a program from the queue to edit.");
-                    return;
-                }
-                btnEdit.className = "px-2.5 py-1 rounded-md font-bold bg-amber-600 text-white transition shadow";
-                btnView.className = "px-2.5 py-1 rounded-md font-bold text-slate-400 hover:text-white transition";
-                viewBtns.classList.add("hidden");
-                editBtns.classList.remove("hidden");
-                editBanner.classList.remove("hidden");
-                viewer.updateOptions({ readOnly: false });
-                viewer.focus();
-            } else {
-                btnView.className = "px-2.5 py-1 rounded-md font-bold bg-indigo-600 text-white transition shadow";
-                btnEdit.className = "px-2.5 py-1 rounded-md font-bold text-slate-400 hover:text-white transition";
-                editBtns.classList.add("hidden");
-                viewBtns.classList.remove("hidden");
-                editBanner.classList.add("hidden");
-                viewer.updateOptions({ readOnly: true });
-            }
-        }
-
-        function cancelInspectorEdits() {
-            if (originalSelectedCode) {
-                viewer.setValue(originalSelectedCode);
-            }
-            setInspectorEditMode(false);
-            showActionToast("Edits reverted to original submission.");
-        }
-
-        let inspectorFilesState = null;
-        let inspectorActiveFile = "main.py";
-
-        function renderInspectorFileTabs(sub) {
-            const tabBar = document.getElementById("inspectorFileTabBar");
-            if (!tabBar) return;
-
+        function calculateLOC(sub) {
             let files = sub.files;
             if (typeof files === 'string' && files.trim()) {
-                try { files = JSON.parse(files); } catch(e) { files = null; }
+                try { files = JSON.parse(files); } catch (_) { files = null; }
             }
-
-            if (!files || typeof files !== 'object' || Object.keys(files).length === 0) {
-                tabBar.classList.add("hidden");
-                inspectorFilesState = null;
-                return;
+            if (files && typeof files === 'object') {
+                let total = 0;
+                for (const content of Object.values(files)) {
+                    if (typeof content === 'string') {
+                        total += content.split('\n').filter(l => l.trim().length > 0).length;
+                    }
+                }
+                return total > 0 ? total : 1;
             }
-
-            inspectorFilesState = { ...files };
-            inspectorActiveFile = ("main.py" in files) ? "main.py" : Object.keys(files)[0];
-            tabBar.classList.remove("hidden");
-            renderInspectorTabsUI();
+            if (sub.code) {
+                return sub.code.split('\n').filter(l => l.trim().length > 0).length;
+            }
+            return 0;
         }
 
-        function renderInspectorTabsUI() {
-            const tabBar = document.getElementById("inspectorFileTabBar");
-            if (!tabBar || !inspectorFilesState) return;
-
-            tabBar.innerHTML = Object.keys(inspectorFilesState).map(fname => {
-                const isActive = (fname === inspectorActiveFile);
-                const activeClass = isActive
-                    ? "bg-slate-800 text-sky-400 font-bold border-b-2 border-sky-400"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-900";
-                return `
-                    <button onclick="switchInspectorFile('${escapeHtml(fname)}')"
-                        class="px-2.5 py-1 rounded-t font-mono text-xs transition flex items-center space-x-1 ${activeClass}">
-                        <span>📄</span>
-                        <span>${escapeHtml(fname)}</span>
-                    </button>
-                `;
-            }).join("");
-        }
-
-        function switchInspectorFile(fname) {
-            if (!inspectorFilesState || !inspectorFilesState[fname]) return;
-            if (viewer && isInspectorEditing && inspectorActiveFile) {
-                inspectorFilesState[inspectorActiveFile] = viewer.getValue();
+        function formatSubmissionFilesCount(sub) {
+            let files = sub.files;
+            if (typeof files === 'string' && files.trim()) {
+                try { files = JSON.parse(files); } catch (_) { files = null; }
             }
-            inspectorActiveFile = fname;
-            if (viewer) {
-                viewer.setValue(inspectorFilesState[fname] || "");
-            }
-            renderInspectorTabsUI();
-        }
-
-        async function saveInspectorEdits(executeAfterSave = false) {
-            if (!selectedSubId) return;
-            const newCode = viewer.getValue();
-
-            let payload = { code: newCode };
-            if (inspectorFilesState) {
-                inspectorFilesState[inspectorActiveFile] = newCode;
-                payload = {
-                    code: inspectorFilesState["main.py"] || newCode,
-                    files: inspectorFilesState
+            if (files && typeof files === 'object') {
+                const names = Object.keys(files);
+                const count = names.length;
+                return {
+                    count: `${count} file${count === 1 ? '' : 's'}`,
+                    list: names.join(", "),
+                    entry: sub.entry_point || (names.includes("main.py") ? "main.py" : names[0] || "main.py")
                 };
             }
-
-            try {
-                const res = await fetch(`/api/submissions/${selectedSubId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentAdminToken}`
-                    },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!res.ok) {
-                    const err = await res.json();
-                    alert("Error saving edits: " + (err.detail || "Validation failed"));
-                    return;
-                }
-
-                originalSelectedCode = newCode;
-                const sub = submissionsList.find(s => s.id === selectedSubId);
-                if (sub) {
-                    sub.code = payload.code;
-                    if (payload.files) sub.files = payload.files;
-                }
-
-                showActionToast(`✓ Saved changes to program #${selectedSubId}`);
-                setInspectorEditMode(false);
-                fetchSubmissions();
-
-                if (executeAfterSave) {
-                    await approveSelected();
-                }
-            } catch (err) {
-                alert("Network error saving edits: " + err.message);
-            }
+            return {
+                count: '1 file',
+                list: sub.entry_point || 'main.py',
+                entry: sub.entry_point || 'main.py'
+            };
         }
 
-        function copyCurrentToStudio() {
-            const code = viewer.getValue();
-            const sub = submissionsList.find(s => s.id === selectedSubId);
-            const progName = sub ? `${sub.student_name} (Copy)` : "Admin Routine";
+        function formatDateTimeSent(isoStr) {
+            if (!isoStr) return '<span class="text-slate-500 font-mono text-xs">—</span>';
+            const date = new Date(isoStr);
+            if (isNaN(date.getTime())) return `<span class="font-mono text-slate-300 text-xs">${escapeHtml(isoStr)}</span>`;
 
-            document.getElementById("creatorProgName").value = progName;
-            localStorage.setItem("ur_admin_code_draft", code);
-            localStorage.setItem("ur_admin_prog_name", progName);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            const fullDate = `${year}-${month}-${day}`;
+            const fullTime = `${hours}:${minutes}:${seconds}`;
 
-            switchRightTab('studio');
-            viewer.setValue(code);
-            showActionToast("Program copied into Script Studio.");
+            const now = new Date();
+            const diffSec = Math.floor((now - date) / 1000);
+            let ago = "";
+            if (diffSec < 60) ago = "just now";
+            else if (diffSec < 3600) ago = `${Math.floor(diffSec / 60)}m ago`;
+            else if (diffSec < 86400) ago = `${Math.floor(diffSec / 3600)}h ago`;
+            else ago = `${Math.floor(diffSec / 86400)}d ago`;
+
+            return `
+                <div class="flex flex-col space-y-0.5">
+                    <div class="flex items-center space-x-1.5 font-mono text-xs">
+                        <span class="text-slate-200 font-bold">${fullDate}</span>
+                        <span class="text-indigo-400 font-semibold">${fullTime}</span>
+                    </div>
+                    <span class="text-[10px] text-slate-400 font-medium">(${ago})</span>
+                </div>
+            `;
         }
 
-        function toggleEditorExpand() {
-            isEditorExpanded = !isEditorExpanded;
-            const container = document.getElementById("inspectEditorContainer");
-            const btn = document.getElementById("btnToggleExpand");
-            if (isEditorExpanded) {
-                container.className = "flex-1 min-h-[640px] h-[calc(100vh-220px)] transition-all";
-                btn.innerHTML = "<span>⛶ Normal View</span>";
-            } else {
-                container.className = "flex-1 min-h-[460px] h-[calc(100vh-420px)] transition-all";
-                btn.innerHTML = "<span>⛶ Adapt Height</span>";
-            }
-            setTimeout(() => { if (viewer) viewer.layout(); }, 200);
+        function getStatusBadge(status) {
+            const styles = {
+                pending: "bg-amber-500/20 text-amber-300 border border-amber-500/40",
+                running: "bg-blue-500/20 text-blue-300 border border-blue-500/40 animate-pulse font-bold",
+                completed: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40",
+                failed: "bg-rose-500/20 text-rose-400 border border-rose-500/40",
+                aborted: "bg-red-600 text-white font-bold",
+                rejected: "bg-slate-700 text-slate-400"
+            };
+            return `<span class="px-2.5 py-1 rounded text-[10px] font-bold uppercase ${styles[status] || 'bg-slate-700 text-slate-300'}">${status}</span>`;
         }
 
         // ==========================================
-        // --- Submissions Queue & Execution ---
+        // --- Full-Screen Technical Projects & Execution Queue ---
         // ==========================================
 
         async function fetchSubmissions() {
+            if (!currentAdminToken) return;
             try {
-                const res = await fetch('/api/submissions');
+                const res = await fetch('/api/submissions', {
+                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                });
+                if (!res.ok) {
+                    if (res.status === 401) {
+                        showAdminLoginModal("Session expired. Please log in.");
+                    }
+                    return;
+                }
                 const data = await res.json();
                 submissionsList = data.submissions || [];
 
@@ -1836,53 +1898,167 @@ printf("Gripper test finished.")
                 activeSubUR = data.active_submission_ur || null;
                 activeSubNiryo = data.active_submission_niryo || null;
 
-                const qCount = document.getElementById("queueCountBadge");
-                if (qCount) qCount.innerText = submissionsList.length;
+                // Update counters
+                const totalCount = submissionsList.length;
+                const pendingCount = submissionsList.filter(s => s.status === 'pending').length;
 
-                renderSubmissionsTable(submissionsList);
-                updateInspectorButtons();
+                const statTotal = document.getElementById("statTotalSubs");
+                if (statTotal) statTotal.innerText = totalCount;
+                const statPending = document.getElementById("statPendingSubs");
+                if (statPending) statPending.innerText = pendingCount;
+                const badge = document.getElementById("adminTabProjectsBadge");
+                if (badge) badge.innerText = totalCount;
+
+                filterSubmissionsTable();
             } catch (e) {
                 console.error("Queue fetch error:", e);
             }
         }
 
-        function renderSubmissionsTable(subs) {
-            const tbody = document.getElementById("submissionsTable");
+        function setSubmissionsModelFilter(model) {
+            submissionsModelFilter = model;
+            const btnAll = document.getElementById("filterModelAll");
+            const btnUR = document.getElementById("filterModelUR");
+            const btnNiryo = document.getElementById("filterModelNiryo");
+
+            const activeClass = "px-2.5 py-1 rounded font-bold bg-indigo-600 text-white transition";
+            const inactiveClass = "px-2.5 py-1 rounded text-slate-400 hover:text-white transition";
+
+            if (btnAll) btnAll.className = model === 'all' ? activeClass : inactiveClass;
+            if (btnUR) btnUR.className = model === 'ur' ? activeClass : inactiveClass;
+            if (btnNiryo) btnNiryo.className = model === 'niryo' ? activeClass : inactiveClass;
+
+            filterSubmissionsTable();
+        }
+
+        function setSubmissionsStatusFilter(status) {
+            submissionsStatusFilter = status;
+            const btnAll = document.getElementById("filterStatusAll");
+            const btnPend = document.getElementById("filterStatusPending");
+            const btnRun = document.getElementById("filterStatusRunning");
+            const btnComp = document.getElementById("filterStatusCompleted");
+
+            const activeClass = "px-2.5 py-1 rounded font-bold bg-indigo-600 text-white transition";
+            const inactiveClass = "px-2.5 py-1 rounded text-slate-400 hover:text-white transition";
+
+            if (btnAll) btnAll.className = status === 'all' ? activeClass : inactiveClass;
+            if (btnPend) btnPend.className = status === 'pending' ? activeClass : inactiveClass;
+            if (btnRun) btnRun.className = status === 'running' ? activeClass : inactiveClass;
+            if (btnComp) btnComp.className = status === 'completed' ? activeClass : inactiveClass;
+
+            filterSubmissionsTable();
+        }
+
+        function filterSubmissionsTable() {
+            const query = (document.getElementById("queueSearchInput")?.value || "").toLowerCase().trim();
+
+            let filtered = submissionsList.slice();
+
+            // Filter model
+            if (submissionsModelFilter !== 'all') {
+                filtered = filtered.filter(s => {
+                    const subModel = s.robot_model || ((s.code && s.code.includes('pyniryo')) ? 'niryo' : 'ur');
+                    return subModel === submissionsModelFilter;
+                });
+            }
+
+            // Filter status
+            if (submissionsStatusFilter !== 'all') {
+                filtered = filtered.filter(s => s.status === submissionsStatusFilter);
+            }
+
+            // Search query
+            if (query) {
+                filtered = filtered.filter(s => {
+                    const idStr = String(s.id);
+                    const author = (s.student_name || "").toLowerCase();
+                    const name = (s.task_id || s.project_name || "").toLowerCase();
+                    const code = (s.code || "").toLowerCase();
+                    return idStr.includes(query) || author.includes(query) || name.includes(query) || code.includes(query);
+                });
+            }
+
+            renderProjectsFullTable(filtered);
+        }
+
+        function renderProjectsFullTable(subs) {
+            const tbody = document.getElementById("projectsFullTableBody");
+            if (!tbody) return;
+
             if (!subs || subs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-slate-500">No programs in queue.</td></tr>';
+                tbody.innerHTML = `<tr><td colspan="8" class="p-12 text-center text-slate-500 font-mono text-xs">No matching projects found in execution queue.</td></tr>`;
                 return;
             }
 
             tbody.innerHTML = subs.map(sub => {
-                const isSelected = sub.id === selectedSubId;
-                const statusBadge = getStatusBadge(sub.status);
-                const timeStr = new Date(sub.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const isAdmin = sub.task_id === 'Admin' || (sub.student_name && sub.student_name.toLowerCase().startsWith('admin'));
-                const adminBadge = isAdmin ? '<span class="ml-1.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">ADMIN</span>' : '';
                 const subModel = sub.robot_model || ((sub.code && sub.code.includes('pyniryo')) ? 'niryo' : 'ur');
                 const modelBadge = subModel === 'niryo'
-                    ? '<span class="ml-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">NIRYO</span>'
-                    : '<span class="ml-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>';
+                    ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">NIRYO</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>';
 
-                const isThisSubRunning = (subModel === 'niryo' && isExecutingNiryo && activeSubNiryo === sub.id) ||
-                                         (subModel === 'ur' && isExecutingUR && activeSubUR === sub.id);
+                const isAdmin = sub.task_id === 'Admin' || (sub.student_name && sub.student_name.toLowerCase().startsWith('admin'));
+                const adminBadge = isAdmin ? '<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">ADMIN</span>' : '';
 
-                const progName = (sub.task_id && sub.task_id !== 'Standard' && sub.task_id !== 'Main') ? sub.task_id : (sub.student_name || 'Program');
-                const studentName = sub.student_name || 'Anonymous';
+                const isThisRunning = (subModel === 'niryo' && isExecutingNiryo && activeSubNiryo === sub.id) ||
+                                      (subModel === 'ur' && isExecutingUR && activeSubUR === sub.id);
+
+                const progName = sub.task_id || sub.project_name || 'Program Routine';
+                const studentName = sub.student_name || 'Anonymous Student';
+                const statusBadge = getStatusBadge(sub.status);
+                const locCount = calculateLOC(sub);
+                const filesInfo = formatSubmissionFilesCount(sub);
+                const dateTimeHtml = formatDateTimeSent(sub.submitted_at);
+
+                const isSelected = (selectedSubId === sub.id);
 
                 return `
-                    <tr onclick="selectSubmission(${sub.id})" class="cursor-pointer hover:bg-slate-800/80 transition ${isSelected ? 'bg-slate-800/90 border-l-4 border-indigo-500' : ''} ${isThisSubRunning ? 'bg-blue-950/40 ring-1 ring-blue-500/30' : ''}">
-                        <td class="p-3 font-mono text-slate-400">#${sub.id}</td>
-                        <td class="p-3 font-bold text-slate-200">
-                            ${escapeHtml(progName)}
-                            ${modelBadge}
-                            ${adminBadge}
+                    <tr onclick="openSubmissionInStudio(${sub.id})" class="cursor-pointer hover:bg-slate-800/80 transition group ${isSelected ? 'bg-slate-800/90 border-l-4 border-indigo-500' : ''} ${isThisRunning ? 'bg-blue-950/40 ring-1 ring-blue-500/40' : ''}">
+                        <td class="p-3.5 text-center font-mono text-slate-400 font-bold">
+                            <span class="text-indigo-400 group-hover:text-indigo-300 font-bold text-xs">#${sub.id}</span>
                         </td>
-                        <td class="p-3 font-medium text-sky-400">${escapeHtml(studentName)}</td>
-                        <td class="p-3">${statusBadge}</td>
-                        <td class="p-3 text-slate-400">${timeStr}</td>
-                        <td class="p-3 text-right">
-                            <button onclick="deleteSubmission(${sub.id}, event)" title="Delete #${sub.id}" class="inline-flex items-center justify-center p-1.5 px-2 rounded bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-800 text-xs transition">
+                        <td class="p-3.5">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold text-slate-100 group-hover:text-white transition text-xs">${escapeHtml(progName)}</span>
+                                ${modelBadge}
+                                ${adminBadge}
+                            </div>
+                            <div class="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center space-x-2">
+                                <span>Entry: <code class="text-indigo-300 font-semibold">${escapeHtml(filesInfo.entry)}</code></span>
+                                <span>•</span>
+                                <span>Target: ${subModel === 'niryo' ? 'Niryo One/Ned' : 'UR3 CB3'}</span>
+                            </div>
+                        </td>
+                        <td class="p-3.5 font-medium text-sky-400">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs">👤</span>
+                                <span class="font-semibold text-slate-200 text-xs">${escapeHtml(studentName)}</span>
+                            </div>
+                        </td>
+                        <td class="p-3.5 text-slate-300 text-xs">
+                            ${dateTimeHtml}
+                        </td>
+                        <td class="p-3.5 text-center">
+                            <span title="${escapeHtml(filesInfo.list)}" class="px-2.5 py-1 rounded text-[11px] font-mono bg-slate-800 text-slate-300 border border-slate-700 font-semibold cursor-help inline-flex items-center space-x-1">
+                                <span>📁</span><span>${filesInfo.count}</span>
+                            </span>
+                        </td>
+                        <td class="p-3.5 text-center font-mono text-slate-300 text-xs">
+                            <span class="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 font-semibold text-emerald-400">${locCount} lines</span>
+                        </td>
+                        <td class="p-3.5">
+                            ${statusBadge}
+                        </td>
+                        <td class="p-3.5 text-right whitespace-nowrap space-x-1.5" onclick="event.stopPropagation()">
+                            <button onclick="openSubmissionInStudio(${sub.id})" title="Preview in Code Studio"
+                                class="px-3 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold transition inline-flex items-center space-x-1 shadow">
+                                <span>👁️ Preview</span>
+                            </button>
+                            <button onclick="quickRunSubmission(${sub.id}, event)" title="Launch directly on robot and open Run Page"
+                                class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition inline-flex items-center space-x-1 shadow">
+                                <span>🚀 Run</span>
+                            </button>
+                            <button onclick="deleteSubmission(${sub.id}, event)" title="Delete submission"
+                                class="p-1.5 px-2 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700 text-xs transition inline-flex items-center">
                                 🗑️
                             </button>
                         </td>
@@ -1891,134 +2067,224 @@ printf("Gripper test finished.")
             }).join("");
         }
 
-        function getStatusBadge(status) {
-            const styles = {
-                pending: "bg-amber-500/20 text-amber-400 border border-amber-500/40",
-                running: "bg-blue-500/20 text-blue-300 border border-blue-500/40 animate-pulse font-bold",
-                completed: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40",
-                failed: "bg-rose-500/20 text-rose-400 border border-rose-500/40",
-                aborted: "bg-red-600 text-white font-bold",
-                rejected: "bg-slate-700 text-slate-400"
-            };
-            return `<span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${styles[status] || 'bg-slate-700'}">${status}</span>`;
-        }
-
-        function selectSubmission(id) {
+        function openSubmissionInStudio(id) {
             selectedSubId = id;
             const sub = submissionsList.find(s => s.id === id);
             if (!sub) return;
 
-            switchRightTab('inspect');
-            setInspectorEditMode(false);
+            let files = sub.files;
+            if (typeof files === 'string' && files.trim()) {
+                try { files = JSON.parse(files); } catch (_) { files = null; }
+            }
+            if (!files || typeof files !== 'object' || Object.keys(files).length === 0) {
+                files = { "main.py": sub.code || "" };
+            }
 
-            const isAdmin = sub.task_id === 'Admin' || (sub.student_name && sub.student_name.toLowerCase().startsWith('admin'));
-            const adminTag = isAdmin ? " [ADMIN]" : "";
-            const progName = (sub.task_id && sub.task_id !== 'Standard' && sub.task_id !== 'Main') ? sub.task_id : (sub.student_name || 'Program');
+            adminProjectState.current_project = `submission_${sub.id}`;
+            adminProjectState.files = { ...files };
+            adminProjectState.entry_point = sub.entry_point || (("main.py" in files) ? "main.py" : Object.keys(files)[0]);
+            adminProjectState.active_file = adminProjectState.entry_point;
+
+            // Update UI preview context badges
+            const progName = sub.task_id || sub.project_name || 'Program Routine';
+            const subBadge = document.getElementById("studioLoadedSubBadge");
+            if (subBadge) subBadge.innerText = `#${sub.id} - ${progName}`;
+            const authorBadge = document.getElementById("studioLoadedAuthorBadge");
+            if (authorBadge) authorBadge.innerText = `Author: ${sub.student_name || 'Anonymous'}`;
             const subModel = sub.robot_model || ((sub.code && sub.code.includes('pyniryo')) ? 'niryo' : 'ur');
-            const modelLabel = subModel === 'niryo' ? 'Niryo Ned' : 'UR3 Arm';
+            const modelBadge = document.getElementById("studioLoadedModelBadge");
+            if (modelBadge) modelBadge.innerText = subModel.toUpperCase();
 
-            document.getElementById("inspectTitle").innerText = `#${sub.id} - ${progName} (${sub.student_name})${adminTag}`;
-            document.getElementById("inspectSub").innerText = `Status: ${sub.status.toUpperCase()} | Target: ${modelLabel} | Submitted: ${new Date(sub.submitted_at).toLocaleTimeString()}`;
+            // Set form controls
+            const nameInput = document.getElementById("creatorProgName");
+            if (nameInput) nameInput.value = progName;
+            const modelSel = document.getElementById("creatorModelSelect");
+            if (modelSel) modelSel.value = subModel;
 
-            const armBadge = document.getElementById("inspectArmBadge");
-            armBadge.classList.remove("hidden");
-            armBadge.innerText = modelLabel;
-            armBadge.className = subModel === 'niryo'
-                ? "px-2 py-0.2 rounded text-[10px] font-extrabold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                : "px-2 py-0.2 rounded text-[10px] font-extrabold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
-
-            document.getElementById("inspectorActions").classList.remove("hidden");
-            renderInspectorFileTabs(sub);
-            if (inspectorFilesState && inspectorActiveFile) {
-                viewer.setValue(inspectorFilesState[inspectorActiveFile] || sub.code);
-            } else {
-                viewer.setValue(sub.code);
-            }
-            originalSelectedCode = sub.code;
-
-            if (adminUr3Vis) {
-                adminUr3Vis.setRobotModel(subModel);
+            // Update Monaco editor
+            if (studioEditor) {
+                studioEditor.setValue(adminProjectState.files[adminProjectState.active_file] || "");
             }
 
-            renderSubmissionsTable(submissionsList);
-            attachLogStream(id, sub.logs || "");
-            updateInspectorButtons();
+            studioRenderFileTabs();
+            studioRenderExplorer();
+
+            // Switch to Code Studio tab
+            switchAdminTab('code');
+            showActionToast(`Loaded submission #${sub.id} in Code Studio.`);
         }
 
-        function updateInspectorButtons() {
-            if (!selectedSubId || currentRightTab !== 'inspect') return;
-            const sub = submissionsList.find(s => s.id === selectedSubId);
-            if (!sub) return;
+        function newStudioBlankProject() {
+            selectedSubId = null;
+            const targetModel = document.getElementById("creatorModelSelect")?.value || "ur";
+            const targetIp = (targetModel === 'niryo') ? niryoIp : urIp;
+            const templateCode = targetModel === 'niryo' ? CREATOR_TEMPLATES.niryo_default(targetIp) : CREATOR_TEMPLATES.default(targetIp);
 
-            const btnApprove = document.getElementById("btnApprove");
-            if (!btnApprove) return;
+            adminProjectState.current_project = "admin_new";
+            adminProjectState.files = { "main.py": templateCode };
+            adminProjectState.entry_point = "main.py";
+            adminProjectState.active_file = "main.py";
 
-            const subModel = sub.robot_model || ((sub.code && sub.code.includes('pyniryo')) ? 'niryo' : 'ur');
-            const modelLabel = subModel === 'niryo' ? 'Niryo Ned' : 'UR3';
-            const isTargetOnline = subModel === 'niryo' ? isNiryoReady : isURReady;
-            const isTargetBusy = subModel === 'niryo' ? isExecutingNiryo : isExecutingUR;
+            const subBadge = document.getElementById("studioLoadedSubBadge");
+            if (subBadge) subBadge.innerText = "#New - Custom Routine";
+            const authorBadge = document.getElementById("studioLoadedAuthorBadge");
+            if (authorBadge) authorBadge.innerText = `Author: ${currentAdminUser || 'Instructor'}`;
+            const modelBadge = document.getElementById("studioLoadedModelBadge");
+            if (modelBadge) modelBadge.innerText = targetModel.toUpperCase();
 
-            if (!isTargetOnline) {
-                btnApprove.disabled = true;
-                btnApprove.className = "px-4 py-1.5 bg-slate-800 text-slate-500 text-xs font-bold rounded-lg cursor-not-allowed border border-slate-700";
-                btnApprove.innerHTML = `<span>🚫 ${modelLabel} Offline</span>`;
-            } else if (isTargetBusy) {
-                btnApprove.disabled = true;
-                btnApprove.className = "px-4 py-1.5 bg-slate-700 text-slate-300 text-xs font-bold rounded-lg cursor-not-allowed";
-                btnApprove.innerHTML = `<span>⏳ ${modelLabel} Busy...</span>`;
-            } else {
-                btnApprove.disabled = false;
-                btnApprove.className = "px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center space-x-1 cursor-pointer";
-                const isReExec = sub.status === 'completed' || sub.status === 'failed' || sub.status === 'aborted';
-                btnApprove.innerHTML = isReExec ? `<span>🔄 Re-Run on ${modelLabel}</span>` : `<span>▶ Execute on ${modelLabel}</span>`;
+            if (studioEditor) {
+                studioEditor.setValue(templateCode);
             }
+            studioRenderFileTabs();
+            studioRenderExplorer();
+            switchAdminTab('code');
         }
 
-        async function approveSelected() {
-            if (!selectedSubId) return;
-
+        async function executeCurrentStudioProject() {
             if (!hasAdminPermission("can_execute")) {
-                alert("Permission Denied: Your admin account does not have permission to execute code on physical robots (can_execute).");
+                alert("Permission Denied: Your admin account does not have permission to execute code on robots (can_execute).");
                 return;
             }
 
-            const sub = submissionsList.find(s => s.id === selectedSubId);
-            if (!sub) return;
-
-            const subModel = sub.robot_model || ((sub.code && sub.code.includes('pyniryo')) ? 'niryo' : 'ur');
-            const targetIp = (subModel === 'niryo') ? niryoIp : urIp;
-            const modelName = (subModel === 'niryo') ? 'Niryo Ned' : 'UR3';
-
-            const btnApprove = document.getElementById("btnApprove");
-            if (btnApprove) {
-                btnApprove.disabled = true;
-                btnApprove.innerHTML = `<span>⏳ Launching on ${modelName}...</span>`;
+            if (studioEditor && adminProjectState.active_file) {
+                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
             }
-            appendLog(`\n[Supervisor] Launching execution for program #${selectedSubId} on ${modelName} (${targetIp})...\n`);
+
+            const targetModel = document.getElementById("creatorModelSelect")?.value || "ur";
+            const entryCode = adminProjectState.files[adminProjectState.entry_point] || (studioEditor ? studioEditor.getValue() : "");
+            const progName = document.getElementById("creatorProgName")?.value.trim() || "Admin Routine";
+
+            if (selectedSubId) {
+                // Save changes to submission
+                try {
+                    await fetch(`/api/submissions/${selectedSubId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${currentAdminToken}`
+                        },
+                        body: JSON.stringify({
+                            code: entryCode,
+                            files: adminProjectState.files,
+                            entry_point: adminProjectState.entry_point
+                        })
+                    });
+                } catch (_) { }
+
+                // Launch execution
+                try {
+                    const res = await fetch(`/api/submissions/${selectedSubId}/approve`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                    });
+                    if (!res.ok) {
+                        const err = await res.json();
+                        alert("Could not launch submission: " + (err.detail || "Error"));
+                        return;
+                    }
+                    showActionToast(`🚀 Launched submission #${selectedSubId} on robot!`);
+                    const sub = submissionsList.find(s => s.id === selectedSubId);
+                    launchRunPageForSubmission(selectedSubId, progName, targetModel, sub ? sub.student_name : currentAdminUser);
+                } catch (e) {
+                    alert("Execution launch error: " + e.message);
+                }
+            } else {
+                // Direct custom admin routine
+                if (!hasAdminPermission("can_direct_send")) {
+                    alert("Permission Denied: Your account does not have permission for direct dispatch (can_direct_send).");
+                    return;
+                }
+                try {
+                    const res = await fetch('/api/admin/send-code', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${currentAdminToken}`
+                        },
+                        body: JSON.stringify({
+                            code: entryCode,
+                            program_name: progName,
+                            execute_now: true,
+                            project_name: adminProjectState.current_project,
+                            files: adminProjectState.files,
+                            entry_point: adminProjectState.entry_point,
+                            robot_model: targetModel
+                        })
+                    });
+                    if (!res.ok) {
+                        const err = await res.json();
+                        alert("Execution error: " + (err.detail || "Failed to dispatch"));
+                        return;
+                    }
+                    const data = await res.json();
+                    showActionToast(`🚀 Program #${data.submission_id} launched on arm!`);
+                    launchRunPageForSubmission(data.submission_id, progName, targetModel, currentAdminUser);
+                } catch (e) {
+                    alert("Error sending code: " + e.message);
+                }
+            }
+        }
+
+        async function quickRunSubmission(id, event) {
+            if (event) event.stopPropagation();
+            if (!hasAdminPermission("can_execute")) {
+                alert("Permission Denied: Your admin account does not have permission to execute code on robots (can_execute).");
+                return;
+            }
+            const sub = submissionsList.find(s => s.id === id);
+            const subModel = sub ? (sub.robot_model || 'ur') : 'ur';
+            const progName = sub ? (sub.task_id || sub.project_name || `Program #${id}`) : `Program #${id}`;
 
             try {
-                const res = await fetch(`/api/submissions/${selectedSubId}/approve`, {
+                const res = await fetch(`/api/submissions/${id}/approve`, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${currentAdminToken}` }
                 });
                 if (!res.ok) {
                     const err = await res.json();
-                    alert(err.detail || "Could not launch execution");
+                    alert("Could not launch submission: " + (err.detail || "Error"));
+                    return;
                 }
-                fetchSubmissions();
+                showActionToast(`🚀 Executing #${id} on ${subModel.toUpperCase()}!`);
+                launchRunPageForSubmission(id, progName, subModel, sub?.student_name);
             } catch (e) {
                 alert("Error launching program: " + e.message);
             }
         }
 
-        async function rejectSelected() {
-            if (!selectedSubId) return;
-            await fetch(`/api/submissions/${selectedSubId}/reject`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${currentAdminToken}` }
-            });
+        function launchRunPageForSubmission(subId, progName, model, author = "") {
+            activeRunModel = model || 'ur';
+            switchAdminTab('run');
+
+            const label = document.getElementById("runActiveProgramLabel");
+            if (label) label.innerText = `RUNNING #${subId} — ${progName}`;
+            const modelBadge = document.getElementById("runActiveModelBadge");
+            if (modelBadge) modelBadge.innerText = (model || 'ur').toUpperCase();
+            const authorSpan = document.getElementById("runActiveAuthor");
+            if (authorSpan) authorSpan.innerText = `Author: ${author || currentAdminUser || 'User'}`;
+
+            // Reset and start elapsed timer
+            startRunTimer();
+
+            // Connect live stdout/stderr stream
+            attachLogStream(subId);
+
+            // Connect live telemetry stream
+            startRunTelemetryMonitoring(activeRunModel);
+
             fetchSubmissions();
-            showActionToast(`Program #${selectedSubId} marked as rejected.`);
+        }
+
+        function startRunTimer() {
+            if (runExecutionTimer) clearInterval(runExecutionTimer);
+            runExecutionStartTime = Date.now();
+            const timeEl = document.getElementById("runElapsedTime");
+            runExecutionTimer = setInterval(() => {
+                const elapsedSec = Math.floor((Date.now() - runExecutionStartTime) / 1000);
+                const m = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+                const s = String(elapsedSec % 60).padStart(2, '0');
+                if (timeEl) timeEl.innerText = `Elapsed: ${m}:${s}`;
+            }, 1000);
         }
 
         async function deleteSubmission(id, event) {
@@ -2033,11 +2299,6 @@ printf("Gripper test finished.")
                 if (res.ok) {
                     if (selectedSubId === id) {
                         selectedSubId = null;
-                        document.getElementById("inspectTitle").innerText = "No Program Selected";
-                        document.getElementById("inspectSub").innerText = "Select a program from the execution queue or switch to New Script Studio";
-                        document.getElementById("inspectArmBadge").classList.add("hidden");
-                        document.getElementById("inspectorActions").classList.add("hidden");
-                        viewer.setValue("# Select a program from the queue to preview code or switch to New Script Studio");
                     }
                     fetchSubmissions();
                     showActionToast(`Deleted program #${id}`);
@@ -2050,10 +2311,6 @@ printf("Gripper test finished.")
             }
         }
 
-        async function deleteSelected() {
-            if (selectedSubId) deleteSubmission(selectedSubId);
-        }
-
         async function clearAllSubmissions() {
             if (!confirm("DELETE ALL submitted programs? This action cannot be undone.")) return;
             try {
@@ -2063,11 +2320,6 @@ printf("Gripper test finished.")
                 });
                 if (res.ok) {
                     selectedSubId = null;
-                    document.getElementById("inspectTitle").innerText = "No Program Selected";
-                    document.getElementById("inspectSub").innerText = "Select a program from the execution queue or switch to New Script Studio";
-                    document.getElementById("inspectArmBadge").classList.add("hidden");
-                    document.getElementById("inspectorActions").classList.add("hidden");
-                    viewer.setValue("# Select a program from the queue to preview code or switch to New Script Studio");
                     fetchSubmissions();
                     showActionToast("All queue programs deleted.");
                 }
@@ -2548,9 +2800,6 @@ printf("Gripper test finished.")
         // --- Live Terminal & Logging ---
         // ==========================================
 
-        let terminalLogs = [];
-        let terminalFilter = 'all';
-
         function attachLogStream(subId, initialLogs = "") {
             if (activeLogSocket) {
                 try { activeLogSocket.close(); } catch (e) { }
@@ -2623,6 +2872,7 @@ printf("Gripper test finished.")
             terminalFilter = filter;
             const tabAll = document.getElementById("termTabAll");
             const tabPrints = document.getElementById("termTabPrints");
+            const tabErrors = document.getElementById("termTabErrors");
             const tabCodePrints = document.getElementById("termTabCodePrints");
 
             const activeClass = "px-2 py-0.5 rounded font-medium bg-blue-600 text-white transition";
@@ -2630,6 +2880,7 @@ printf("Gripper test finished.")
 
             if (tabAll) tabAll.className = filter === 'all' ? activeClass : inactiveClass;
             if (tabPrints) tabPrints.className = filter === 'prints' ? activeClass : inactiveClass;
+            if (tabErrors) tabErrors.className = filter === 'errors' ? "px-2 py-0.5 rounded font-medium bg-rose-700 text-white transition" : "px-2 py-0.5 rounded font-medium text-slate-400 hover:text-rose-400 transition";
             if (tabCodePrints) tabCodePrints.className = filter === 'code_prints' ? activeClass : inactiveClass;
 
             renderTerminal();
@@ -2673,6 +2924,12 @@ printf("Gripper test finished.")
                 filtered = terminalLogs.filter(i => i.isPrint);
                 if (filtered.length === 0) {
                     t.innerText = "[Printf Filter] No print outputs captured yet.\n";
+                    return;
+                }
+            } else if (terminalFilter === 'errors') {
+                filtered = terminalLogs.filter(i => /error|fault|stop|fail|exception|warning/i.test(i.text));
+                if (filtered.length === 0) {
+                    t.innerText = "[Error Filter] No errors or warnings logged.\n";
                     return;
                 }
             }
@@ -2816,22 +3073,285 @@ printf("Gripper test finished.")
         }
 
         // ==========================================
-        // --- User Management & RBAC ---
+        // --- Run Page Telemetry & Controller Debug Console ---
         // ==========================================
 
-        let currentAdminToken = localStorage.getItem("ur_admin_token") || localStorage.getItem("ur_student_token") || "";
-        let currentAdminUser = localStorage.getItem("ur_admin_user") || "mike";
-        let currentAdminRole = localStorage.getItem("ur_admin_role") || "superadmin";
-        let currentAdminPermissions = [];
-        try {
-            currentAdminPermissions = JSON.parse(localStorage.getItem("ur_admin_perms") || "[]");
-        } catch (_) { }
+        function startRunTelemetryMonitoring(model = 'ur') {
+            activeRunModel = model;
+            if (telemetrySocket) {
+                try { telemetrySocket.close(); } catch (_) { }
+                telemetrySocket = null;
+            }
+            if (telemetryPollInterval) {
+                clearInterval(telemetryPollInterval);
+                telemetryPollInterval = null;
+            }
 
-        // Proactively check auth on DOM ready
-        window.addEventListener("DOMContentLoaded", () => {
-            checkAdminAuth();
-        });
+            // Preload recent debug history and telemetry frame
+            (async () => {
+                try {
+                    const res = await fetch(`/api/telemetry/${model}/history?limit=100`, {
+                        headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                    });
+                    if (res.ok) {
+                        const hist = await res.json();
+                        if (hist.debug && Array.isArray(hist.debug) && hist.debug.length > 0) {
+                            hist.debug.forEach(d => {
+                                const timeTag = d.time ? `[${d.time}] ` : '';
+                                const srcTag = d.source ? `[${d.source.toUpperCase()}] ` : '';
+                                appendDebugConsole(`${timeTag}${srcTag}${d.message}\n`);
+                            });
+                        }
+                    }
+                } catch (_) { }
+            })();
 
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/telemetry/${model}?token=${currentAdminToken}`;
+
+            try {
+                telemetrySocket = new WebSocket(wsUrl);
+                telemetrySocket.onmessage = (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        updateRunTelemetryUI(data);
+                    } catch (_) { }
+                };
+                telemetrySocket.onerror = () => {
+                    startTelemetryHttpPolling(model);
+                };
+                telemetrySocket.onclose = () => {
+                    startTelemetryHttpPolling(model);
+                };
+            } catch (_) {
+                startTelemetryHttpPolling(model);
+            }
+        }
+
+        function startTelemetryHttpPolling(model) {
+            if (telemetryPollInterval) return;
+            telemetryPollInterval = setInterval(async () => {
+                if (currentAdminTab !== 'run') return;
+                try {
+                    const res = await fetch(`/api/telemetry/${model}`, {
+                        headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        updateRunTelemetryUI(data);
+                    }
+                } catch (_) { }
+            }, 600);
+        }
+
+        function switchRunModel(model) {
+            activeRunModel = model;
+            const btnUR = document.getElementById("btnRunModelUR");
+            const btnNiryo = document.getElementById("btnRunModelNiryo");
+            if (btnUR) btnUR.className = model === 'ur' ? "px-2.5 py-1 rounded font-bold bg-indigo-600 text-white transition" : "px-2.5 py-1 rounded text-slate-400 hover:text-white transition";
+            if (btnNiryo) btnNiryo.className = model === 'niryo' ? "px-2.5 py-1 rounded font-bold bg-cyan-600 text-white transition" : "px-2.5 py-1 rounded text-slate-400 hover:text-white transition";
+            const badge = document.getElementById("runActiveModelBadge");
+            if (badge) badge.innerText = (model === 'niryo' ? 'NIRYO NED' : 'UR3 ARM');
+            startRunTelemetryMonitoring(model);
+        }
+
+        function updateRunTelemetryUI(data) {
+            if (!data) return;
+
+            // Connected Status Badge
+            const connEl = document.getElementById("telConnectedPill");
+            if (connEl) {
+                if (data.connected) {
+                    connEl.innerText = "CONNECTED";
+                    connEl.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800";
+                } else {
+                    connEl.innerText = "OFFLINE";
+                    connEl.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-800";
+                }
+            }
+
+            // Pulse Circle for running status
+            const pulseCircle = document.getElementById("runStatusPulseCircle");
+            if (pulseCircle) {
+                const isModelExec = (activeRunModel === 'niryo') ? isExecutingNiryo : isExecutingUR;
+                if (isModelExec) {
+                    pulseCircle.className = "w-3.5 h-3.5 rounded-full bg-emerald-500 animate-pulse shrink-0 ring-4 ring-emerald-500/30";
+                } else {
+                    pulseCircle.className = "w-3.5 h-3.5 rounded-full bg-slate-600 shrink-0";
+                }
+            }
+
+            // E-Stop Reset visibility
+            const btnReset = document.getElementById("btnRunResetEStop");
+            if (btnReset) {
+                const isHalted = (activeRunModel === 'niryo') ? isEmergencyHaltedNiryo : isEmergencyHaltedUR;
+                if (isHalted) btnReset.classList.remove("hidden");
+                else btnReset.classList.add("hidden");
+            }
+
+            // Speed & Dynamics Analytics
+            const speed = data.tcp_speed || 0; // m/s
+            const speedNum = document.getElementById("telSpeedNum");
+            if (speedNum) speedNum.innerText = speed.toFixed(3);
+            const speedMm = document.getElementById("telSpeedMm");
+            if (speedMm) speedMm.innerText = Math.round(speed * 1000);
+
+            const speedBar = document.getElementById("telSpeedBar");
+            if (speedBar) {
+                const pct = Math.min(100, Math.round((speed / 0.5) * 100));
+                speedBar.style.width = `${pct}%`;
+            }
+
+            const maxSpeed = document.getElementById("telMaxSpeed");
+            if (maxSpeed) maxSpeed.innerText = `${(data.max_speed || 0).toFixed(3)} m/s`;
+            const avgSpeed = document.getElementById("telAvgSpeed");
+            if (avgSpeed) avgSpeed.innerText = `${(data.avg_speed || 0).toFixed(3)} m/s`;
+            const pathLen = document.getElementById("telPathLen");
+            if (pathLen) pathLen.innerText = `${(data.path_distance || 0).toFixed(2)} m`;
+            const movingTime = document.getElementById("telMovingTime");
+            if (movingTime) movingTime.innerText = `${(data.moving_time || 0).toFixed(1)} s`;
+
+            // Cartesian Pose (TCP)
+            const targetModelLabel = document.getElementById("telTargetModelLabel");
+            if (targetModelLabel) targetModelLabel.innerText = activeRunModel.toUpperCase();
+
+            const pose = data.tcp_pose || [0, 0, 0, 0, 0, 0];
+            const posX = document.getElementById("telPosX");
+            if (posX) posX.innerText = (pose[0] * 1000).toFixed(1);
+            const posY = document.getElementById("telPosY");
+            if (posY) posY.innerText = (pose[1] * 1000).toFixed(1);
+            const posZ = document.getElementById("telPosZ");
+            if (posZ) posZ.innerText = (pose[2] * 1000).toFixed(1);
+
+            const rotRx = document.getElementById("telRotRx");
+            if (rotRx) rotRx.innerText = `${(pose[3] * 180 / Math.PI).toFixed(1)}°`;
+            const rotRy = document.getElementById("telRotRy");
+            if (rotRy) rotRy.innerText = `${(pose[4] * 180 / Math.PI).toFixed(1)}°`;
+            const rotRz = document.getElementById("telRotRz");
+            if (rotRz) rotRz.innerText = `${(pose[5] * 180 / Math.PI).toFixed(1)}°`;
+
+            const speedScale = document.getElementById("telSpeedScale");
+            if (speedScale) speedScale.innerText = `${Math.round((data.speed_slider_mask || 1.0) * 100)}%`;
+
+            // 6-DOF Joint Angles & Velocities
+            const q = data.actual_q || [0, 0, 0, 0, 0, 0];
+            const qd = data.actual_qd || [0, 0, 0, 0, 0, 0];
+            for (let i = 0; i < 6; i++) {
+                const elQ = document.getElementById(`telQ${i}`);
+                if (elQ) elQ.innerText = `${(q[i] * 180 / Math.PI).toFixed(1)}°`;
+                const elQd = document.getElementById(`telQd${i}`);
+                if (elQd) elQd.innerText = `${(qd[i]).toFixed(2)} rad/s`;
+            }
+
+            // Diagnostics & Hardware Health
+            const modeEl = document.getElementById("telRobotMode");
+            if (modeEl) {
+                const modeStr = data.robot_mode || (data.connected ? "RUNNING" : "STANDBY");
+                modeEl.innerText = modeStr.toUpperCase();
+            }
+            const safetyEl = document.getElementById("telSafetyMode");
+            if (safetyEl) {
+                safetyEl.innerText = (data.safety_mode || "NORMAL").toUpperCase();
+            }
+            const tempsEl = document.getElementById("telJointTemp");
+            if (tempsEl && data.joint_temperatures && data.joint_temperatures.length >= 3) {
+                tempsEl.innerText = `${Math.round(data.joint_temperatures[0])}° | ${Math.round(data.joint_temperatures[1])}° | ${Math.round(data.joint_temperatures[2])}°`;
+            }
+            const powerEl = document.getElementById("telPower");
+            if (powerEl) {
+                const v = (data.voltage || 48.0).toFixed(1);
+                const a = (data.current || 1.1).toFixed(1);
+                powerEl.innerText = `${v}V • ${a}A`;
+            }
+            const protEl = document.getElementById("telProtectiveStop");
+            if (protEl) {
+                protEl.innerText = data.is_protective_stopped ? "YES (HALTED)" : "NO";
+                protEl.className = data.is_protective_stopped ? "font-bold text-rose-400 animate-pulse" : "font-bold text-slate-500";
+            }
+
+            // Low-level debug message from controller watchdog
+            if (data.debug && Array.isArray(data.debug) && data.debug.length > 0) {
+                data.debug.forEach(d => {
+                    const timeTag = d.time ? `[${d.time}] ` : '';
+                    const srcTag = d.source ? `[${d.source.toUpperCase()}] ` : '';
+                    appendDebugConsole(`${timeTag}${srcTag}${d.message}\n`);
+                });
+            } else if (data.debug_message) {
+                appendDebugConsole(`${data.debug_message}\n`);
+            }
+        }
+
+        async function executeDashboardCommand() {
+            const input = document.getElementById("dashboardQueryInput");
+            if (!input) return;
+            const cmd = input.value.trim();
+            if (!cmd) return;
+
+            appendDebugConsole(`> ${cmd}\n`);
+            input.value = "";
+
+            try {
+                const res = await fetch(`/api/robot-debug/${activeRunModel}/command`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAdminToken}`
+                    },
+                    body: JSON.stringify({ command: cmd })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    appendDebugConsole(`< ${data.response || "OK"}\n`);
+                } else {
+                    appendDebugConsole(`! Error: ${data.detail || "Query failed"}\n`);
+                }
+            } catch (e) {
+                appendDebugConsole(`! Network error: ${e.message}\n`);
+            }
+        }
+
+        async function resetTelemetryAnalytics() {
+            try {
+                await fetch(`/api/telemetry/${activeRunModel}/reset-stats`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                });
+                showActionToast("✓ Dynamics & distance counters reset");
+            } catch (e) {
+                alert("Reset error: " + e.message);
+            }
+        }
+
+        function appendDebugConsole(text) {
+            const el = document.getElementById("robotDebugConsole");
+            if (el) {
+                el.innerText += text;
+                el.scrollTop = el.scrollHeight;
+            }
+        }
+
+        function clearDebugConsole() {
+            const el = document.getElementById("robotDebugConsole");
+            if (el) el.innerText = "[Controller] Debug log cleared.\n";
+        }
+
+        function setSimSpeed(speed) {
+            if (adminUr3Vis && typeof adminUr3Vis.setPlaybackSpeed === 'function') {
+                adminUr3Vis.setPlaybackSpeed(speed);
+            }
+            document.querySelectorAll(".sim-speed-btn").forEach(btn => {
+                if (btn.innerText.includes(`${speed}x`)) {
+                    btn.className = "sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-indigo-400 transition";
+                } else {
+                    btn.className = "sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono hover:text-white transition";
+                }
+            });
+            showActionToast(`Playback speed set to ${speed}x`);
+        }
+
+        // ==========================================
+        // --- Authentication & RBAC Gate ---
+        // ==========================================
 
         function hasAdminPermission(permKey) {
             if (currentAdminRole === "superadmin") return true;
@@ -2840,6 +3360,7 @@ printf("Gripper test finished.")
         }
 
         async function checkAdminAuth() {
+            currentAdminToken = getUnifiedAuthToken();
             if (!currentAdminToken) {
                 showAdminLoginModal();
                 return;
@@ -2851,43 +3372,89 @@ printf("Gripper test finished.")
                 if (res.ok) {
                     const data = await res.json();
                     if (!data.authenticated) {
-                        showAdminLoginModal();
+                        showAdminLoginModal("Session expired. Please log in.");
                         return;
                     }
                     const user = data.user || data;
                     const role = user.role || data.role;
                     if (role !== "admin" && role !== "superadmin") {
-                        showAdminLoginModal();
+                        showAdminLoginModal(`You are signed in as student "${user.username || 'Student'}".<br><span class="text-slate-400">Instructor or administrator privileges are required to access this console.</span><br><a href="/" class="inline-block mt-2 px-3 py-1 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-bold transition">&larr; Return to Student Sandbox</a>`);
                         return;
                     }
-                    currentAdminUser = user.username || data.username || "mike";
+                    currentAdminUser = user.username || data.username || "admin";
                     currentAdminRole = role;
                     currentAdminPermissions = user.permissions || data.permissions || [];
-                    localStorage.setItem("ur_admin_user", currentAdminUser);
-                    localStorage.setItem("ur_admin_role", currentAdminRole);
-                    localStorage.setItem("ur_admin_perms", JSON.stringify(currentAdminPermissions));
 
-                    document.getElementById("adminUsernameDisplay").innerText = currentAdminUser;
-                    document.getElementById("adminRoleBadge").innerText = currentAdminRole.toUpperCase();
-                    document.getElementById("adminLoginModal").classList.add("hidden");
+                    // Scope token strictly to this browser session
+                    sessionStorage.setItem("ur_admin_token", currentAdminToken);
+                    try {
+                        localStorage.removeItem("ur_admin_token");
+                        localStorage.removeItem("ur_auth_token");
+                    } catch (_) {}
+
+                    // Unhide Header and Main App
+                    const header = document.getElementById("adminHeader");
+                    if (header) header.classList.remove("hidden");
+                    const appCont = document.getElementById("adminAppContainer");
+                    if (appCont) appCont.classList.remove("hidden");
+
+                    // Hide Login Gate
+                    const loginModal = document.getElementById("adminLoginModal");
+                    if (loginModal) loginModal.classList.add("hidden");
+
+                    const userDisp = document.getElementById("adminUsernameDisplay");
+                    if (userDisp) userDisp.innerText = currentAdminUser;
+                    const roleBadge = document.getElementById("adminRoleBadge");
+                    if (roleBadge) {
+                        roleBadge.innerText = currentAdminRole.toUpperCase();
+                        roleBadge.className = currentAdminRole === "superadmin"
+                            ? "px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                            : "px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+                    }
 
                     const tabAdmins = document.getElementById("tabBtnAdmins");
-                    if (tabAdmins && currentAdminRole === "superadmin") {
-                        tabAdmins.classList.remove("hidden");
+                    if (tabAdmins) {
+                        if (currentAdminRole === "superadmin") tabAdmins.classList.remove("hidden");
+                        else tabAdmins.classList.add("hidden");
                     }
-                    fetchAdminUsers();
-                    studioLoadProjects();
-                    switchAdminTab('run');
+
+                    // Load Data
+                    try { loadConfig(); } catch (err) { console.warn("loadConfig error:", err); }
+                    try { checkRobotPing(); } catch (err) { console.warn("checkRobotPing error:", err); }
+                    try { fetchSubmissions(); } catch (err) { console.warn("fetchSubmissions error:", err); }
+                    try { connectAdminSocket(); } catch (err) { console.warn("connectAdminSocket error:", err); }
+                    try { studioLoadProjects(); } catch (err) { console.warn("studioLoadProjects error:", err); }
+                    try { switchAdminTab('projects'); } catch (err) { console.warn("switchAdminTab error:", err); }
                 } else {
                     showAdminLoginModal();
                 }
             } catch (e) {
+                console.warn("checkAdminAuth error:", e);
                 showAdminLoginModal();
             }
         }
 
-        function showAdminLoginModal() {
-            document.getElementById("adminLoginModal").classList.remove("hidden");
+        function showAdminLoginModal(msg = "") {
+            const header = document.getElementById("adminHeader");
+            if (header) header.classList.add("hidden");
+            const appCont = document.getElementById("adminAppContainer");
+            if (appCont) appCont.classList.add("hidden");
+
+            const loginModal = document.getElementById("adminLoginModal");
+            if (loginModal) loginModal.classList.remove("hidden");
+
+            const alertBox = document.getElementById("adminLoginAlert");
+            if (alertBox) {
+                if (msg) {
+                    alertBox.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-700 text-rose-300";
+                    alertBox.innerHTML = msg;
+                    alertBox.classList.remove("hidden");
+                } else {
+                    alertBox.classList.add("hidden");
+                }
+            }
+            const userInput = document.getElementById("adminLoginUsername");
+            if (userInput) userInput.focus();
         }
 
         async function submitAdminLogin() {
@@ -2896,11 +3463,16 @@ printf("Gripper test finished.")
             const alertBox = document.getElementById("adminLoginAlert");
 
             if (!u || !p) {
-                alertBox.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-700 text-rose-300";
-                alertBox.innerText = "Please enter both username and password.";
-                alertBox.classList.remove("hidden");
+                if (alertBox) {
+                    alertBox.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-700 text-rose-300";
+                    alertBox.innerText = "Please enter both username and password.";
+                    alertBox.classList.remove("hidden");
+                }
                 return;
             }
+
+            const btn = document.getElementById("btnAdminLoginSubmit");
+            if (btn) btn.disabled = true;
 
             try {
                 const res = await fetch("/api/auth/login", {
@@ -2913,59 +3485,98 @@ printf("Gripper test finished.")
                     const user = data.user || data;
                     const role = user.role || data.role;
                     if (role !== "admin" && role !== "superadmin") {
-                        alertBox.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-700 text-rose-300";
-                        alertBox.innerText = "Access denied: Account is not an administrator.";
-                        alertBox.classList.remove("hidden");
+                        if (alertBox) {
+                            alertBox.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-700 text-rose-300";
+                            alertBox.innerHTML = `You are registered as student "${user.username}". Instructor privileges are required for this console.<br><a href="/" class="inline-block mt-2 px-3 py-1 bg-sky-600 text-white rounded text-xs font-bold">&larr; Return to Student Sandbox</a>`;
+                            alertBox.classList.remove("hidden");
+                        }
+                        if (btn) btn.disabled = false;
                         return;
                     }
                     currentAdminToken = data.token;
                     currentAdminUser = user.username || data.username || u;
                     currentAdminRole = role;
                     currentAdminPermissions = user.permissions || data.permissions || [];
-                    localStorage.setItem("ur_admin_token", currentAdminToken);
-                    localStorage.setItem("ur_student_token", currentAdminToken);
-                    localStorage.setItem("ur_admin_user", currentAdminUser);
-                    localStorage.setItem("ur_admin_role", currentAdminRole);
-                    localStorage.setItem("ur_admin_perms", JSON.stringify(currentAdminPermissions));
+
+                    // Store token strictly in sessionStorage for this tab/session
+                    sessionStorage.setItem("ur_admin_token", currentAdminToken);
+                    try {
+                        localStorage.removeItem("ur_admin_token");
+                        localStorage.removeItem("ur_auth_token");
+                    } catch (_) {}
+
+                    // Clear password field for privacy
+                    document.getElementById("adminLoginPassword").value = "";
+
+                    // Immediately unlock UI and hide login modal
+                    const header = document.getElementById("adminHeader");
+                    if (header) header.classList.remove("hidden");
+                    const appCont = document.getElementById("adminAppContainer");
+                    if (appCont) appCont.classList.remove("hidden");
+
+                    const loginModal = document.getElementById("adminLoginModal");
+                    if (loginModal) loginModal.classList.add("hidden");
 
                     const userDisp = document.getElementById("adminUsernameDisplay");
                     if (userDisp) userDisp.innerText = currentAdminUser;
                     const roleBadge = document.getElementById("adminRoleBadge");
-                    if (roleBadge) roleBadge.innerText = currentAdminRole.toUpperCase();
-                    
-                    const loginModal = document.getElementById("adminLoginModal");
-                    if (loginModal) loginModal.classList.add("hidden");
+                    if (roleBadge) {
+                        roleBadge.innerText = currentAdminRole.toUpperCase();
+                        roleBadge.className = currentAdminRole === "superadmin"
+                            ? "px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                            : "px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+                    }
 
                     const tabAdmins = document.getElementById("tabBtnAdmins");
-                    if (tabAdmins && currentAdminRole === "superadmin") {
-                        tabAdmins.classList.remove("hidden");
+                    if (tabAdmins) {
+                        if (currentAdminRole === "superadmin") tabAdmins.classList.remove("hidden");
+                        else tabAdmins.classList.add("hidden");
                     }
-                    try { fetchAdminUsers(); } catch (_) {}
-                    try { studioLoadProjects(); } catch (_) {}
-                    try { switchAdminTab('run'); } catch (_) {}
-                    try { fetchSubmissions(); } catch (_) {}
-                    try { checkRobotPing(); } catch (_) {}
+
+                    // Safely initialize dashboard data
+                    try { loadConfig(); } catch (err) { console.warn("loadConfig error:", err); }
+                    try { checkRobotPing(); } catch (err) { console.warn("checkRobotPing error:", err); }
+                    try { fetchSubmissions(); } catch (err) { console.warn("fetchSubmissions error:", err); }
+                    try { connectAdminSocket(); } catch (err) { console.warn("connectAdminSocket error:", err); }
+                    try { studioLoadProjects(); } catch (err) { console.warn("studioLoadProjects error:", err); }
+                    try { switchAdminTab('projects'); } catch (err) { console.warn("switchAdminTab error:", err); }
                 } else {
-                    alertBox.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-700 text-rose-300";
-                    alertBox.innerText = data.detail || "Authentication failed.";
-                    alertBox.classList.remove("hidden");
+                    if (alertBox) {
+                        alertBox.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-700 text-rose-300";
+                        alertBox.innerText = data.detail || "Authentication failed. Check credentials.";
+                        alertBox.classList.remove("hidden");
+                    }
                 }
             } catch (err) {
-                alertBox.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-700 text-rose-300";
-                alertBox.innerText = "Connection error: " + err.message;
-                alertBox.classList.remove("hidden");
+                if (alertBox) {
+                    alertBox.className = "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-700 text-rose-300";
+                    alertBox.innerText = "Connection error: " + err.message;
+                    alertBox.classList.remove("hidden");
+                }
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
 
         async function logoutAdmin() {
             try {
-                await fetch("/api/auth/logout", {
-                    method: "POST",
-                    headers: { "Authorization": `Bearer ${currentAdminToken}` }
-                });
+                if (currentAdminToken) {
+                    await fetch("/api/auth/logout", {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${currentAdminToken}` }
+                    });
+                }
             } catch (_) { }
+            sessionStorage.removeItem("ur_auth_token");
+            localStorage.removeItem("ur_auth_token");
+            sessionStorage.removeItem("ur_admin_token");
             localStorage.removeItem("ur_admin_token");
+            sessionStorage.removeItem("ur_student_token");
+            localStorage.removeItem("ur_student_token");
             currentAdminToken = "";
+            currentAdminUser = "";
+            currentAdminRole = "";
+            currentAdminPermissions = [];
             showAdminLoginModal();
         }
 
@@ -3086,21 +3697,53 @@ printf("Gripper test finished.")
         }
 
         async function approveUser(id) {
-            await fetch(`/api/admin/users/${id}/approve`, {
-                method: "POST",
-                headers: { 'Authorization': `Bearer ${currentAdminToken}` }
-            });
+            try {
+                let res = await fetch(`/api/admin/users/${id}/approve`, {
+                    method: "POST",
+                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                });
+                if (!res.ok) {
+                    res = await fetch(`/api/admin/users/${id}/status`, {
+                        method: "POST",
+                        headers: { 'Authorization': `Bearer ${currentAdminToken}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'approved' })
+                    });
+                }
+                if (res.ok) {
+                    showActionToast("Student approved.");
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    showActionToast(data.detail || "Approval failed.");
+                }
+            } catch (err) {
+                showActionToast("Error approving student: " + err.message);
+            }
             fetchAdminUsers();
-            showActionToast("Student approved.");
         }
 
         async function rejectUser(id) {
-            await fetch(`/api/admin/users/${id}/reject`, {
-                method: "POST",
-                headers: { 'Authorization': `Bearer ${currentAdminToken}` }
-            });
+            try {
+                let res = await fetch(`/api/admin/users/${id}/reject`, {
+                    method: "POST",
+                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                });
+                if (!res.ok) {
+                    res = await fetch(`/api/admin/users/${id}/status`, {
+                        method: "POST",
+                        headers: { 'Authorization': `Bearer ${currentAdminToken}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'rejected' })
+                    });
+                }
+                if (res.ok) {
+                    showActionToast("Registration rejected.");
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    showActionToast(data.detail || "Rejection failed.");
+                }
+            } catch (err) {
+                showActionToast("Error rejecting: " + err.message);
+            }
             fetchAdminUsers();
-            showActionToast("Registration rejected.");
         }
 
         async function deleteUserAccount(id, username) {
@@ -3463,11 +4106,20 @@ printf("Gripper test finished.")
             const ex = adminExamples.find(e => e.id === exId);
             if (!ex) return;
             closeExampleModal();
-            switchRightTab('studio');
-            document.getElementById("creatorProgName").value = ex.title;
-            document.getElementById("creatorModelSelect").value = ex.robot_model;
+            selectedSubId = null;
+            adminProjectState.current_project = `example_${ex.id}`;
+            adminProjectState.files = { "main.py": ex.code || "" };
+            adminProjectState.entry_point = "main.py";
+            adminProjectState.active_file = "main.py";
+            const nameEl = document.getElementById("creatorProgName");
+            if (nameEl) nameEl.value = ex.title;
+            const modelEl = document.getElementById("creatorModelSelect");
+            if (modelEl) modelEl.value = ex.robot_model || "ur";
             onStudioModelChange();
-            viewer.setValue(ex.code);
+            if (studioEditor) studioEditor.setValue(ex.code || "");
+            studioRenderFileTabs();
+            studioRenderExplorer();
+            switchAdminTab('code');
             showActionToast(`Loaded example "${ex.title}" into Studio.`);
         }
 

@@ -60,15 +60,16 @@
 
 
             <!-- Manager Console Shortcut Link -->
-            <a href="/admin" class="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-amber-300 hover:text-amber-200 border border-amber-500/30 rounded-lg text-xs font-semibold transition shadow-sm" title="Go to Robot Manager / Instructor Console">
-                <span>🛠️ Manager Portal</span>
+            <a id="headerManagerLink" href="/admin" class="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-amber-300 hover:text-amber-200 border border-amber-500/30 rounded-lg text-xs font-semibold transition shadow-sm" title="Go to Robot Manager / Instructor Console">
+                <span>🛠️ Manager Console</span>
             </a>
 
-            <!-- Student User Badge / Logout -->
+            <!-- User Badge / Role / Logout -->
             <div id="userHeaderBadge" class="flex items-center space-x-2 bg-slate-850 border border-slate-700 px-3 py-1.5 rounded-lg text-xs shadow-inner">
-                <span class="text-slate-400">Student:</span>
+                <span class="text-slate-400">User:</span>
                 <span id="loggedInStudentName" class="font-bold text-sky-400">Not Logged In</span>
-                <button onclick="logoutStudent()" title="Log out / Switch Student" class="text-[11px] text-slate-400 hover:text-rose-400 hover:underline ml-1 font-medium transition">
+                <span id="userRoleHeaderBadge" class="hidden px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">ADMIN</span>
+                <button onclick="logoutStudent()" title="Log out / Switch User" class="text-[11px] text-slate-400 hover:text-rose-400 hover:underline ml-1 font-medium transition">
                     (Log Out)
                 </button>
             </div>
@@ -492,41 +493,49 @@ When you run a 3D simulation or physical execution, trajectory playback and live
     <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-5">
             
-            <!-- Login Form -->
+            <!-- Unified Sign-In Form (Students, Instructors, Superadmin) -->
             <div id="loginFormSection" class="space-y-4">
                 <div class="text-center space-y-1">
-                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 text-2xl mb-1">🤖</div>
-                    <h2 class="text-lg font-bold text-white">Student Lab Login</h2>
-                    <p class="text-xs text-slate-400">Select your student account and enter your password</p>
+                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600/30 to-indigo-600/30 text-sky-400 border border-indigo-500/30 text-2xl mb-1 shadow-lg">⚡</div>
+                    <h2 class="text-lg font-bold text-white">Robotics Lab Platform</h2>
+                    <p class="text-xs text-slate-400">Sign in with student, instructor, or admin account</p>
                 </div>
 
                 <div id="loginAlert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Select Student User</label>
-                    <select id="loginStudentSelect" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition">
-                        <option value="">-- Loading Approved Students --</option>
-                    </select>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Username</label>
+                    <input id="loginUsernameInput" type="text" placeholder="Enter username (e.g. mike, admin, or student name)"
+                        onkeydown="if(event.key==='Enter') submitUnifiedLogin()"
+                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono transition">
+                    <div class="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+                        <span>Or select student:</span>
+                        <select id="loginStudentSelect" onchange="if(this.value){document.getElementById('loginUsernameInput').value=this.value;}"
+                            class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-300 focus:outline-none font-mono">
+                            <option value="">-- Choose from approved --</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div>
                     <label class="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
-                    <input id="loginPassword" type="password" placeholder="Enter your password" onkeydown="if(event.key==='Enter') submitStudentLogin()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition">
+                    <input id="loginPassword" type="password" placeholder="Enter password"
+                        onkeydown="if(event.key==='Enter') submitUnifiedLogin()"
+                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono transition">
                 </div>
 
-                <button id="btnLoginSubmit" onclick="submitStudentLogin()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center justify-center space-x-1.5">
-                    <span>Log In &amp; Enter Lab</span>
+                <button id="btnLoginSubmit" onclick="submitUnifiedLogin()"
+                    class="w-full py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 text-white font-bold text-sm rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-1.5">
+                    <span>⚡ Sign In to Platform</span>
                 </button>
 
-                <div class="text-center pt-2 border-t border-slate-800 space-y-2">
-                    <button onclick="toggleAuthMode('register')" class="text-xs text-sky-400 hover:text-sky-300 font-medium block w-full text-center">
-                        ➕ New Student? Create an Account
+                <div class="text-center pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                    <button type="button" onclick="toggleAuthMode('register')" class="text-sky-400 hover:text-sky-300 font-medium">
+                        ➕ Register New Student
                     </button>
-                    <div class="pt-2 border-t border-slate-800/80">
-                        <a href="/admin" class="w-full py-2 px-3 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 hover:from-amber-500/20 hover:to-indigo-500/20 border border-amber-500/30 hover:border-amber-400 rounded-xl text-xs font-bold text-amber-300 transition flex items-center justify-center space-x-2 shadow-sm">
-                            <span>🛠️ Access as Robot Manager &rarr;</span>
-                        </a>
-                    </div>
+                    <a href="/admin" class="text-amber-400 hover:text-amber-300 font-medium flex items-center space-x-1">
+                        <span>🛠️ Direct to /admin Console</span> &rarr;
+                    </a>
                 </div>
             </div>
 
@@ -560,13 +569,14 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 </button>
 
                 <div class="text-center pt-2 border-t border-slate-800">
-                    <button onclick="toggleAuthMode('login')" class="text-xs text-slate-400 hover:text-white font-medium">
+                    <button type="button" onclick="toggleAuthMode('login')" class="text-xs text-slate-400 hover:text-white font-medium">
                         &larr; Back to Login
                     </button>
                 </div>
             </div>
 
-            </div>
+        </div>
+    </div>
 
     <!-- Monaco Loader -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
@@ -879,10 +889,13 @@ print("Routine completed successfully!")
         // ==========================================
 
         async function checkExistingAuth() {
-            const savedToken = localStorage.getItem(STORAGE_TOKEN_KEY);
-            const savedUser = localStorage.getItem(STORAGE_USER_KEY);
+            const savedToken = sessionStorage.getItem("ur_auth_token") ||
+                               localStorage.getItem("ur_auth_token") ||
+                               sessionStorage.getItem("ur_student_token") ||
+                               localStorage.getItem("ur_student_token") ||
+                               localStorage.getItem(STORAGE_TOKEN_KEY);
 
-            if (savedToken && savedUser) {
+            if (savedToken) {
                 try {
                     const res = await fetch('/api/auth/me', {
                         headers: { 'Authorization': `Bearer ${savedToken}` }
@@ -891,6 +904,15 @@ print("Routine completed successfully!")
                     if (data.authenticated && data.user) {
                         currentAuthToken = savedToken;
                         currentStudentUser = data.user;
+                        
+                        localStorage.setItem("ur_auth_token", savedToken);
+                        sessionStorage.setItem("ur_auth_token", savedToken);
+                        localStorage.setItem(STORAGE_TOKEN_KEY, savedToken);
+                        localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(currentStudentUser));
+                        if (data.user.role === 'admin' || data.user.role === 'superadmin') {
+                            sessionStorage.setItem("ur_admin_token", savedToken);
+                        }
+
                         onStudentLoggedIn();
                         return;
                     }
@@ -910,139 +932,70 @@ print("Routine completed successfully!")
         function toggleAuthMode(mode) {
             const loginSec = document.getElementById("loginFormSection");
             const regSec = document.getElementById("registerFormSection");
-            const mgrSec = document.getElementById("managerFormSection");
             clearAuthAlerts();
 
             if (mode === "register") {
-                loginSec.classList.add("hidden");
-                mgrSec.classList.add("hidden");
-                regSec.classList.remove("hidden");
-                document.getElementById("regUsername").focus();
-            } else if (mode === "manager") {
-                loginSec.classList.add("hidden");
-                regSec.classList.add("hidden");
-                mgrSec.classList.remove("hidden");
-                document.getElementById("managerPassword").focus();
+                if (loginSec) loginSec.classList.add("hidden");
+                if (regSec) regSec.classList.remove("hidden");
+                const regU = document.getElementById("regUsername");
+                if (regU) regU.focus();
             } else {
-                regSec.classList.add("hidden");
-                mgrSec.classList.add("hidden");
-                loginSec.classList.remove("hidden");
+                if (regSec) regSec.classList.add("hidden");
+                if (loginSec) loginSec.classList.remove("hidden");
                 fetchApprovedStudents();
+                const loginU = document.getElementById("loginUsernameInput");
+                if (loginU) loginU.focus();
             }
         }
 
         function clearAuthAlerts() {
             const lAlert = document.getElementById("loginAlert");
             const rAlert = document.getElementById("registerAlert");
-            const mAlert = document.getElementById("managerAlert");
             if (lAlert) { lAlert.className = "hidden"; lAlert.innerText = ""; }
             if (rAlert) { rAlert.className = "hidden"; rAlert.innerText = ""; }
-            if (mAlert) { mAlert.className = "hidden"; mAlert.innerText = ""; }
         }
 
         function showAuthAlert(type, message, isError = true) {
-            let elId = "loginAlert";
-            if (type === "register") elId = "registerAlert";
-            else if (type === "manager") elId = "managerAlert";
+            const elId = (type === "register") ? "registerAlert" : "loginAlert";
             const el = document.getElementById(elId);
             if (!el) return;
             el.className = isError
                 ? "p-3 rounded-lg text-xs font-medium bg-rose-950/80 border border-rose-800 text-rose-300"
                 : "p-3 rounded-lg text-xs font-medium bg-emerald-950/80 border border-emerald-800 text-emerald-300";
-            el.innerText = message;
+            el.innerHTML = message;
             el.classList.remove("hidden");
-        }
-
-        async function submitManagerLogin() {
-            const username = document.getElementById("managerUsername").value.trim();
-            const password = document.getElementById("managerPassword").value.trim();
-
-            if (!username) {
-                showAuthAlert("manager", "Please enter the manager username.");
-                return;
-            }
-            if (!password) {
-                showAuthAlert("manager", "Please enter the manager password.");
-                return;
-            }
-
-            const btn = document.getElementById("btnManagerSubmit");
-            btn.disabled = true;
-            btn.innerText = "Authenticating Manager...";
-
-            try {
-                const res = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                const data = await res.json();
-
-                if (!res.ok) {
-                    showAuthAlert("manager", data.detail || "Authentication failed.");
-                    btn.disabled = false;
-                    btn.innerText = "⚡ Unlock Manager Console";
-                    return;
-                }
-
-                if (data.user.role !== 'admin' && data.user.role !== 'superadmin') {
-                    showAuthAlert("manager", "Access denied: Account is not an administrator or superadmin.");
-                    btn.disabled = false;
-                    btn.innerText = "⚡ Unlock Manager Console";
-                    return;
-                }
-
-                // Store admin tokens and info for immediate redirection
-                localStorage.setItem("ur_admin_token", data.token);
-                localStorage.setItem("ur_admin_user", data.user.username);
-                localStorage.setItem("ur_admin_role", data.user.role);
-                localStorage.setItem("ur_admin_perms", JSON.stringify(data.user.permissions || []));
-                localStorage.setItem(STORAGE_TOKEN_KEY, data.token);
-                localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data.user));
-
-                showAuthAlert("manager", "Access granted! Redirecting to Manager Console...", false);
-                setTimeout(() => {
-                    window.location.href = "/admin";
-                }, 400);
-            } catch (e) {
-                showAuthAlert("manager", "Network error during login: " + e.message);
-                btn.disabled = false;
-                btn.innerText = "⚡ Unlock Manager Console";
-            }
         }
 
         async function fetchApprovedStudents() {
             const sel = document.getElementById("loginStudentSelect");
-            sel.innerHTML = '<option value="">-- Loading Approved Students --</option>';
+            if (!sel) return;
+            sel.innerHTML = '<option value="">-- Choose from approved --</option>';
 
             try {
                 const res = await fetch('/api/auth/students');
+                if (!res.ok) return;
                 const data = await res.json();
                 const students = data.students || [];
 
-                if (students.length === 0) {
-                    sel.innerHTML = '<option value="">(No approved students yet — create an account)</option>';
-                    return;
-                }
-
-                sel.innerHTML = '<option value="">-- Select Your Name --</option>' +
-                    students.map(s => `<option value="${escapeHtml(s.username)}">${escapeHtml(s.username)}</option>`).join("");
-                
-                // Select previous username if known
-                if (currentStudentUser && currentStudentUser.username) {
-                    sel.value = currentStudentUser.username;
+                if (students.length > 0) {
+                    sel.innerHTML = '<option value="">-- Choose from approved (' + students.length + ') --</option>' +
+                        students.map(s => `<option value="${escapeHtml(s.username)}">${escapeHtml(s.username)}</option>`).join("");
                 }
             } catch (e) {
-                sel.innerHTML = '<option value="">Error loading students</option>';
+                console.warn("Could not fetch students list:", e);
             }
         }
 
-        async function submitStudentLogin() {
-            const username = document.getElementById("loginStudentSelect").value.trim();
-            const password = document.getElementById("loginPassword").value.trim();
+        async function submitUnifiedLogin() {
+            const userInput = document.getElementById("loginUsernameInput");
+            const passInput = document.getElementById("loginPassword");
+            const sel = document.getElementById("loginStudentSelect");
+
+            const username = (userInput ? userInput.value.trim() : "") || (sel ? sel.value.trim() : "");
+            const password = passInput ? passInput.value : "";
 
             if (!username) {
-                showAuthAlert("login", "Please select your student username from the dropdown.");
+                showAuthAlert("login", "Please enter or select a username.");
                 return;
             }
             if (!password) {
@@ -1051,8 +1004,10 @@ print("Routine completed successfully!")
             }
 
             const btn = document.getElementById("btnLoginSubmit");
-            btn.disabled = true;
-            btn.innerText = "Authenticating...";
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = "<span>Authenticating...</span>";
+            }
 
             try {
                 const res = await fetch('/api/auth/login', {
@@ -1063,36 +1018,54 @@ print("Routine completed successfully!")
                 const data = await res.json();
 
                 if (!res.ok) {
-                    showAuthAlert("login", data.detail || "Login failed.");
-                    btn.disabled = false;
-                    btn.innerText = "Log In & Enter Lab";
+                    showAuthAlert("login", data.detail || "Authentication failed. Check credentials.");
                     return;
                 }
 
+                const role = data.role || (data.user ? data.user.role : "student");
                 currentAuthToken = data.token;
-                currentStudentUser = data.user;
+                currentStudentUser = data.user || { username, role };
+
+                // Student storage
+                localStorage.setItem("ur_auth_token", currentAuthToken);
+                sessionStorage.setItem("ur_auth_token", currentAuthToken);
                 localStorage.setItem(STORAGE_TOKEN_KEY, currentAuthToken);
                 localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(currentStudentUser));
-                if (data.user && (data.user.role === 'admin' || data.user.role === 'superadmin' || data.user.is_trusted)) {
-                    localStorage.setItem("ur_admin_token", currentAuthToken);
-                    localStorage.setItem("ur_admin_user", data.user.username);
-                    localStorage.setItem("ur_admin_role", data.user.role);
-                    localStorage.setItem("ur_admin_perms", JSON.stringify(data.user.permissions || []));
-                }
 
-                onStudentLoggedIn();
+                if (role === 'admin' || role === 'superadmin') {
+                    sessionStorage.setItem("ur_admin_token", currentAuthToken);
+                    localStorage.removeItem("ur_admin_token");
+                    showAuthAlert("login", `✓ Welcome ${data.username}! Opening Robot Manager Console...`, false);
+                    setTimeout(() => {
+                        window.location.href = "/admin";
+                    }, 400);
+                } else {
+                    sessionStorage.removeItem("ur_admin_token");
+                    localStorage.removeItem("ur_admin_token");
+                    onStudentLoggedIn();
+                }
             } catch (e) {
                 showAuthAlert("login", "Network error during login: " + e.message);
             } finally {
-                btn.disabled = false;
-                btn.innerText = "Log In & Enter Lab";
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = "<span>⚡ Sign In to Platform</span>";
+                }
             }
         }
 
+        // Backwards compatibility aliases
+        const submitStudentLogin = submitUnifiedLogin;
+        const submitManagerLogin = submitUnifiedLogin;
+
         async function submitStudentRegister() {
-            const username = document.getElementById("regUsername").value.trim();
-            const password = document.getElementById("regPassword").value.trim();
-            const confirm = document.getElementById("regConfirmPassword").value.trim();
+            const userEl = document.getElementById("regUsername");
+            const passEl = document.getElementById("regPassword");
+            const confirmEl = document.getElementById("regConfirmPassword");
+
+            const username = userEl ? userEl.value.trim() : "";
+            const password = passEl ? passEl.value.trim() : "";
+            const confirm = confirmEl ? confirmEl.value.trim() : "";
 
             if (!username) {
                 showAuthAlert("register", "Please enter your username / name.");
@@ -1108,8 +1081,10 @@ print("Routine completed successfully!")
             }
 
             const btn = document.getElementById("btnRegisterSubmit");
-            btn.disabled = true;
-            btn.innerText = "Creating account...";
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = "Creating account...";
+            }
 
             try {
                 const res = await fetch('/api/auth/register', {
@@ -1121,29 +1096,58 @@ print("Routine completed successfully!")
 
                 if (!res.ok) {
                     showAuthAlert("register", data.detail || "Registration failed.");
-                    btn.disabled = false;
-                    btn.innerText = "Create Account (Submit for Approval)";
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerText = "Create Account (Submit for Approval)";
+                    }
                     return;
                 }
 
                 showAuthAlert("register", `✓ Account "${username}" registered! Please ask your instructor to approve your account before logging in.`, false);
-                document.getElementById("regPassword").value = "";
-                document.getElementById("regConfirmPassword").value = "";
+                if (passEl) passEl.value = "";
+                if (confirmEl) confirmEl.value = "";
                 setTimeout(() => {
                     toggleAuthMode("login");
-                }, 3000);
+                    fetchApprovedStudents();
+                }, 2500);
             } catch (e) {
                 showAuthAlert("register", "Network error: " + e.message);
             } finally {
-                btn.disabled = false;
-                btn.innerText = "Create Account (Submit for Approval)";
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = "Create Account (Submit for Approval)";
+                }
             }
         }
 
         function onStudentLoggedIn() {
             document.getElementById("authModal").classList.add("hidden");
-            document.getElementById("loggedInStudentName").innerText = currentStudentUser.username;
-            appendStudentLog(`\n[AUTH] Logged in as student "${currentStudentUser.username}". Sandbox unlocked.\n`, false);
+            const nameEl = document.getElementById("loggedInStudentName");
+            if (nameEl) nameEl.innerText = currentStudentUser.username;
+
+            const isMgr = currentStudentUser.role === 'admin' || currentStudentUser.role === 'superadmin';
+            const roleBadge = document.getElementById("userRoleHeaderBadge");
+            if (roleBadge) {
+                if (isMgr) {
+                    roleBadge.innerText = currentStudentUser.role.toUpperCase();
+                    roleBadge.className = "px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30";
+                    roleBadge.classList.remove("hidden");
+                } else {
+                    roleBadge.classList.add("hidden");
+                }
+            }
+
+            const mgrLink = document.getElementById("headerManagerLink");
+            if (mgrLink) {
+                if (isMgr) {
+                    mgrLink.className = "flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs shadow-lg shadow-amber-600/30 transition animate-pulse";
+                    mgrLink.title = "Access Robot Manager & Execution Dispatcher Console";
+                } else {
+                    mgrLink.className = "flex items-center space-x-1.5 px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-slate-400 hover:text-amber-300 border border-slate-700 rounded-lg text-xs font-semibold transition";
+                }
+            }
+
+            appendStudentLog(`\n[AUTH] Logged in as ${isMgr ? currentStudentUser.role : 'student'} "${currentStudentUser.username}". Sandbox unlocked.\n`, false);
             fetchStudentProjects();
             fetchWorkspaceFolders();
         }
@@ -1155,11 +1159,17 @@ print("Routine completed successfully!")
                     headers: { 'Authorization': `Bearer ${currentAuthToken}` }
                 }).catch(() => {});
             }
-            currentAuthToken = null;
-            currentStudentUser = null;
+            localStorage.removeItem("ur_auth_token");
+            sessionStorage.removeItem("ur_auth_token");
+            localStorage.removeItem("ur_admin_token");
+            sessionStorage.removeItem("ur_admin_token");
             localStorage.removeItem(STORAGE_TOKEN_KEY);
             localStorage.removeItem(STORAGE_USER_KEY);
+            currentAuthToken = null;
+            currentStudentUser = null;
             document.getElementById("loggedInStudentName").innerText = "Not Logged In";
+            const roleBadge = document.getElementById("userRoleHeaderBadge");
+            if (roleBadge) roleBadge.classList.add("hidden");
             showAuthModal();
         }
 

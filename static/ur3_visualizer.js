@@ -550,6 +550,10 @@ class UR3Visualizer {
         this.controls.update();
     }
 
+    setPlaybackSpeed(speed) {
+        this.playbackSpeed = Math.max(0.1, Math.min(5.0, Number(speed) || 1.0));
+    }
+
     playTrajectory(waypoints, onStep, onComplete) {
         if (!waypoints || waypoints.length === 0) return;
         this.stopSimulation();
@@ -560,46 +564,36 @@ class UR3Visualizer {
             this.setRobotModel(modelHint);
         }
 
+        // Ensure timestamps are monotonic and realistic
+        let prevT = 0.0;
+        const normalizedWps = waypoints.map((wp, idx) => {
+            let t = (typeof wp.t === 'number' && !isNaN(wp.t)) ? wp.t : (prevT + 0.05);
+            if (t < prevT) t = prevT + 0.02;
+            prevT = t;
+            return { ...wp, t };
+        });
+
+        // Set initial pose immediately
+        if (normalizedWps[0]?.q && normalizedWps[0].q.length === 6) {
+            this.currentQ = [...normalizedWps[0].q];
+            this.targetQ = [...normalizedWps[0].q];
+            this.applyJointAngles(this.currentQ);
+        }
+
+        this.simWaypoints = normalizedWps;
+        this.simTotalDuration = normalizedWps[normalizedWps.length - 1].t || 0.1;
+        this.simOnStep = onStep;
+        this.simOnComplete = onComplete;
+        this.simStartTime = performance.now();
+        this.simLastWpIndex = 0;
+        this._lastReportedStep = -1;
         this.isSimulating = true;
-        let index = 0;
-
-        const executeStep = () => {
-            if (!this.isSimulating) return;
-            if (index >= waypoints.length) {
-                this.isSimulating = false;
-                if (onComplete) onComplete();
-                return;
-            }
-
-            const wp = waypoints[index];
-            index++;
-
-            // Handle normal joint motion
-            if (wp.q && wp.q.length === 6) {
-                this.setJointAngles(wp.q);
-            }
-
-            // Handle Niryo gripper open/close animation
-            if (wp.type === 'gripper' && this.currentModel === 'niryo') {
-                this.setGripperState(wp.state); // 'open' | 'closed'
-            }
-
-            if (onStep) {
-                onStep(wp, index, waypoints.length);
-            }
-
-            // Intermediate trajectory steps run smoothly at ~45ms;
-            // Final command goals pause slightly (~250ms) for clear visual feedback.
-            // Gripper actions get a longer pause so the animation is clearly visible.
-            const delay = (wp.type === 'gripper') ? 600 : (wp.is_final ? 250 : 45);
-            this.simTimer = setTimeout(executeStep, delay);
-        };
-
-        executeStep();
+        this.needsRender = true;
     }
 
     stopSimulation() {
         this.isSimulating = false;
+        this.simWaypoints = null;
         if (this.simTimer) {
             clearTimeout(this.simTimer);
             this.simTimer = null;
@@ -620,22 +614,89 @@ class UR3Visualizer {
             return;
         }
 
-        // Smooth cubic-like interpolation towards target joint angles
         let moved = false;
-        for (let i = 0; i < 6; i++) {
-            const diff = this.targetQ[i] - this.currentQ[i];
-            if (Math.abs(diff) > 0.0003) {
-                this.currentQ[i] += diff * 0.18;
-                moved = true;
-            } else {
-                this.currentQ[i] = this.targetQ[i];
-            }
-        }
 
-        if (moved) {
-            this.applyJointAngles(this.currentQ);
-            this.updateAngleDisplay();
-            this.needsRender = true;
+        // --- Active Continuous Trajectory Simulation ---
+        if (this.isSimulating && this.simWaypoints && this.simWaypoints.length > 0) {
+            const now = performance.now();
+            const elapsed = ((now - this.simStartTime) / 1000) * (this.playbackSpeed || 1.0);
+
+            if (elapsed >= this.simTotalDuration) {
+                // Completed playback
+                const lastWp = this.simWaypoints[this.simWaypoints.length - 1];
+                if (lastWp && lastWp.q && lastWp.q.length === 6) {
+                    for (let i = 0; i < 6; i++) {
+                        this.currentQ[i] = lastWp.q[i];
+                        this.targetQ[i] = lastWp.q[i];
+                    }
+                    this.applyJointAngles(this.currentQ);
+                }
+                this.isSimulating = false;
+                this.simWaypoints = null;
+                moved = true;
+                if (this.simOnComplete) this.simOnComplete();
+            } else {
+                // Find current segment [wpA, wpB]
+                let k = this.simLastWpIndex;
+                while (k < this.simWaypoints.length - 1 && this.simWaypoints[k + 1].t <= elapsed) {
+                    k++;
+                }
+                this.simLastWpIndex = k;
+                const wpA = this.simWaypoints[k];
+                const wpB = this.simWaypoints[Math.min(k + 1, this.simWaypoints.length - 1)];
+
+                const tA = wpA.t || 0;
+                const tB = wpB.t || (tA + 0.05);
+                const dt = Math.max(0.0001, tB - tA);
+                const rawAlpha = Math.max(0.0, Math.min(1.0, (elapsed - tA) / dt));
+
+                // Smooth S-curve transition between waypoints to avoid velocity discontinuities
+                const smoothAlpha = rawAlpha * rawAlpha * (3.0 - 2.0 * rawAlpha);
+
+                if (wpA.q && wpB.q) {
+                    for (let i = 0; i < 6; i++) {
+                        const qA = wpA.q[i] || 0;
+                        const qB = wpB.q[i] || qA;
+                        this.currentQ[i] = qA + (qB - qA) * smoothAlpha;
+                        this.targetQ[i] = this.currentQ[i];
+                    }
+                    this.applyJointAngles(this.currentQ);
+                    moved = true;
+                }
+
+                // Smooth Niryo gripper actuation
+                if (this.currentModel === 'niryo') {
+                    if (wpA.type === 'gripper' || wpB.type === 'gripper') {
+                        const gState = wpB.state || wpA.state;
+                        if (gState) this.setGripperState(gState);
+                    }
+                }
+
+                if (this.simOnStep && k !== this._lastReportedStep) {
+                    this._lastReportedStep = k;
+                    this.simOnStep(wpA, k, this.simWaypoints.length);
+                }
+            }
+            if (moved) {
+                this.updateAngleDisplay();
+                this.needsRender = true;
+            }
+        } else {
+            // --- Manual Easing to Target Joint Angles (Photo, Home, or Sliders) ---
+            for (let i = 0; i < 6; i++) {
+                const diff = this.targetQ[i] - this.currentQ[i];
+                if (Math.abs(diff) > 0.0003) {
+                    this.currentQ[i] += diff * 0.18;
+                    moved = true;
+                } else {
+                    this.currentQ[i] = this.targetQ[i];
+                }
+            }
+            if (moved) {
+                this.applyJointAngles(this.currentQ);
+                this.updateAngleDisplay();
+                this.needsRender = true;
+            }
         }
 
         // Animate Niryo gripper fingers smoothly

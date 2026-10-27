@@ -26,6 +26,7 @@ import config
 from execution_engine import engine
 from safety import validate_python_code
 from simulator import simulate_script, run_simulation_isolated
+from telemetry import hub as telemetry_hub
 import workspace
 
 
@@ -166,12 +167,19 @@ class UpdatePermissionsRequest(BaseModel):
 
 @app.get("/")
 async def get_student_portal():
-    return FileResponse(os.path.join(STATIC_DIR, "student.html"))
+    return FileResponse(
+        os.path.join(STATIC_DIR, "student.html"),
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"}
+    )
 
 
 @app.get("/admin")
 async def get_instructor_dashboard():
-    return FileResponse(os.path.join(STATIC_DIR, "instructor.html"))
+    # Never cache: the console must always (re)authenticate and load fresh code.
+    return FileResponse(
+        os.path.join(STATIC_DIR, "instructor.html"),
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"}
+    )
 
 
 # --- Helper Functions ---
@@ -339,11 +347,8 @@ async def login_user(payload: LoginRequest):
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password are required.")
 
-    user = await database.get_user_by_username(username)
-    valid_password = bool(user and database.verify_password(password, user["password_hash"]))
-    if not valid_password and user and user.get("role") in ("admin", "superadmin") and password in ("mike2088", "admin"):
-        valid_password = True
-    if not user or not valid_password:
+    user = await database.verify_user_credentials(username, password)
+    if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password.")
 
     if user["status"] == "pending":
@@ -450,6 +455,28 @@ async def update_user_status_endpoint(
 
     await broadcast_to_admins({"type": "user_status_changed", "id": user_id, "status": status})
     return {"status": "updated", "id": user_id, "new_status": status}
+
+
+@app.post("/api/admin/users/{user_id}/approve")
+async def approve_user_endpoint(user_id: int, authorization: Optional[str] = Header(default=None)):
+    """Convenience endpoint allowing instructor to approve a student account."""
+    verify_admin_permission(authorization, "can_manage_students")
+    success = await database.update_user_status(user_id, "approved")
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found.")
+    await broadcast_to_admins({"type": "user_status_changed", "id": user_id, "status": "approved"})
+    return {"status": "approved", "id": user_id}
+
+
+@app.post("/api/admin/users/{user_id}/reject")
+async def reject_user_endpoint(user_id: int, authorization: Optional[str] = Header(default=None)):
+    """Convenience endpoint allowing instructor to reject a student registration."""
+    verify_admin_permission(authorization, "can_manage_students")
+    success = await database.update_user_status(user_id, "rejected")
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found.")
+    await broadcast_to_admins({"type": "user_status_changed", "id": user_id, "status": "rejected"})
+    return {"status": "rejected", "id": user_id}
 
 
 @app.delete("/api/admin/users/{user_id}")
@@ -980,8 +1007,9 @@ async def submit_code(payload: SubmissionRequest):
 
 
 @app.get("/api/submissions")
-async def list_submissions(request: Request):
-    rows = await database.get_all_submissions()
+async def list_submissions(request: Request, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
+    rows = await database.get_all_submissions(500)
     payload = {
         "submissions": rows,
         "is_executing": engine.is_any_executing(),
@@ -1001,7 +1029,8 @@ async def list_submissions(request: Request):
 
 
 @app.get("/api/submissions/{sub_id}")
-async def get_submission_details(sub_id: int):
+async def get_submission_details(sub_id: int, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
     sub = await database.get_submission(sub_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
@@ -1093,6 +1122,8 @@ async def launch_submission_execution(
 
     # Launch execution in background task
     async def run_task():
+        await asyncio.to_thread(telemetry_hub.reset_stats, active_model)
+        telemetry_hub.log(active_model, "info", f"Execution of submission #{sub_id} started on {active_model.upper()}", "supervisor")
         await broadcast_to_admins({"type": "execution_started", "id": sub_id, "robot_model": active_model})
         try:
             await engine.execute_submission(
@@ -1108,6 +1139,7 @@ async def launch_submission_execution(
             print(f"[Execution Task Exception] sub #{sub_id}: {e}")
             await database.update_status(sub_id, "failed", f"\n[Supervisor ERROR] Execution failed: {e}\n")
         finally:
+            telemetry_hub.log(active_model, "info", f"Execution of submission #{sub_id} finished", "supervisor")
             await broadcast_to_admins({"type": "execution_finished", "id": sub_id, "robot_model": active_model})
 
     asyncio.create_task(run_task())
@@ -1459,7 +1491,88 @@ async def delete_example_endpoint(example_id: int, authorization: Optional[str] 
     return {"status": "deleted", "id": example_id}
 
 
+# --- Live Robot Telemetry & Debug (read-only) ---
+
+class DebugCommandRequest(BaseModel):
+    command: str
+
+
+def _engine_state(model: str) -> Dict[str, Any]:
+    return {
+        "executing": engine.is_model_executing(model),
+        "active_submission_id": engine.active_submission_id(model),
+        "emergency_halted": engine.is_emergency_halted(model),
+    }
+
+
+@app.get("/api/telemetry/{model}")
+async def get_telemetry_snapshot(model: str, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
+    snap = await telemetry_hub.get(model)
+    return {**snap, "engine": _engine_state(telemetry_hub.normalize(model))}
+
+
+@app.get("/api/telemetry/{model}/history")
+async def get_telemetry_history(model: str, limit: int = 600, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
+    m = telemetry_hub.normalize(model)
+    return {
+        "model": m,
+        "history": telemetry_hub.history(m, max(10, min(limit, 1200))),
+        "debug": telemetry_hub.debug_since(m, 0),
+        "debug_seq": telemetry_hub.debug_seq(m),
+    }
+
+
+@app.post("/api/telemetry/{model}/reset-stats")
+async def reset_telemetry_stats(model: str, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
+    await asyncio.to_thread(telemetry_hub.reset_stats, model)
+    return {"status": "ok"}
+
+
+@app.post("/api/robot-debug/{model}/command")
+@app.post("/api/telemetry/{model}/dashboard")
+async def robot_debug_command(model: str, payload: DebugCommandRequest, authorization: Optional[str] = Header(default=None)):
+    """Read-only controller queries (UR dashboard allow-list). Never moves the robot."""
+    verify_admin_permission(authorization, "can_execute")
+    try:
+        out = await telemetry_hub.dashboard(model, payload.command)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Controller did not answer: {e}")
+    return {"command": payload.command, "response": out}
+
+
 # --- WebSockets ---
+
+@app.websocket("/ws/telemetry/{model}")
+async def ws_telemetry(websocket: WebSocket, model: str, token: str = ""):
+    """Streams ~5 Hz telemetry frames (plus new debug lines) to an authenticated admin."""
+    session = active_sessions.get((token or "").strip())
+    if not session or session.get("role") not in ("admin", "superadmin"):
+        await websocket.close(code=4401)
+        return
+    await websocket.accept()
+    m = telemetry_hub.normalize(model)
+    last_seq = telemetry_hub.debug_seq(m)
+    try:
+        while True:
+            snap = await telemetry_hub.get(m)
+            new_debug = telemetry_hub.debug_since(m, last_seq)
+            if new_debug:
+                last_seq = new_debug[-1]["seq"]
+            await websocket.send_json({**snap, "engine": _engine_state(m), "debug": new_debug})
+            await asyncio.sleep(0.2 if snap.get("connected") else 1.0)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+    except Exception:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
 
 @app.websocket("/ws/logs/{sub_id}")
 async def ws_logs(websocket: WebSocket, sub_id: int):
