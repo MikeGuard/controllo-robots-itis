@@ -338,6 +338,17 @@ def verify_any_admin(authorization: Optional[str]) -> Dict[str, Any]:
     return session
 
 
+def verify_authenticated_user(authorization: Optional[str]) -> Dict[str, Any]:
+    """Requires any valid authenticated session (student, admin, superadmin)."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    token = authorization.replace("Bearer ", "").strip()
+    session = active_sessions.get(token)
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session. Please log in again.")
+    return session
+
+
 @app.post("/api/auth/login")
 async def login_user(payload: LoginRequest):
     """Authenticates a student, admin, or superadmin (mike) user."""
@@ -1507,14 +1518,14 @@ def _engine_state(model: str) -> Dict[str, Any]:
 
 @app.get("/api/telemetry/{model}")
 async def get_telemetry_snapshot(model: str, authorization: Optional[str] = Header(default=None)):
-    verify_any_admin(authorization)
+    verify_authenticated_user(authorization)
     snap = await telemetry_hub.get(model)
     return {**snap, "engine": _engine_state(telemetry_hub.normalize(model))}
 
 
 @app.get("/api/telemetry/{model}/history")
 async def get_telemetry_history(model: str, limit: int = 600, authorization: Optional[str] = Header(default=None)):
-    verify_any_admin(authorization)
+    verify_authenticated_user(authorization)
     m = telemetry_hub.normalize(model)
     return {
         "model": m,
@@ -1549,9 +1560,9 @@ async def robot_debug_command(model: str, payload: DebugCommandRequest, authoriz
 
 @app.websocket("/ws/telemetry/{model}")
 async def ws_telemetry(websocket: WebSocket, model: str, token: str = ""):
-    """Streams ~5 Hz telemetry frames (plus new debug lines) to an authenticated admin."""
+    """Streams ~5 Hz telemetry frames (plus new debug lines) to an authenticated user (student or admin)."""
     session = active_sessions.get((token or "").strip())
-    if not session or session.get("role") not in ("admin", "superadmin"):
+    if not session:
         await websocket.close(code=4401)
         return
     await websocket.accept()

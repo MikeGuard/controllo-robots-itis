@@ -93,6 +93,13 @@
                 <span>Simulation &amp; Output</span>
                 <span id="navSimStatusBadge" class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-400">IDLE</span>
             </button>
+            <!-- Tab 3: Live Run Monitor (View-Only) -->
+            <button id="tabNavRun" onclick="switchMainPortalView('run')"
+                class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
+                <span>🚀</span>
+                <span>Live Run Monitor</span>
+                <span id="navRunPulseDot" class="w-2 h-2 rounded-full bg-slate-600"></span>
+            </button>
         </div>
 
         <div class="flex items-center space-x-2 sm:space-x-3">
@@ -345,6 +352,206 @@ When you run a 3D simulation or physical execution, trajectory playback and live
 
         </div>
 
+        <!-- ========================================================= -->
+        <!-- VIEW 3: DEDICATED REAL-TIME EXECUTION MONITOR (VIEW-ONLY)  -->
+        <!-- ========================================================= -->
+        <div id="viewRunMonitor" class="hidden flex-1 flex flex-col p-2 sm:p-4 space-y-3 min-h-0 overflow-y-auto">
+            <!-- Top Status Banner -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xl flex-shrink-0">
+                <div class="flex items-center space-x-3.5">
+                    <div id="studentRunStatusDot" class="w-3.5 h-3.5 rounded-full bg-slate-600 shrink-0"></div>
+                    <div>
+                        <div class="flex items-center space-x-2 flex-wrap">
+                            <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Execution Status:</span>
+                            <span id="studentRunActiveLabel" class="text-sm font-black text-white font-mono">IDLE — Waiting for instructor execution</span>
+                            <span id="studentRunModelBadge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">UR3 ARM</span>
+                            <div class="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-[11px] ml-1">
+                                <button id="btnStudentRunUR" onclick="switchStudentRunModel('ur')" class="px-2.5 py-0.5 rounded font-bold bg-indigo-600 text-white transition">UR3</button>
+                                <button id="btnStudentRunNiryo" onclick="switchStudentRunModel('niryo')" class="px-2.5 py-0.5 rounded text-slate-400 hover:text-white transition">Niryo</button>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-3 text-xs text-slate-400 mt-0.5">
+                            <span id="studentRunActiveAuthor">Author: None</span>
+                            <span class="text-slate-700">•</span>
+                            <span id="studentRunElapsedTime" class="font-mono text-emerald-400 font-bold">Elapsed: 00:00</span>
+                            <span class="text-slate-700">•</span>
+                            <span id="studentRunStreamInfo" class="font-mono text-slate-500">Log stream: idle</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Execution Protection Notice (Students cannot start or stop programs) -->
+                <div class="flex items-center flex-wrap gap-2.5">
+                    <div class="px-3.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center space-x-2 shadow-sm">
+                        <span class="text-sm">🔒</span>
+                        <div>
+                            <span class="font-bold block text-xs">Instructor Execution Only (View-Only)</span>
+                            <span class="text-[10px] text-amber-400/80 font-normal">Physical motion is started and controlled by an instructor.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4 Telemetry Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 flex-shrink-0">
+                <!-- Card 1: Speed & Dynamics -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-lg flex flex-col justify-between">
+                    <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Speed &amp; Dynamics</span>
+                        <span class="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded">LIVE</span>
+                    </div>
+                    <div class="space-y-1.5">
+                        <div class="flex items-baseline space-x-2">
+                            <span id="studentTelSpeedNum" class="text-2xl font-black font-mono text-emerald-400">0.000</span>
+                            <span class="text-xs text-slate-400 font-bold">m/s</span>
+                            <span class="text-xs text-slate-500 font-mono">(<span id="studentTelSpeedMm">0</span> mm/s)</span>
+                        </div>
+                        <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                            <div id="studentTelSpeedBar" class="bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-500 h-1.5 rounded-full transition-all duration-200" style="width: 0%"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1.5 text-xs pt-1">
+                            <div>
+                                <span class="text-slate-500 text-[10px] uppercase block">Peak Speed:</span>
+                                <span id="studentTelMaxSpeed" class="font-mono text-slate-200 font-semibold text-xs">0.000 m/s</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-500 text-[10px] uppercase block">Avg Speed:</span>
+                                <span id="studentTelAvgSpeed" class="font-mono text-slate-200 font-semibold text-xs">0.000 m/s</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-500 text-[10px] uppercase block">Path Traveled:</span>
+                                <span id="studentTelPathLen" class="font-mono text-indigo-300 font-semibold text-xs">0.00 m</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-500 text-[10px] uppercase block">Motion Time:</span>
+                                <span id="studentTelMovingTime" class="font-mono text-slate-200 font-semibold text-xs">0.0 s</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Cartesian TCP Pose -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-lg flex flex-col justify-between">
+                    <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Cartesian Pose (TCP)</span>
+                        <span id="studentTelTargetModelLabel" class="text-[10px] font-mono text-slate-400 uppercase">UR3</span>
+                    </div>
+                    <div class="space-y-1.5 text-xs font-mono">
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80 text-center">
+                                <span class="text-rose-400 font-bold block text-[10px]">X (mm)</span>
+                                <span id="studentTelPosX" class="text-xs font-bold text-white">0.0</span>
+                            </div>
+                            <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80 text-center">
+                                <span class="text-emerald-400 font-bold block text-[10px]">Y (mm)</span>
+                                <span id="studentTelPosY" class="text-xs font-bold text-white">0.0</span>
+                            </div>
+                            <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80 text-center">
+                                <span class="text-sky-400 font-bold block text-[10px]">Z (mm)</span>
+                                <span id="studentTelPosZ" class="text-xs font-bold text-white">0.0</span>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-1 text-[10px] pt-1 text-slate-400">
+                            <div>Rx: <span id="studentTelRotRx" class="text-slate-200 font-semibold">0.00°</span></div>
+                            <div>Ry: <span id="studentTelRotRy" class="text-slate-200 font-semibold">0.00°</span></div>
+                            <div>Rz: <span id="studentTelRotRz" class="text-slate-200 font-semibold">0.00°</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 3: 6-DOF Joint Angles -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-lg flex flex-col justify-between">
+                    <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-1.5">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">6-DOF Joints</span>
+                        <span class="text-[10px] font-mono text-slate-400">J1..J6</span>
+                    </div>
+                    <div class="space-y-1 text-[11px] font-mono">
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-400">J1:</span>
+                            <span id="studentTelQ0" class="text-sky-300 font-bold">0.0°</span>
+                            <span class="text-slate-400">J2:</span>
+                            <span id="studentTelQ1" class="text-sky-300 font-bold">-90.0°</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-400">J3:</span>
+                            <span id="studentTelQ2" class="text-sky-300 font-bold">90.0°</span>
+                            <span class="text-slate-400">J4:</span>
+                            <span id="studentTelQ3" class="text-sky-300 font-bold">-90.0°</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-400">J5:</span>
+                            <span id="studentTelQ4" class="text-sky-300 font-bold">-90.0°</span>
+                            <span class="text-slate-400">J6:</span>
+                            <span id="studentTelQ5" class="text-sky-300 font-bold">0.0°</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 4: Hardware Health -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-lg flex flex-col justify-between">
+                    <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-1.5">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Diagnostics</span>
+                        <span id="studentTelConnectedPill" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">CONNECTED</span>
+                    </div>
+                    <div class="space-y-1 text-xs">
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-400 text-[11px]">Robot Mode:</span>
+                            <span id="studentTelRobotMode" class="font-bold font-mono text-emerald-400 uppercase text-[11px]">RUNNING</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-400 text-[11px]">Safety State:</span>
+                            <span id="studentTelSafetyMode" class="font-bold font-mono text-sky-300 uppercase text-[11px]">NORMAL</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-400 text-[11px]">Power / Voltage:</span>
+                            <span id="studentTelPower" class="font-mono text-slate-300 text-[11px]">48.0V • 1.1A</span>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span class="text-slate-400">Protective Stop:</span>
+                            <span id="studentTelProtectiveStop" class="font-bold text-slate-500">NO</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lower Row: Live Terminal & 3D Live Digital Twin -->
+            <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-[360px]">
+                <!-- Live Output Stream Terminal -->
+                <div class="xl:col-span-6 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[320px]">
+                    <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Robot Execution Log</span>
+                            <span id="studentRunStreamBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-sky-400">Stream: Idle</span>
+                        </div>
+                        <button onclick="clearStudentRunTerminal()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
+                    </div>
+                    <div id="studentRunTerminal" class="flex-1 p-3.5 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
+[Execution Monitor] Connected. When an instructor launches a queued routine, live output will stream here.
+                    </div>
+                </div>
+
+                <!-- 3D Digital Twin Visualizer -->
+                <div class="xl:col-span-6 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[320px]">
+                    <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span id="studentRunVisDot" class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
+                            <span id="studentRunVisTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">3D Real-Time Digital Twin</span>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <button onclick="if(studentRunVis) studentRunVis.setPhotoPose()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-sky-300 rounded transition">Photo</button>
+                            <button onclick="if(studentRunVis) studentRunVis.setHomePose()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded transition">Home</button>
+                            <button onclick="if(studentRunVis) studentRunVis.resetCamera()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded transition">Reset</button>
+                        </div>
+                    </div>
+                    <div id="studentRunCanvasContainer" class="flex-1 relative bg-[#111622] min-h-[280px]">
+                        <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
+                            Live Angles: <span class="ur3AngleReadout text-sky-300">0° | -90° | 90° | -90° | -90° | 0°</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </main>
 
     <!-- Student Projects & Workspaces Modal -->
@@ -493,49 +700,41 @@ When you run a 3D simulation or physical execution, trajectory playback and live
     <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-5">
             
-            <!-- Unified Sign-In Form (Students, Instructors, Superadmin) -->
+            <!-- Login Form -->
             <div id="loginFormSection" class="space-y-4">
                 <div class="text-center space-y-1">
-                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600/30 to-indigo-600/30 text-sky-400 border border-indigo-500/30 text-2xl mb-1 shadow-lg">⚡</div>
-                    <h2 class="text-lg font-bold text-white">Robotics Lab Platform</h2>
-                    <p class="text-xs text-slate-400">Sign in with student, instructor, or admin account</p>
+                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 text-2xl mb-1">🤖</div>
+                    <h2 class="text-lg font-bold text-white">Student Lab Login</h2>
+                    <p class="text-xs text-slate-400">Select your student account and enter your password</p>
                 </div>
 
                 <div id="loginAlert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Username</label>
-                    <input id="loginUsernameInput" type="text" placeholder="Enter username (e.g. mike, admin, or student name)"
-                        onkeydown="if(event.key==='Enter') submitUnifiedLogin()"
-                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono transition">
-                    <div class="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-                        <span>Or select student:</span>
-                        <select id="loginStudentSelect" onchange="if(this.value){document.getElementById('loginUsernameInput').value=this.value;}"
-                            class="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-300 focus:outline-none font-mono">
-                            <option value="">-- Choose from approved --</option>
-                        </select>
-                    </div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Select Student User</label>
+                    <select id="loginStudentSelect" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition">
+                        <option value="">-- Loading Approved Students --</option>
+                    </select>
                 </div>
 
                 <div>
                     <label class="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
-                    <input id="loginPassword" type="password" placeholder="Enter password"
-                        onkeydown="if(event.key==='Enter') submitUnifiedLogin()"
-                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono transition">
+                    <input id="loginPassword" type="password" placeholder="Enter your password" onkeydown="if(event.key==='Enter') submitStudentLogin()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition">
                 </div>
 
-                <button id="btnLoginSubmit" onclick="submitUnifiedLogin()"
-                    class="w-full py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 text-white font-bold text-sm rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center justify-center space-x-1.5">
-                    <span>⚡ Sign In to Platform</span>
+                <button id="btnLoginSubmit" onclick="submitStudentLogin()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center justify-center space-x-1.5">
+                    <span>Log In &amp; Enter Lab</span>
                 </button>
 
-                <div class="text-center pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                    <button type="button" onclick="toggleAuthMode('register')" class="text-sky-400 hover:text-sky-300 font-medium">
-                        ➕ Register New Student
+                <div class="text-center pt-2 border-t border-slate-800 space-y-2">
+                    <button onclick="toggleAuthMode('register')" class="text-xs text-sky-400 hover:text-sky-300 font-medium block w-full text-center">
+                        ➕ New Student? Create an Account
                     </button>
-                    <a href="/admin" class="text-amber-400 hover:text-amber-300 font-medium flex items-center space-x-1">
-                        <span>🛠️ Direct to /admin Console</span> &rarr;
-                    </a>
+                    <div class="pt-2 border-t border-slate-800/80">
+                        <button onclick="toggleAuthMode('manager')" class="w-full py-2 px-3 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 hover:from-amber-500/20 hover:to-indigo-500/20 border border-amber-500/30 hover:border-amber-400 rounded-xl text-xs font-bold text-amber-300 transition flex items-center justify-center space-x-2 shadow-sm">
+                            <span>🛠️ Access as Robot Manager</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -571,6 +770,37 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 <div class="text-center pt-2 border-t border-slate-800">
                     <button type="button" onclick="toggleAuthMode('login')" class="text-xs text-slate-400 hover:text-white font-medium">
                         &larr; Back to Login
+                    </button>
+                </div>
+            </div>
+
+            <!-- Robot Manager / Superadmin Login Form -->
+            <div id="managerFormSection" class="hidden space-y-4">
+                <div class="text-center space-y-1">
+                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-indigo-500/20 text-amber-400 border border-amber-500/40 text-2xl mb-1">🛠️</div>
+                    <h2 class="text-lg font-bold text-white">Robot Manager Access</h2>
+                    <p class="text-xs text-slate-400">Superadmin &amp; Dispatcher Management Portal</p>
+                </div>
+
+                <div id="managerAlert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Manager Username</label>
+                    <input id="managerUsername" type="text" placeholder="Enter manager username" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition font-mono">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1.5">Password</label>
+                    <input id="managerPassword" type="password" placeholder="Enter manager password" onkeydown="if(event.key==='Enter') submitManagerLogin()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition font-mono">
+                </div>
+
+                <button id="btnManagerSubmit" onclick="submitManagerLogin()" class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-slate-950 hover:text-black font-extrabold text-sm rounded-lg shadow-lg shadow-amber-500/20 transition flex items-center justify-center space-x-1.5">
+                    <span>⚡ Unlock Manager Console</span>
+                </button>
+
+                <div class="text-center pt-2 border-t border-slate-800">
+                    <button type="button" onclick="toggleAuthMode('login')" class="text-xs text-slate-400 hover:text-white font-medium">
+                        &larr; Back to Student Login
                     </button>
                 </div>
             </div>
@@ -645,27 +875,44 @@ def offset_pose(pose, dx=0.0, dy=0.0, dz=0.0):
 `
         };
 
+        let studentRunVis = null;
+        let studentActiveRunModel = "ur";
+        let studentTelemetryPollInterval = null;
+        let studentTelemetryWs = null;
+        let studentLastDebugSeq = 0;
+
         function switchMainPortalView(view) {
             currentPortalView = view;
             const codeView = document.getElementById("viewCodeStudio");
             const simView = document.getElementById("viewSimulationOutput");
+            const runView = document.getElementById("viewRunMonitor");
             const btnCode = document.getElementById("tabNavCode");
             const btnSim = document.getElementById("tabNavSim");
+            const btnRun = document.getElementById("tabNavRun");
+
+            if (codeView) codeView.classList.add("hidden");
+            if (simView) simView.classList.add("hidden");
+            if (runView) runView.classList.add("hidden");
+
+            const defaultTabClass = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800";
+            if (btnCode) btnCode.className = defaultTabClass;
+            if (btnSim) btnSim.className = defaultTabClass;
+            if (btnRun) btnRun.className = defaultTabClass;
 
             if (view === 'sim') {
-                if (codeView) codeView.classList.add("hidden");
                 if (simView) simView.classList.remove("hidden");
-                if (btnCode) btnCode.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800";
                 if (btnSim) btnSim.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30";
                 setTimeout(() => {
                     if (ur3Vis && ur3Vis.onWindowResize) {
                         ur3Vis.onWindowResize();
                     }
                 }, 60);
+            } else if (view === 'run') {
+                if (runView) runView.classList.remove("hidden");
+                if (btnRun) btnRun.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-emerald-600 text-white shadow-lg shadow-emerald-600/30";
+                initStudentRunView();
             } else {
-                if (simView) simView.classList.add("hidden");
                 if (codeView) codeView.classList.remove("hidden");
-                if (btnSim) btnSim.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800";
                 if (btnCode) btnCode.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-blue-600 text-white shadow-lg shadow-blue-600/30";
                 setTimeout(() => {
                     if (editor) {
@@ -932,31 +1179,44 @@ print("Routine completed successfully!")
         function toggleAuthMode(mode) {
             const loginSec = document.getElementById("loginFormSection");
             const regSec = document.getElementById("registerFormSection");
+            const mgrSec = document.getElementById("managerFormSection");
             clearAuthAlerts();
 
             if (mode === "register") {
                 if (loginSec) loginSec.classList.add("hidden");
+                if (mgrSec) mgrSec.classList.add("hidden");
                 if (regSec) regSec.classList.remove("hidden");
                 const regU = document.getElementById("regUsername");
                 if (regU) regU.focus();
+            } else if (mode === "manager") {
+                if (loginSec) loginSec.classList.add("hidden");
+                if (regSec) regSec.classList.add("hidden");
+                if (mgrSec) mgrSec.classList.remove("hidden");
+                const mgrPass = document.getElementById("managerPassword");
+                if (mgrPass) mgrPass.focus();
             } else {
                 if (regSec) regSec.classList.add("hidden");
+                if (mgrSec) mgrSec.classList.add("hidden");
                 if (loginSec) loginSec.classList.remove("hidden");
                 fetchApprovedStudents();
-                const loginU = document.getElementById("loginUsernameInput");
-                if (loginU) loginU.focus();
+                const loginPass = document.getElementById("loginPassword");
+                if (loginPass) loginPass.focus();
             }
         }
 
         function clearAuthAlerts() {
             const lAlert = document.getElementById("loginAlert");
             const rAlert = document.getElementById("registerAlert");
+            const mAlert = document.getElementById("managerAlert");
             if (lAlert) { lAlert.className = "hidden"; lAlert.innerText = ""; }
             if (rAlert) { rAlert.className = "hidden"; rAlert.innerText = ""; }
+            if (mAlert) { mAlert.className = "hidden"; mAlert.innerText = ""; }
         }
 
         function showAuthAlert(type, message, isError = true) {
-            const elId = (type === "register") ? "registerAlert" : "loginAlert";
+            let elId = "loginAlert";
+            if (type === "register") elId = "registerAlert";
+            if (type === "manager") elId = "managerAlert";
             const el = document.getElementById(elId);
             if (!el) return;
             el.className = isError
@@ -969,33 +1229,43 @@ print("Routine completed successfully!")
         async function fetchApprovedStudents() {
             const sel = document.getElementById("loginStudentSelect");
             if (!sel) return;
-            sel.innerHTML = '<option value="">-- Choose from approved --</option>';
+            sel.innerHTML = '<option value="">-- Loading Approved Students --</option>';
 
             try {
                 const res = await fetch('/api/auth/students');
-                if (!res.ok) return;
+                if (!res.ok) {
+                    sel.innerHTML = '<option value="">(Error loading students)</option>';
+                    return;
+                }
                 const data = await res.json();
                 const students = data.students || [];
 
-                if (students.length > 0) {
-                    sel.innerHTML = '<option value="">-- Choose from approved (' + students.length + ') --</option>' +
-                        students.map(s => `<option value="${escapeHtml(s.username)}">${escapeHtml(s.username)}</option>`).join("");
+                if (students.length === 0) {
+                    sel.innerHTML = '<option value="">(No approved students yet — create an account)</option>';
+                    return;
+                }
+
+                sel.innerHTML = '<option value="">-- Select Your Name --</option>' +
+                    students.map(s => `<option value="${escapeHtml(s.username)}">${escapeHtml(s.username)}</option>`).join("");
+
+                if (currentStudentUser && currentStudentUser.username) {
+                    sel.value = currentStudentUser.username;
                 }
             } catch (e) {
                 console.warn("Could not fetch students list:", e);
+                sel.innerHTML = '<option value="">(Error loading students)</option>';
             }
         }
 
-        async function submitUnifiedLogin() {
-            const userInput = document.getElementById("loginUsernameInput");
-            const passInput = document.getElementById("loginPassword");
+        async function submitStudentLogin() {
             const sel = document.getElementById("loginStudentSelect");
+            const passInput = document.getElementById("loginPassword");
 
-            const username = (userInput ? userInput.value.trim() : "") || (sel ? sel.value.trim() : "");
+            const username = sel ? sel.value.trim() : "";
             const password = passInput ? passInput.value : "";
 
             if (!username) {
-                showAuthAlert("login", "Please enter or select a username.");
+                showAuthAlert("login", "Please select your student username from the dropdown.");
                 return;
             }
             if (!password) {
@@ -1006,7 +1276,7 @@ print("Routine completed successfully!")
             const btn = document.getElementById("btnLoginSubmit");
             if (btn) {
                 btn.disabled = true;
-                btn.innerHTML = "<span>Authenticating...</span>";
+                btn.innerText = "Authenticating...";
             }
 
             try {
@@ -1018,7 +1288,7 @@ print("Routine completed successfully!")
                 const data = await res.json();
 
                 if (!res.ok) {
-                    showAuthAlert("login", data.detail || "Authentication failed. Check credentials.");
+                    showAuthAlert("login", data.detail || "Login failed. Check password.");
                     return;
                 }
 
@@ -1026,7 +1296,6 @@ print("Routine completed successfully!")
                 currentAuthToken = data.token;
                 currentStudentUser = data.user || { username, role };
 
-                // Student storage
                 localStorage.setItem("ur_auth_token", currentAuthToken);
                 sessionStorage.setItem("ur_auth_token", currentAuthToken);
                 localStorage.setItem(STORAGE_TOKEN_KEY, currentAuthToken);
@@ -1034,14 +1303,12 @@ print("Routine completed successfully!")
 
                 if (role === 'admin' || role === 'superadmin') {
                     sessionStorage.setItem("ur_admin_token", currentAuthToken);
-                    localStorage.removeItem("ur_admin_token");
+                    localStorage.setItem("ur_admin_token", currentAuthToken);
                     showAuthAlert("login", `✓ Welcome ${data.username}! Opening Robot Manager Console...`, false);
                     setTimeout(() => {
                         window.location.href = "/admin";
                     }, 400);
                 } else {
-                    sessionStorage.removeItem("ur_admin_token");
-                    localStorage.removeItem("ur_admin_token");
                     onStudentLoggedIn();
                 }
             } catch (e) {
@@ -1049,14 +1316,72 @@ print("Routine completed successfully!")
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML = "<span>⚡ Sign In to Platform</span>";
+                    btn.innerText = "Log In & Enter Lab";
                 }
             }
         }
 
-        // Backwards compatibility aliases
-        const submitStudentLogin = submitUnifiedLogin;
-        const submitManagerLogin = submitUnifiedLogin;
+        async function submitManagerLogin() {
+            const userInput = document.getElementById("managerUsername");
+            const passInput = document.getElementById("managerPassword");
+
+            const username = userInput ? userInput.value.trim() : "";
+            const password = passInput ? passInput.value : "";
+
+            if (!username) {
+                showAuthAlert("manager", "Please enter the manager username.");
+                return;
+            }
+            if (!password) {
+                showAuthAlert("manager", "Please enter your password.");
+                return;
+            }
+
+            const btn = document.getElementById("btnManagerSubmit");
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = "Authenticating Manager...";
+            }
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    showAuthAlert("manager", data.detail || "Authentication failed.");
+                    return;
+                }
+
+                const role = data.role || (data.user ? data.user.role : "");
+                if (role !== 'admin' && role !== 'superadmin') {
+                    showAuthAlert("manager", "Access denied: Account is not an administrator or superadmin.");
+                    return;
+                }
+
+                sessionStorage.setItem("ur_admin_token", data.token);
+                localStorage.setItem("ur_admin_token", data.token);
+                sessionStorage.setItem("ur_admin_user", JSON.stringify(data.user));
+                localStorage.setItem("ur_admin_user", JSON.stringify(data.user));
+                localStorage.setItem(STORAGE_TOKEN_KEY, data.token);
+                localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(data.user));
+
+                showAuthAlert("manager", "Access granted! Redirecting to Manager Console...", false);
+                setTimeout(() => {
+                    window.location.href = "/admin";
+                }, 400);
+            } catch (e) {
+                showAuthAlert("manager", "Network error during login: " + e.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = "⚡ Unlock Manager Console";
+                }
+            }
+        }
 
         async function submitStudentRegister() {
             const userEl = document.getElementById("regUsername");
@@ -2634,6 +2959,244 @@ print("Routine completed successfully!")
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
+        }
+
+        // ==========================================
+        // Live Run Execution Monitor (Student View-Only)
+        // ==========================================
+
+        function initStudentRunView() {
+            if (!studentRunVis) {
+                studentRunVis = new UR3Visualizer("studentRunCanvasContainer");
+            }
+            if (studentRunVis) {
+                studentRunVis.setRobotModel(studentActiveRunModel);
+                setTimeout(() => {
+                    if (studentRunVis.onWindowResize) studentRunVis.onWindowResize();
+                }, 80);
+            }
+            startStudentRunMonitoring(studentActiveRunModel);
+        }
+
+        function switchStudentRunModel(model) {
+            studentActiveRunModel = (model === 'niryo') ? 'niryo' : 'ur';
+            const btnUR = document.getElementById("btnStudentRunUR");
+            const btnNiryo = document.getElementById("btnStudentRunNiryo");
+            const badge = document.getElementById("studentRunModelBadge");
+            const modelLabel = document.getElementById("studentTelTargetModelLabel");
+            const visTitle = document.getElementById("studentRunVisTitle");
+
+            if (studentActiveRunModel === 'niryo') {
+                if (btnUR) btnUR.className = "px-2.5 py-0.5 rounded text-slate-400 hover:text-white transition";
+                if (btnNiryo) btnNiryo.className = "px-2.5 py-0.5 rounded font-bold bg-indigo-600 text-white transition";
+                if (badge) { badge.innerText = "NIRYO NED"; badge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-950 text-amber-300 border border-amber-800"; }
+                if (modelLabel) modelLabel.innerText = "NIRYO";
+                if (visTitle) visTitle.innerText = "3D Digital Twin (Niryo Ned)";
+            } else {
+                if (btnUR) btnUR.className = "px-2.5 py-0.5 rounded font-bold bg-indigo-600 text-white transition";
+                if (btnNiryo) btnNiryo.className = "px-2.5 py-0.5 rounded text-slate-400 hover:text-white transition";
+                if (badge) { badge.innerText = "UR3 ARM"; badge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700"; }
+                if (modelLabel) modelLabel.innerText = "UR3";
+                if (visTitle) visTitle.innerText = "3D Digital Twin (UR3)";
+            }
+
+            if (studentRunVis) {
+                studentRunVis.setRobotModel(studentActiveRunModel);
+                setTimeout(() => {
+                    if (studentRunVis.onWindowResize) studentRunVis.onWindowResize();
+                }, 60);
+            }
+
+            startStudentRunMonitoring(studentActiveRunModel);
+        }
+
+        function clearStudentRunTerminal() {
+            const term = document.getElementById("studentRunTerminal");
+            if (term) term.innerText = "[Execution Monitor] Terminal cleared.\n";
+        }
+
+        function appendStudentRunLog(text) {
+            const term = document.getElementById("studentRunTerminal");
+            if (!term) return;
+            term.innerText += text;
+            term.scrollTop = term.scrollHeight;
+        }
+
+        function startStudentRunMonitoring(model) {
+            if (studentTelemetryPollInterval) {
+                clearInterval(studentTelemetryPollInterval);
+                studentTelemetryPollInterval = null;
+            }
+            if (studentTelemetryWs) {
+                try { studentTelemetryWs.close(); } catch(e) {}
+                studentTelemetryWs = null;
+            }
+
+            // 1. Initial snapshot fetch via HTTP
+            fetchStudentTelemetrySnapshot(model);
+
+            // 2. Periodic poll
+            studentTelemetryPollInterval = setInterval(() => {
+                fetchStudentTelemetrySnapshot(model);
+            }, 1000);
+
+            // 3. Setup WebSocket connection
+            try {
+                const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const token = currentAuthToken || localStorage.getItem(STORAGE_TOKEN_KEY) || "";
+                const wsUrl = `${proto}//${window.location.host}/ws/telemetry/${model}?token=${encodeURIComponent(token)}`;
+                studentTelemetryWs = new WebSocket(wsUrl);
+
+                studentTelemetryWs.onopen = () => {
+                    const badge = document.getElementById("studentRunStreamBadge");
+                    if (badge) badge.innerText = "Stream: Live WS";
+                };
+
+                studentTelemetryWs.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        updateStudentRunTelemetryUI(data);
+                        if (data.new_debug && data.new_debug.length > 0) {
+                            for (const line of data.new_debug) {
+                                appendStudentRunLog(`[${line.source || 'ROBOT'}] ${line.message}\n`);
+                            }
+                        }
+                    } catch(e) {}
+                };
+
+                studentTelemetryWs.onerror = () => {
+                    const badge = document.getElementById("studentRunStreamBadge");
+                    if (badge) badge.innerText = "Stream: Polling";
+                };
+
+                studentTelemetryWs.onclose = () => {
+                    const badge = document.getElementById("studentRunStreamBadge");
+                    if (badge) badge.innerText = "Stream: Polling";
+                };
+            } catch(e) {}
+        }
+
+        async function fetchStudentTelemetrySnapshot(model) {
+            try {
+                const token = currentAuthToken || localStorage.getItem(STORAGE_TOKEN_KEY) || "";
+                const res = await fetch(`/api/telemetry/${model}`, {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    updateStudentRunTelemetryUI(data);
+                }
+            } catch(e) {}
+        }
+
+        function updateStudentRunTelemetryUI(snap) {
+            if (!snap) return;
+
+            const engine = snap.engine || {};
+            const isExec = engine.is_executing || snap.is_executing || false;
+            const isHalt = engine.emergency_halted || snap.emergency_halted || false;
+
+            const dot = document.getElementById("studentRunStatusDot");
+            const label = document.getElementById("studentRunActiveLabel");
+
+            if (dot && label) {
+                if (isHalt) {
+                    dot.className = "w-3.5 h-3.5 rounded-full bg-rose-500 animate-pulse shrink-0";
+                    label.innerText = "EMERGENCY HALTED";
+                    label.className = "text-sm font-black text-rose-400 font-mono";
+                } else if (isExec) {
+                    dot.className = "w-3.5 h-3.5 rounded-full bg-emerald-500 animate-pulse shrink-0";
+                    label.innerText = `RUNNING (Job #${engine.active_sub_id || 'Active'})`;
+                    label.className = "text-sm font-black text-emerald-400 font-mono";
+                } else {
+                    dot.className = "w-3.5 h-3.5 rounded-full bg-slate-600 shrink-0";
+                    label.innerText = "IDLE — Waiting for instructor execution";
+                    label.className = "text-sm font-black text-white font-mono";
+                }
+            }
+
+            const spd = (typeof snap.speed === 'number') ? snap.speed : 0;
+            const spdEl = document.getElementById("studentTelSpeedNum");
+            const spdMmEl = document.getElementById("studentTelSpeedMm");
+            const spdBar = document.getElementById("studentTelSpeedBar");
+            if (spdEl) spdEl.innerText = spd.toFixed(3);
+            if (spdMmEl) spdMmEl.innerText = Math.round(spd * 1000);
+            if (spdBar) {
+                const pct = Math.min(100, (spd / 0.75) * 100);
+                spdBar.style.width = `${pct}%`;
+            }
+
+            if (document.getElementById("studentTelMaxSpeed") && typeof snap.max_speed === 'number') {
+                document.getElementById("studentTelMaxSpeed").innerText = `${snap.max_speed.toFixed(3)} m/s`;
+            }
+            if (document.getElementById("studentTelAvgSpeed") && typeof snap.avg_speed === 'number') {
+                document.getElementById("studentTelAvgSpeed").innerText = `${snap.avg_speed.toFixed(3)} m/s`;
+            }
+            if (document.getElementById("studentTelPathLen") && typeof snap.path_length_m === 'number') {
+                document.getElementById("studentTelPathLen").innerText = `${snap.path_length_m.toFixed(2)} m`;
+            }
+            if (document.getElementById("studentTelMovingTime") && typeof snap.moving_time_s === 'number') {
+                document.getElementById("studentTelMovingTime").innerText = `${snap.moving_time_s.toFixed(1)} s`;
+            }
+
+            const pose = snap.actual_tcp_pose || snap.tcp_pose;
+            if (Array.isArray(pose) && pose.length >= 6) {
+                const px = document.getElementById("studentTelPosX");
+                const py = document.getElementById("studentTelPosY");
+                const pz = document.getElementById("studentTelPosZ");
+                if (px) px.innerText = (pose[0] * 1000).toFixed(1);
+                if (py) py.innerText = (pose[1] * 1000).toFixed(1);
+                if (pz) pz.innerText = (pose[2] * 1000).toFixed(1);
+
+                const toDeg = 180 / Math.PI;
+                const rx = document.getElementById("studentTelRotRx");
+                const ry = document.getElementById("studentTelRotRy");
+                const rz = document.getElementById("studentTelRotRz");
+                if (rx) rx.innerText = `${(pose[3] * toDeg).toFixed(1)}°`;
+                if (ry) ry.innerText = `${(pose[4] * toDeg).toFixed(1)}°`;
+                if (rz) rz.innerText = `${(pose[5] * toDeg).toFixed(1)}°`;
+            }
+
+            const q = snap.actual_q || snap.joints;
+            if (Array.isArray(q) && q.length >= 6) {
+                const toDeg = 180 / Math.PI;
+                const qDeg = q.map(val => Math.abs(val) > 7.0 ? val : val * toDeg);
+                for (let i = 0; i < 6; i++) {
+                    const el = document.getElementById(`studentTelQ${i}`);
+                    if (el) el.innerText = `${qDeg[i].toFixed(1)}°`;
+                }
+
+                if (studentRunVis && studentRunVis.setTargetAngles) {
+                    studentRunVis.setTargetAngles(qDeg, 0.1);
+                }
+            }
+
+            const conn = snap.connected;
+            const pill = document.getElementById("studentTelConnectedPill");
+            if (pill) {
+                if (conn) {
+                    pill.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800";
+                    pill.innerText = "CONNECTED";
+                } else {
+                    pill.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
+                    pill.innerText = "OFFLINE";
+                }
+            }
+
+            const rMode = document.getElementById("studentTelRobotMode");
+            if (rMode && snap.robot_mode_str) rMode.innerText = snap.robot_mode_str;
+
+            const sMode = document.getElementById("studentTelSafetyMode");
+            if (sMode && snap.safety_mode_str) sMode.innerText = snap.safety_mode_str;
+
+            const pwr = document.getElementById("studentTelPower");
+            if (pwr && snap.power_str) pwr.innerText = snap.power_str;
+
+            const pStop = document.getElementById("studentTelProtectiveStop");
+            if (pStop) {
+                pStop.innerText = snap.protective_stop ? "TRIGGERED" : "NO";
+                pStop.className = snap.protective_stop ? "font-bold text-rose-400" : "font-bold text-slate-500";
+            }
         }
 
         let isStudentExecuting = false;

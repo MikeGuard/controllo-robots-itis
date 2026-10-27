@@ -317,7 +317,7 @@ def fk_niryo(q: List[float]):
         pw = pw + Rw @ np.array(trans)
         Rw = Rw @ Rfix
         origins.append(_C_THREE_TO_ROBOT @ pw)
-        axes.append(_C_THREE_TO_ROBOT @ (Rw @ np.array(axis)))
+        axes.append(-_C_THREE_TO_ROBOT @ (Rw @ np.array(axis)))
         Rw = Rw @ _axis_rot(axis, float(q[i]))
     pw = pw + Rw @ np.array([0.0, NIRYO_TCP_LEN, 0.0])
     pos = _C_THREE_TO_ROBOT @ pw
@@ -1305,7 +1305,12 @@ def simulate_script(
         def __getattr__(self, name):
             return name
 
-    mock_niryo_mod.__getattr__ = lambda name: _AnyEnum()
+    def _niryo_getattr(name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _AnyEnum()
+
+    mock_niryo_mod.__getattr__ = _niryo_getattr
 
     class SafetyViolationError(Exception):
         pass

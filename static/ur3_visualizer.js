@@ -113,15 +113,16 @@ class UR3Visualizer {
         // Responsive resize handlers
         const handleResize = () => {
             if (!this.container) return;
-            const w = this.container.clientWidth;
-            const h = this.container.clientHeight;
-            if (w > 0 && h > 0 && this.renderer && this.camera) {
+            const w = this.container.clientWidth || 400;
+            const h = this.container.clientHeight || 350;
+            if (this.renderer && this.camera) {
                 this.camera.aspect = w / h;
                 this.camera.updateProjectionMatrix();
                 this.renderer.setSize(w, h);
                 this.needsRender = true;
             }
         };
+        this.onWindowResize = handleResize;
 
         window.addEventListener('resize', handleResize);
         if (window.ResizeObserver && this.container) {

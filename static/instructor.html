@@ -408,7 +408,7 @@
             </section>
 
             <!-- ===================== VIEW 3: 3D TRAJECTORY SIMULATOR ===================== -->
-            <section id="adminViewSim" class="hidden flex-1 p-3 sm:p-5 min-h-0 space-y-4" aria-label="3D Simulation">
+            <section id="adminViewSim" class="hidden flex-1 p-3 sm:p-5 min-h-0 flex flex-col space-y-4" aria-label="3D Simulation">
                 <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 shadow-lg flex-shrink-0">
                     <div class="flex items-center space-x-2 min-w-0">
                         <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Simulation Source:</span>
@@ -440,7 +440,7 @@
                                 <button onclick="if(adminUr3Vis) adminUr3Vis.resetCamera()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Reset</button>
                             </div>
                         </div>
-                        <div id="adminUr3CanvasContainer" class="flex-1 relative bg-[#181e29] min-h-0">
+                        <div id="adminUr3CanvasContainer" class="flex-1 relative bg-[#181e29] min-h-[460px] w-full">
                             <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
                                 Joints: <span class="ur3AngleReadout text-sky-300">0° | -90° | 90° | -90° | -90° | 0°</span>
                             </div>
@@ -649,10 +649,10 @@
                 <!-- Dual Console Section: Live Script Terminal & Robot Controller Debug -->
                 <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-[380px]">
                     <!-- Left: Program Execution Output Terminal -->
-                    <div class="xl:col-span-6 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[350px]">
+                    <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[350px]">
                         <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
                             <div class="flex items-center space-x-2">
-                                <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Script Terminal (stdout/stderr)</span>
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Script Terminal</span>
                                 <div class="inline-flex rounded-lg bg-slate-800 p-0.5 border border-slate-700 text-[11px]">
                                     <button id="termTabAll" onclick="setTerminalFilter('all')"
                                         class="px-2 py-0.5 rounded font-medium bg-blue-600 text-white transition">All</button>
@@ -678,8 +678,28 @@
                         </div>
                     </div>
 
+                    <!-- Center: 3D Digital Twin Visualizer (Real-Time Robot Pose Mirror) -->
+                    <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[350px]">
+                        <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-300">3D Live Digital Twin</span>
+                            </div>
+                            <div class="flex items-center space-x-1">
+                                <button onclick="if(adminRunVis) adminRunVis.setPhotoPose()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-sky-300 rounded transition">Photo</button>
+                                <button onclick="if(adminRunVis) adminRunVis.setHomePose()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Home</button>
+                                <button onclick="if(adminRunVis) adminRunVis.resetCamera()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Reset</button>
+                            </div>
+                        </div>
+                        <div id="adminRunCanvasContainer" class="flex-1 relative bg-[#181e29] min-h-[280px]">
+                            <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
+                                Live: <span class="ur3AngleReadout text-sky-300">0° | -90° | 90° | -90° | -90° | 0°</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Right: Low-Level Robot Debug Console & Dashboard Hub -->
-                    <div class="xl:col-span-6 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[350px]">
+                    <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[350px]">
                         <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
                             <div class="flex items-center space-x-2">
                                 <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Robot Controller Debug Stream</span>
@@ -1030,8 +1050,8 @@
 
         let activeRobotModel = 'ur'; // 'ur' | 'niryo'
         let urIp = '10.0.10.60';
-        let niryoIp = '10.0.130.49';
         let adminUr3Vis = null;
+        let adminRunVis = null;
 
         // Auth & Identity State (Strictly session-scoped; password required for admin access)
         function getUnifiedAuthToken() {
@@ -1352,6 +1372,15 @@ printf("Gripper test finished.")
                 }, 60);
             } else if (tab === 'run') {
                 const targetModel = activeRunModel || activeRobotModel || 'ur';
+                if (!adminRunVis) {
+                    adminRunVis = new UR3Visualizer("adminRunCanvasContainer");
+                    adminRunVis.setRobotModel(targetModel);
+                }
+                setTimeout(() => {
+                    if (adminRunVis && typeof adminRunVis.onWindowResize === 'function') {
+                        adminRunVis.onWindowResize();
+                    }
+                }, 60);
                 startRunTelemetryMonitoring(targetModel);
                 const activeId = (targetModel === 'niryo') ? activeSubNiryo : activeSubUR;
                 if (activeId) {
@@ -2942,7 +2971,7 @@ printf("Gripper test finished.")
         // --- Emergency Controls ---
         // ==========================================
 
-        async function abortRobot(triggerSource = "Emergency Button") {
+        async function abortRobot(triggerSource = "Emergency Button", specificModel = null) {
             const btn = document.getElementById("btnEmergencyAbort");
             if (btn) {
                 btn.classList.add("ring-4", "ring-white", "scale-105");
@@ -2952,12 +2981,16 @@ printf("Gripper test finished.")
 
             if (adminUr3Vis) adminUr3Vis.stopSimulation();
 
+            const modelToAbort = specificModel || activeRunModel || null;
+            const url = modelToAbort ? `/api/abort?model=${encodeURIComponent(modelToAbort)}` : '/api/abort';
+
             try {
-                await fetch('/api/abort', {
+                await fetch(url, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${currentAdminToken}` }
                 });
-                appendLog(`\n[SUPERVISOR] EMERGENCY ABORT SENT! (Triggered by: ${triggerSource})\n`);
+                const modelStr = modelToAbort ? modelToAbort.toUpperCase() : "ALL ROBOTS";
+                appendLog(`\n[SUPERVISOR] EMERGENCY ABORT SENT TO ${modelStr}! (Triggered by: ${triggerSource})\n`);
                 fetchSubmissions();
                 checkRobotPing();
             } catch (e) {
@@ -2965,16 +2998,19 @@ printf("Gripper test finished.")
             }
         }
 
-        async function resetEmergencyStop() {
+        async function resetEmergencyStop(specificModel = null) {
+            const modelToReset = specificModel || activeRunModel || null;
+            const url = modelToReset ? `/api/emergency-reset?model=${encodeURIComponent(modelToReset)}` : '/api/emergency-reset';
             try {
-                await fetch('/api/emergency-reset', {
+                await fetch(url, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${currentAdminToken}` }
                 });
-                appendLog("\n[SUPERVISOR] Emergency Stop latch reset by instructor.\n");
+                const modelStr = modelToReset ? modelToReset.toUpperCase() : "ALL ROBOTS";
+                appendLog(`\n[SUPERVISOR] Emergency Stop latch reset for ${modelStr}.\n`);
                 checkRobotPing();
                 fetchSubmissions();
-                showActionToast("✓ Emergency Stop cleared");
+                showActionToast(`✓ Emergency Stop cleared for ${modelStr}`);
             } catch (e) {
                 alert("Reset Emergency Stop failed: " + e.message);
             }
@@ -3152,6 +3188,9 @@ printf("Gripper test finished.")
             if (btnNiryo) btnNiryo.className = model === 'niryo' ? "px-2.5 py-1 rounded font-bold bg-cyan-600 text-white transition" : "px-2.5 py-1 rounded text-slate-400 hover:text-white transition";
             const badge = document.getElementById("runActiveModelBadge");
             if (badge) badge.innerText = (model === 'niryo' ? 'NIRYO NED' : 'UR3 ARM');
+            if (adminRunVis) {
+                adminRunVis.setRobotModel(model);
+            }
             startRunTelemetryMonitoring(model);
         }
 
@@ -3241,6 +3280,10 @@ printf("Gripper test finished.")
                 if (elQ) elQ.innerText = `${(q[i] * 180 / Math.PI).toFixed(1)}°`;
                 const elQd = document.getElementById(`telQd${i}`);
                 if (elQd) elQd.innerText = `${(qd[i]).toFixed(2)} rad/s`;
+            }
+
+            if (adminRunVis && data.actual_q) {
+                adminRunVis.setJointAngles(data.actual_q);
             }
 
             // Diagnostics & Hardware Health
