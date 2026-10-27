@@ -9,7 +9,7 @@ import aiosqlite
 import datetime
 import hashlib
 import secrets
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "submissions.db")
 

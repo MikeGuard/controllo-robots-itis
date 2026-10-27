@@ -106,11 +106,28 @@ pip uninstall -y enum34 2>/dev/null || true
 
 # Attempt to install pre-built ur_rtde wheel without compiling
 echo "Checking for pre-compiled ur_rtde binary wheel..."
-if ! pip install --only-binary :all: --prefer-binary ur_rtde 2>/dev/null; then
-    echo "ℹ️  No pre-compiled binary wheel found for ur_rtde on $ARCH."
-    echo "   Skipping source compilation to save time (RPi 3 would take ~45 minutes)."
-    echo "   -> Platform features fully active: 3D Simulator, Niryo Ned, Web UI, Emergency Stop."
-    echo "   -> (If you need physical UR3 RTDE driver compiled from source later, run: ./setup_rpi.sh --compile-ur)"
+UR_WHEEL_INSTALLED=false
+for wheel in "$DIR"/dist_wheels/ur_rtde*.whl "$DIR"/ur_rtde*.whl; do
+    if [ -f "$wheel" ]; then
+        echo "Found local pre-compiled wheel: $wheel"
+        if pip install "$wheel" 2>/dev/null; then
+            echo "✓ Successfully installed ur_rtde from local wheel ($wheel)!"
+            UR_WHEEL_INSTALLED=true
+            break
+        fi
+    fi
+done
+
+if [ "$UR_WHEEL_INSTALLED" = false ]; then
+    if pip install --only-binary :all: --prefer-binary ur_rtde 2>/dev/null; then
+        echo "✓ Successfully installed pre-compiled ur_rtde from index!"
+        UR_WHEEL_INSTALLED=true
+    else
+        echo "ℹ️  No pre-compiled binary wheel found for ur_rtde on $ARCH."
+        echo "   Skipping source compilation to save time (RPi 3 would take ~45 minutes)."
+        echo "   -> Platform features fully active: 3D Simulator, Niryo Ned, Web UI, Emergency Stop."
+        echo "   -> (If you need physical UR3 RTDE driver compiled from source later, run: ./setup_rpi.sh --compile-ur)"
+    fi
 fi
 
 # If the user explicitly passed --compile-ur, compile it on demand
