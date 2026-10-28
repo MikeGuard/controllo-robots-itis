@@ -9,12 +9,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Monaco Editor CDN -->
     <link rel="stylesheet" data-name="vs/editor/editor.main"
-        href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
     <!-- Three.js and OrbitControls for 3D Visualizer -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="/static/ur3_visualizer.js"></script>
+    <!-- JSZip for Project ZIP Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -328,7 +328,12 @@
                                     <span>📋 Templates ▾</span>
                                 </button>
                                 <div id="creatorTemplatesDropdown"
-                                    class="hidden absolute right-0 mt-1 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
+                                    class="hidden absolute left-0 mt-1 w-64 max-w-[calc(100vw-2rem)] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
+                                    <div class="p-1.5 bg-slate-850">
+                                        <button onclick="openSaveAsExampleModal()" class="w-full text-left px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-slate-800 rounded transition flex items-center space-x-1.5">
+                                            <span>⭐</span><span>Save Code as Example</span>
+                                        </button>
+                                    </div>
                                     <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-indigo-400 uppercase">UR Arm Presets (RTDE)</div>
                                     <div class="py-1 text-xs">
                                         <button onclick="loadCreatorTemplate('default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">📄 Default UR_RTDE Script</button>
@@ -348,6 +353,14 @@
                             </div>
                             <button onclick="studioSaveNow()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
                                 <span>💾</span><span>Save</span>
+                            </button>
+                            <button onclick="exportAdminProjectZip()" title="Download current project files as a .zip"
+                                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
+                                <span>📦</span><span>Download .zip</span>
+                            </button>
+                            <button onclick="openSaveAsExampleModal()" title="Save current code into the shared Examples &amp; Templates Library"
+                                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
+                                <span>⭐</span><span>Save as Example</span>
                             </button>
                             <button onclick="sendCreatorCode(false)" title="Add to execution queue without immediate launch"
                                 class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
@@ -417,10 +430,10 @@
                     <div class="flex items-center flex-wrap gap-2">
                         <!-- Playback Speed Control -->
                         <div class="flex items-center space-x-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs text-slate-400">
-                            <span class="text-[10px] uppercase font-bold text-slate-500">Speed:</span>
-                            <button onclick="setSimSpeed(0.5)" class="sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono hover:text-white transition">0.5x</button>
-                            <button onclick="setSimSpeed(1.0)" class="sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-indigo-400 transition">1.0x</button>
-                            <button onclick="setSimSpeed(2.0)" class="sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono hover:text-white transition">2.0x</button>
+                            <span class="text-[10px] uppercase font-bold text-slate-500 mr-0.5">Speed:</span>
+                            <button data-speed="0.5" onclick="setSimSpeed(0.5)" class="sim-speed-btn px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition">0.5x</button>
+                            <button data-speed="1.0" onclick="setSimSpeed(1.0)" class="sim-speed-btn px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-600 text-white shadow-sm transition">1.0x</button>
+                            <button data-speed="2.0" onclick="setSimSpeed(2.0)" class="sim-speed-btn px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition">2.0x</button>
                         </div>
                         <button onclick="simulateStudioProject()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition">▶ Simulate Studio Code</button>
                         <button onclick="clearSimTerminal()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition">Clear Output</button>
@@ -994,6 +1007,12 @@
 
             <!-- Collapsible New Example Form -->
             <div id="newExampleForm" class="hidden p-4 bg-slate-850 border-b border-slate-800 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span id="newExFormHeading" class="text-xs font-bold uppercase tracking-wider text-indigo-300">Create / Edit Example Routine</span>
+                    <button type="button" onclick="pullCodeFromStudioToExample()" title="Copy current code from Code Studio editor into this form" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs rounded border border-slate-700 transition flex items-center space-x-1 shadow">
+                        <span>📥</span><span>Pull from Code Studio</span>
+                    </button>
+                </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-semibold text-slate-300 mb-1">Title</label>
@@ -1012,12 +1031,17 @@
                     <input id="newExDesc" type="text" placeholder="Brief explanation of routine" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Code</label>
-                    <textarea id="newExCode" rows="6" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs font-mono text-white"></textarea>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-semibold text-slate-300">Python Code</label>
+                        <span class="text-[10px] text-slate-500 font-mono">Executable in 3D simulator &amp; robot</span>
+                    </div>
+                    <textarea id="newExCode" rows="10" placeholder="# Write your Python robot routine here&#10;import rtde_control&#10;..." class="w-full bg-slate-900 border border-slate-700 rounded p-2.5 text-xs font-mono text-emerald-300 focus:outline-none focus:border-indigo-500"></textarea>
                 </div>
                 <div class="flex justify-end space-x-2">
-                    <button onclick="toggleNewExampleForm(false)" class="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs rounded">Cancel</button>
-                    <button onclick="saveNewExample()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded">Save Example</button>
+                    <button onclick="toggleNewExampleForm(false)" class="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs rounded hover:bg-slate-700 transition">Cancel</button>
+                    <button id="btnSaveExampleSubmit" onclick="saveNewExample()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded transition shadow flex items-center space-x-1">
+                        <span>💾</span><span>Save Example</span>
+                    </button>
                 </div>
             </div>
 
@@ -1365,9 +1389,17 @@ printf("Gripper test finished.")
             if (tab === 'code') {
                 setTimeout(() => { if (studioEditor) studioEditor.layout(); }, 60);
             } else if (tab === 'sim') {
+                if (!adminUr3Vis && typeof UR3Visualizer !== 'undefined') {
+                    adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
+                    const targetModel = document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : (activeRobotModel || 'ur');
+                    adminUr3Vis.setRobotModel(targetModel);
+                }
                 setTimeout(() => {
                     if (adminUr3Vis && typeof adminUr3Vis.onWindowResize === 'function') {
                         adminUr3Vis.onWindowResize();
+                    }
+                    if (adminUr3Vis) {
+                        adminUr3Vis.needsRender = true;
                     }
                 }, 60);
             } else if (tab === 'run') {
@@ -1773,7 +1805,13 @@ printf("Gripper test finished.")
 `));
                 }
 
-                if (data.robot_model && adminUr3Vis.currentModel !== data.robot_model) {
+                if (!adminUr3Vis && typeof UR3Visualizer !== 'undefined') {
+                    adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
+                }
+                if (adminUr3Vis && typeof adminUr3Vis.onWindowResize === 'function') {
+                    adminUr3Vis.onWindowResize();
+                }
+                if (adminUr3Vis && data.robot_model && adminUr3Vis.currentModel !== data.robot_model) {
                     adminUr3Vis.setRobotModel(data.robot_model);
                 }
 
@@ -2421,7 +2459,13 @@ printf("Gripper test finished.")
                     });
                 }
 
-                if (data.robot_model && adminUr3Vis.currentModel !== data.robot_model) {
+                if (!adminUr3Vis && typeof UR3Visualizer !== 'undefined') {
+                    adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
+                }
+                if (adminUr3Vis && typeof adminUr3Vis.onWindowResize === 'function') {
+                    adminUr3Vis.onWindowResize();
+                }
+                if (adminUr3Vis && data.robot_model && adminUr3Vis.currentModel !== data.robot_model) {
                     adminUr3Vis.setRobotModel(data.robot_model);
                 }
 
@@ -2486,11 +2530,17 @@ printf("Gripper test finished.")
                     data.logs.forEach(l => appendLog(`[PRINT] ${l}\n`, true));
                 }
 
-                if (data.robot_model && adminUr3Vis.currentModel !== data.robot_model) {
+                if (!adminUr3Vis && typeof UR3Visualizer !== 'undefined') {
+                    adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
+                }
+                if (adminUr3Vis && typeof adminUr3Vis.onWindowResize === 'function') {
+                    adminUr3Vis.onWindowResize();
+                }
+                if (adminUr3Vis && data.robot_model && adminUr3Vis.currentModel !== data.robot_model) {
                     adminUr3Vis.setRobotModel(data.robot_model);
                 }
 
-                adminUr3Vis.playTrajectory(data.waypoints);
+                if (adminUr3Vis) adminUr3Vis.playTrajectory(data.waypoints);
                 showActionToast(`3D Simulation running (${data.waypoints.length} waypoints)`);
             } catch (e) {
                 appendLog(`[SIMULATOR ERROR] ${e.message}\n`);
@@ -2685,7 +2735,9 @@ printf("Gripper test finished.")
                 }
 
                 updateDualRobotCards();
-                updateInspectorButtons();
+                if (typeof updateInspectorButtons === 'function') {
+                    updateInspectorButtons();
+                }
             } catch (e) {
                 console.error("Ping error:", e);
             }
@@ -3379,17 +3431,19 @@ printf("Gripper test finished.")
         }
 
         function setSimSpeed(speed) {
+            const num = parseFloat(speed) || 1.0;
             if (adminUr3Vis && typeof adminUr3Vis.setPlaybackSpeed === 'function') {
-                adminUr3Vis.setPlaybackSpeed(speed);
+                adminUr3Vis.setPlaybackSpeed(num);
             }
             document.querySelectorAll(".sim-speed-btn").forEach(btn => {
-                if (btn.innerText.includes(`${speed}x`)) {
-                    btn.className = "sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-indigo-400 transition";
+                const btnSpd = parseFloat(btn.dataset.speed || btn.innerText);
+                if (Math.abs(btnSpd - num) < 0.01) {
+                    btn.className = "sim-speed-btn px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-600 text-white shadow-sm transition";
                 } else {
-                    btn.className = "sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono hover:text-white transition";
+                    btn.className = "sim-speed-btn px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition";
                 }
             });
-            showActionToast(`Playback speed set to ${speed}x`);
+            showActionToast(`Playback speed set to ${num}x`);
         }
 
         // ==========================================
@@ -4047,6 +4101,8 @@ printf("Gripper test finished.")
             } catch (e) { }
         }
 
+        let editingExampleId = null;
+
         function renderAdminExamplesList() {
             const container = document.getElementById("adminExamplesList");
             if (!container) return;
@@ -4066,7 +4122,8 @@ printf("Gripper test finished.")
                     </div>
                     <div class="flex items-center space-x-2">
                         <button onclick="loadExampleIntoStudio(${ex.id})" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs rounded border border-slate-700 transition">Use in Studio</button>
-                        <button onclick="deleteAdminExample(${ex.id})" class="p-1 px-2 text-rose-400 hover:text-rose-300 text-xs">🗑️</button>
+                        <button onclick="openEditExample(${ex.id})" class="p-1 px-2 text-sky-400 hover:text-sky-300 text-xs" title="Edit example">✏️</button>
+                        <button onclick="deleteAdminExample(${ex.id})" class="p-1 px-2 text-rose-400 hover:text-rose-300 text-xs" title="Delete example">🗑️</button>
                     </div>
                 </div>
             `).join("");
@@ -4078,6 +4135,63 @@ printf("Gripper test finished.")
             if (show === null) form.classList.toggle("hidden");
             else if (show) form.classList.remove("hidden");
             else form.classList.add("hidden");
+
+            if (form.classList.contains("hidden")) {
+                editingExampleId = null;
+            }
+        }
+
+        function openEditExample(exId) {
+            const ex = adminExamples.find(e => e.id === exId);
+            if (!ex) return;
+            editingExampleId = ex.id;
+            toggleNewExampleForm(true);
+            const heading = document.getElementById("newExFormHeading");
+            if (heading) heading.innerText = `Edit Example #${ex.id}: ${ex.title}`;
+            document.getElementById("newExTitle").value = ex.title || "";
+            document.getElementById("newExModel").value = ex.robot_model || "ur";
+            document.getElementById("newExDesc").value = ex.description || "";
+            document.getElementById("newExCode").value = ex.code || "";
+            const btn = document.getElementById("btnSaveExampleSubmit");
+            if (btn) btn.innerHTML = "<span>💾</span><span>Update Example</span>";
+        }
+
+        function pullCodeFromStudioToExample() {
+            if (studioEditor && adminProjectState.active_file) {
+                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
+            }
+            const code = studioEditor ? studioEditor.getValue() : (adminProjectState.files[adminProjectState.entry_point] || "");
+            const model = document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : "ur";
+            const title = adminProjectState.current_project || "Studio Example";
+            document.getElementById("newExCode").value = code;
+            document.getElementById("newExModel").value = model;
+            if (!document.getElementById("newExTitle").value.trim()) {
+                document.getElementById("newExTitle").value = title;
+            }
+            showActionToast("✓ Code pulled from Studio");
+        }
+
+        function openSaveAsExampleModal() {
+            if (studioEditor && adminProjectState.active_file) {
+                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
+            }
+            const currentCode = studioEditor ? studioEditor.getValue() : (adminProjectState.files[adminProjectState.entry_point] || "");
+            const currentModel = document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : "ur";
+            const currentName = adminProjectState.current_project || "Studio Routine";
+
+            openExampleModal();
+            editingExampleId = null;
+            toggleNewExampleForm(true);
+
+            const heading = document.getElementById("newExFormHeading");
+            if (heading) heading.innerText = "Save Studio Code as Example";
+            document.getElementById("newExTitle").value = currentName;
+            document.getElementById("newExModel").value = currentModel;
+            document.getElementById("newExDesc").value = `Demonstration routine created by ${currentAdminUser || 'instructor'}.`;
+            document.getElementById("newExCode").value = currentCode;
+            const btn = document.getElementById("btnSaveExampleSubmit");
+            if (btn) btn.innerHTML = "<span>💾</span><span>Save as Example</span>";
+            showActionToast("Pre-filled form with current Code Studio script.");
         }
 
         async function saveNewExample() {
@@ -4091,9 +4205,13 @@ printf("Gripper test finished.")
                 return;
             }
 
+            const isEdit = !!editingExampleId;
+            const url = isEdit ? `/api/examples/${editingExampleId}` : "/api/examples";
+            const method = isEdit ? "PUT" : "POST";
+
             try {
-                const res = await fetch("/api/examples", {
-                    method: "POST",
+                const res = await fetch(url, {
+                    method: method,
                     headers: {
                         "Content-Type": "application/json",
                         "Authorization": `Bearer ${currentAdminToken}`
@@ -4101,16 +4219,54 @@ printf("Gripper test finished.")
                     body: JSON.stringify({ title, description: desc, code, robot_model: model })
                 });
                 if (res.ok) {
-                    showActionToast("Example created.");
+                    showActionToast(isEdit ? "✓ Example updated." : "✓ Example created.");
                     toggleNewExampleForm(false);
+                    editingExampleId = null;
                     fetchAdminExamples();
                 } else {
                     const err = await res.json();
-                    alert("Error: " + err.detail);
+                    alert("Error: " + (err.detail || (err.errors ? err.errors.join(", ") : "Failed to save example")));
                 }
             } catch (e) {
                 alert("Network error: " + e.message);
             }
+        }
+
+        async function exportAdminProjectZip() {
+            if (typeof JSZip === "undefined") {
+                alert("JSZip library is still loading. Please try again in a moment.");
+                return;
+            }
+            if (studioEditor && adminProjectState.active_file) {
+                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
+            }
+            const zip = new JSZip();
+            const projName = adminProjectState.current_project || "admin_project";
+            const folder = zip.folder(projName);
+
+            for (const [fname, fcontent] of Object.entries(adminProjectState.files || {})) {
+                folder.file(fname, fcontent || "");
+            }
+
+            const meta = {
+                project_name: projName,
+                entry_point: adminProjectState.entry_point || "main.py",
+                robot_model: document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : "ur",
+                exported_by: currentAdminUser || "admin",
+                exported_at: new Date().toISOString()
+            };
+            folder.file("project_manifest.json", JSON.stringify(meta, null, 2));
+
+            const blob = await zip.generateAsync({ type: "blob" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${projName}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showActionToast(`✓ Exported "${projName}.zip"`);
         }
 
         async function saveCurrentAsExample() {

@@ -1502,6 +1502,40 @@ async def delete_example_endpoint(example_id: int, authorization: Optional[str] 
     return {"status": "deleted", "id": example_id}
 
 
+@app.put("/api/examples/{example_id}")
+async def update_example_endpoint(example_id: int, payload: CreateExampleRequest, authorization: Optional[str] = Header(default=None)):
+    verify_admin_permission(authorization, "can_manage_examples")
+    ex = await database.get_example(example_id)
+    if not ex:
+        raise HTTPException(status_code=404, detail="Example not found")
+    if not payload.title.strip():
+        raise HTTPException(status_code=400, detail="Title is required.")
+    if not payload.code.strip():
+        raise HTTPException(status_code=400, detail="Code cannot be empty.")
+
+    valid, errors = validate_python_code(payload.code)
+    if not valid:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": "Syntax check failed on example code.", "errors": errors}
+        )
+
+    model = (payload.robot_model or "ur").strip().lower()
+    if model not in ("ur", "niryo"):
+        model = "ur"
+
+    await database.update_example(
+        example_id=example_id,
+        title=payload.title,
+        description=payload.description or "",
+        code=payload.code,
+        robot_model=model
+    )
+
+    await broadcast_to_admins({"type": "examples_updated", "id": example_id, "robot_model": model})
+    return {"status": "updated", "id": example_id, "title": payload.title, "robot_model": model}
+
+
 # --- Live Robot Telemetry & Debug (read-only) ---
 
 class DebugCommandRequest(BaseModel):

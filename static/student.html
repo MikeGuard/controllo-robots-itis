@@ -149,6 +149,10 @@
                     </div>
                     
                     <div class="flex items-center space-x-2.5">
+                        <button onclick="exportProjectZip()" title="Download current project as .zip" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
+                            <span>📦</span>
+                            <span class="hidden sm:inline">Download .zip</span>
+                        </button>
                         <span id="robotSelectedBadge" class="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3 ARM</span>
                         <button onclick="resetEditorToDefault()" class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline">Reset Code</button>
                     </div>
@@ -320,6 +324,13 @@
                             <span id="studentVisTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">3D Simulation View</span>
                         </div>
                         <div class="flex items-center space-x-1.5">
+                            <!-- Playback Speed Control -->
+                            <div class="flex items-center space-x-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800 text-xs text-slate-400 mr-1">
+                                <span class="text-[10px] uppercase font-bold text-slate-500 mr-0.5">Speed:</span>
+                                <button data-speed="0.5" onclick="setStudentSimSpeed(0.5)" class="student-sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition">0.5x</button>
+                                <button data-speed="1.0" onclick="setStudentSimSpeed(1.0)" class="student-sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-600 text-white shadow-sm transition">1.0x</button>
+                                <button data-speed="2.0" onclick="setStudentSimSpeed(2.0)" class="student-sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition">2.0x</button>
+                            </div>
                             <button onclick="ur3Vis.setPhotoPose()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-sky-300 rounded transition font-medium">Photo</button>
                             <button onclick="ur3Vis.setHomePose()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded transition font-medium">Home</button>
                             <button onclick="ur3Vis.resetCamera()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded transition font-medium">Reset</button>
@@ -2831,6 +2842,25 @@ print("Routine completed successfully!")
 
         function clearTerminal() {
             document.getElementById("terminal").innerText = "";
+        }
+
+        function setStudentSimSpeed(speed) {
+            const num = parseFloat(speed) || 1.0;
+            if (ur3Vis && typeof ur3Vis.setPlaybackSpeed === 'function') {
+                ur3Vis.setPlaybackSpeed(num);
+            }
+            if (studentRunVis && typeof studentRunVis.setPlaybackSpeed === 'function') {
+                studentRunVis.setPlaybackSpeed(num);
+            }
+            document.querySelectorAll(".student-sim-speed-btn").forEach(btn => {
+                const btnSpd = parseFloat(btn.dataset.speed || btn.innerText);
+                if (Math.abs(btnSpd - num) < 0.01) {
+                    btn.className = "student-sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-600 text-white shadow-sm transition";
+                } else {
+                    btn.className = "student-sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition";
+                }
+            });
+            appendStudentLog(`[SIMULATOR] Simulation playback speed set to ${num}x.\n`);
         }
 
         function appendStudentLog(text, autoScroll = true) {

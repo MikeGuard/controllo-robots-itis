@@ -968,3 +968,18 @@ async def delete_example(example_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM examples WHERE id = ?", (example_id,))
         await db.commit()
+
+
+async def update_example(example_id: int, title: str, description: str, code: str, robot_model: str = "ur") -> bool:
+    model = robot_model.strip().lower() if robot_model else "ur"
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            """
+            UPDATE examples
+            SET title = ?, description = ?, code = ?, robot_model = ?
+            WHERE id = ?
+            """,
+            (title.strip(), description.strip(), code, model, example_id)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
