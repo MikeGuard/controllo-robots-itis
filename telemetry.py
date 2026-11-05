@@ -302,26 +302,38 @@ class URSampler(_BaseSampler):
             f"Controller program state: {UR_RUNTIME_STATES.get(o, o)} -> {UR_RUNTIME_STATES.get(n, n)}", "info"))
 
         return {
-            "q": q, "qd": qd,
+            "q": q,
+            "actual_q": q,
+            "joints": q,
+            "qd": qd,
+            "actual_qd": qd,
             "tcp_pose": pose,
+            "actual_tcp_pose": pose,
             "tcp_speed_vec": tcp_speed_vec,
             "tcp_speed": derived["speed"],
+            "speed": derived["speed"],
             "tcp_force": self._g("getActualTCPForce", []),
             "joint_current": self._g("getActualCurrent", []),
             "joint_temp": self._g("getJointTemperatures", []),
+            "joint_temperatures": self._g("getJointTemperatures", []),
             "joint_voltage": self._g("getActualJointVoltage", []),
             "robot_voltage": self._g("getActualRobotVoltage", None),
+            "voltage": self._g("getActualRobotVoltage", 48.0),
             "robot_current": self._g("getActualRobotCurrent", None),
+            "current": self._g("getActualRobotCurrent", 1.0),
             "main_voltage": self._g("getActualMainVoltage", None),
             "momentum": self._g("getActualMomentum", None),
             "safety_mode": safety,
             "safety_text": UR_SAFETY_MODES.get(safety, str(safety)),
+            "safety_mode_str": UR_SAFETY_MODES.get(safety, str(safety)),
             "robot_mode": rmode,
             "robot_mode_text": UR_ROBOT_MODES.get(rmode, str(rmode)),
+            "robot_mode_str": UR_ROBOT_MODES.get(rmode, str(rmode)),
             "runtime_state": rstate,
             "runtime_text": UR_RUNTIME_STATES.get(rstate, str(rstate)),
             "speed_scaling": scale,
             "protective_stop": bool(self._g("isProtectiveStopped", False)),
+            "is_protective_stopped": bool(self._g("isProtectiveStopped", False)),
             "emergency_stop": bool(self._g("isEmergencyStopped", False)),
             "dio_out": self._g("getActualDigitalOutputBits", 0),
             "dio_in": self._g("getActualDigitalInputBits", 0),
@@ -445,13 +457,20 @@ class NiryoSampler(_BaseSampler):
         self._robot_ip = None
 
     def _connect(self):
+        try:
+            from execution_engine import engine
+            if engine.is_model_executing("niryo"):
+                raise ConnectionError("Script currently executing on Niryo arm (exclusive socket lock)")
+        except Exception:
+            pass
+
         ip = self._ip()
         if self.robot is not None and self._robot_ip == ip:
             return
         self.close()
         if time.time() < self.next_retry:
             raise ConnectionError(self.error or "waiting to retry")
-        err = _probe(ip, getattr(config, "NIRYO_PORT", 9090))
+        err = _probe(ip, getattr(config, "NIRYO_PORT", 40001))
         if err:
             raise ConnectionError(err)
         from pyniryo import NiryoRobot
@@ -488,6 +507,33 @@ class NiryoSampler(_BaseSampler):
         return data
 
     def _read(self) -> Dict[str, Any]:
+        try:
+            from execution_engine import engine
+            if engine.is_model_executing("niryo"):
+                if self._last_ok:
+                    res = dict(self._last_ok)
+                    res["robot_mode_text"] = "RUNNING (SCRIPT)"
+                    res["robot_mode_str"] = "RUNNING (SCRIPT)"
+                    return res
+                return {
+                    "connected": True,
+                    "robot_mode_text": "RUNNING (SCRIPT)",
+                    "robot_mode_str": "RUNNING (SCRIPT)",
+                    "safety_text": "NORMAL",
+                    "safety_mode_str": "NORMAL",
+                    "q": [0.0] * 6,
+                    "actual_q": [0.0] * 6,
+                    "joints": [0.0] * 6,
+                    "qd": [0.0] * 6,
+                    "actual_qd": [0.0] * 6,
+                    "tcp_pose": [0.0] * 6,
+                    "actual_tcp_pose": [0.0] * 6,
+                    "speed": 0.0,
+                    "tcp_speed": 0.0
+                }
+        except Exception:
+            pass
+
         self._connect()
         now = time.time()
         q = [float(v) for v in self.robot.get_joints()]
@@ -511,15 +557,24 @@ class NiryoSampler(_BaseSampler):
 
         hw_err = [e for e in (hw.get("hardware_errors") or []) if e]
         return {
-            "q": q, "qd": qd,
+            "q": q,
+            "actual_q": q,
+            "joints": q,
+            "qd": qd,
+            "actual_qd": qd,
             "tcp_pose": pose,
+            "actual_tcp_pose": pose,
             "tcp_speed": derived["speed"],
+            "speed": derived["speed"],
             "learning_mode": learning,
             "safety_mode": 0 if hw_err else 1,
             "safety_text": "HARDWARE ERROR" if hw_err else "NORMAL",
+            "safety_mode_str": "HARDWARE ERROR" if hw_err else "NORMAL",
             "robot_mode_text": "LEARNING MODE" if learning else "ACTIVE",
+            "robot_mode_str": "LEARNING MODE" if learning else "ACTIVE",
             "runtime_text": "—",
             "protective_stop": False,
+            "is_protective_stopped": False,
             "emergency_stop": False,
             **hw,
         }
@@ -568,6 +623,12 @@ class TelemetryHub:
 
     def reset_stats(self, model: Optional[str]):
         self.sampler(model).reset_stats()
+
+    def pause_sampler(self, model: Optional[str]):
+        m = self.normalize(model)
+        s = self.samplers.get(m)
+        if s and hasattr(s, "close"):
+            s.close()
 
     async def dashboard(self, model: Optional[str], command: str) -> str:
         if self.normalize(model) != "ur":

@@ -379,6 +379,8 @@ async def init_db():
                 await db.execute("ALTER TABLE submissions ADD COLUMN entry_point TEXT DEFAULT 'main.py'")
             if "project_name" not in sub_cols:
                 await db.execute("ALTER TABLE submissions ADD COLUMN project_name TEXT DEFAULT NULL")
+            if "commit_message" not in sub_cols:
+                await db.execute("ALTER TABLE submissions ADD COLUMN commit_message TEXT DEFAULT ''")
 
         # Examples table with robot_model support
         await db.execute("""
@@ -722,7 +724,8 @@ async def create_submission(
     robot_model: str = "ur",
     files: Optional[Union[str, Dict[str, Any]]] = None,
     entry_point: Optional[str] = "main.py",
-    project_name: Optional[str] = None
+    project_name: Optional[str] = None,
+    commit_message: str = ""
 ) -> int:
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     norm_model = (robot_model or "ur").strip().lower()
@@ -738,10 +741,10 @@ async def create_submission(
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             """
-            INSERT INTO submissions (student_name, task_id, code, status, logs, submitted_at, robot_model, files, entry_point, project_name)
-            VALUES (?, ?, ?, 'pending', '', ?, ?, ?, ?, ?)
+            INSERT INTO submissions (student_name, task_id, code, status, logs, submitted_at, robot_model, files, entry_point, project_name, commit_message)
+            VALUES (?, ?, ?, 'pending', '', ?, ?, ?, ?, ?, ?)
             """,
-            (student_name, task_id, code, now, norm_model, files_str, entry_file, project_name)
+            (student_name, task_id, code, now, norm_model, files_str, entry_file, project_name, commit_message or "")
         )
         await db.commit()
         return cursor.lastrowid
@@ -782,7 +785,7 @@ async def get_student_submissions(student_name: str, limit: int = 100) -> List[D
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
-            SELECT id, student_name, task_id, code, files, status, logs, submitted_at, executed_at, completed_at, robot_model
+            SELECT id, student_name, task_id, code, files, status, logs, submitted_at, executed_at, completed_at, robot_model, commit_message
             FROM submissions 
             WHERE LOWER(student_name) = LOWER(?) 
             ORDER BY id DESC LIMIT ?
@@ -983,3 +986,20 @@ async def update_example(example_id: int, title: str, description: str, code: st
         )
         await db.commit()
         return cursor.rowcount > 0
+
+
+async def has_student_submitted_project(student_name: str, task_id: str, project_name: Optional[str] = None) -> bool:
+    """Check if the student has already submitted a project with this name."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        if project_name:
+            async with db.execute(
+                "SELECT 1 FROM submissions WHERE student_name = ? AND (task_id = ? OR project_name = ?) LIMIT 1",
+                (student_name, task_id, project_name)
+            ) as cur:
+                return await cur.fetchone() is not None
+        else:
+            async with db.execute(
+                "SELECT 1 FROM submissions WHERE student_name = ? AND task_id = ? LIMIT 1",
+                (student_name, task_id)
+            ) as cur:
+                return await cur.fetchone() is not None

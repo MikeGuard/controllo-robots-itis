@@ -75,10 +75,10 @@ class UR3Visualizer {
         this.controls.update();
 
         // Lighting
-        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.7);
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 0.85);
         this.scene.add(hemiLight);
 
-        const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
+        const keyLight = new THREE.DirectionalLight(0xfff8ee, 1.35);
         keyLight.position.set(1.8, 3.0, 2.2);
         keyLight.castShadow = true;
         keyLight.shadow.mapSize.width = 1024;
@@ -86,11 +86,11 @@ class UR3Visualizer {
         keyLight.shadow.bias = -0.0003;
         this.scene.add(keyLight);
 
-        const rimLight = new THREE.DirectionalLight(0xaad8f5, 0.7);
+        const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.85);
         rimLight.position.set(-2.5, 2.0, -2.0);
         this.scene.add(rimLight);
 
-        const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
         fillLight.position.set(-1.0, 0.5, 2.5);
         this.scene.add(fillLight);
 
@@ -106,7 +106,7 @@ class UR3Visualizer {
         floor.receiveShadow = true;
         this.scene.add(floor);
 
-        const grid = new THREE.GridHelper(2.0, 20, 0x3b485d, 0x1e2638);
+        const grid = new THREE.GridHelper(2.0, 20, 0x38bdf8, 0x1e293b);
         grid.position.y = 0.001;
         this.scene.add(grid);
 
@@ -132,35 +132,37 @@ class UR3Visualizer {
     }
 
     buildMaterials() {
-        // Authentic UR3 industrial color palette
+        // Authentic UR3 industrial color palette (vibrant signature UR blue, crisp powder-coated whites, graphite cast joints)
         this.matSlateGray = new THREE.MeshStandardMaterial({
-            color: 0x505763,
-            metalness: 0.35,
-            roughness: 0.42
+            color: 0x334155, // Rich industrial slate graphite
+            metalness: 0.45,
+            roughness: 0.38
         });
 
         this.matOffWhite = new THREE.MeshStandardMaterial({
-            color: 0xe6e9ee,
-            metalness: 0.12,
-            roughness: 0.38
+            color: 0xf8fafc, // Crisp powder-coated link white
+            metalness: 0.15,
+            roughness: 0.32
         });
 
         this.matDarkRing = new THREE.MeshStandardMaterial({
-            color: 0x16181d,
+            color: 0x0f172a, // Deep charcoal collar ring
             metalness: 0.75,
-            roughness: 0.28
+            roughness: 0.25
         });
 
         this.matBlueCap = new THREE.MeshStandardMaterial({
-            color: 0x9dc6de, // Signature pale cyan-blue UR cap
-            metalness: 0.18,
-            roughness: 0.38
+            color: 0x0284c7, // Signature vibrant Universal Robots cyan-blue cap
+            emissive: 0x002d5a,
+            emissiveIntensity: 0.35,
+            metalness: 0.25,
+            roughness: 0.30
         });
 
         this.matAluminumFlange = new THREE.MeshStandardMaterial({
-            color: 0xd6dae2,
+            color: 0xe2e8f0, // Polished machined aluminum flange
             metalness: 0.88,
-            roughness: 0.22
+            roughness: 0.20
         });
     }
 
@@ -505,16 +507,14 @@ class UR3Visualizer {
         if (!q || q.length !== 6 || !this.joints) return;
 
         if (this.currentModel === 'niryo') {
-            // Niryo Ned joint mapping (consistent with simulator.py DH model; +Z = forward, +Y = up):
-            //   q0: base pan        → rotation.y = q0   (positive turns left)
-            //   q1: shoulder pitch  → rotation.x = -q1  (positive leans BACK, negative leans forward)
-            //   q2: elbow pitch     → rotation.x = -q2  (negative folds forearm down from horizontal)
-            //   q3: forearm roll    → rotation.y = q3
-            //   q4: wrist pitch     → rotation.x = -q4  (positive tilts tool up)
-            //   q5: tool roll       → rotation.y = q5
+            // Niryo Ned physical joint zero-offset compensation:
+            // When physical arm is extended straight up vertically (TCP height Z: 451.4 mm):
+            // J1: -21.1°, J2: -23.3°, J3: 178.7°, J4: -1.3°, J5: -6.9°, J6: 1.6°
+            const J2_OFFSET = -23.3 * (Math.PI / 180); // -0.40666 rad shoulder pitch zero-offset
+            const J3_OFFSET = 178.7 * (Math.PI / 180); //  3.11889 rad elbow pitch zero-offset
             if (this.joints[0]) this.joints[0].rotation.y = q[0];
-            if (this.joints[1]) this.joints[1].rotation.x = -q[1];
-            if (this.joints[2]) this.joints[2].rotation.x = -q[2];
+            if (this.joints[1]) this.joints[1].rotation.x = -(q[1] - J2_OFFSET);
+            if (this.joints[2]) this.joints[2].rotation.x = -(q[2] - J3_OFFSET);
             if (this.joints[3]) this.joints[3].rotation.y = q[3];
             if (this.joints[4]) this.joints[4].rotation.x = -q[4];
             if (this.joints[5]) this.joints[5].rotation.y = q[5];
@@ -528,9 +528,20 @@ class UR3Visualizer {
 
     setJointAngles(q) {
         if (!q || q.length !== 6) return;
+        // Auto-detect if angles were passed in degrees (any element > ~6.5 radians) and convert whole array to radians
+        const isDegreeArray = q.some(val => typeof val === 'number' && Math.abs(val) > 6.5);
+        const rads = q.map(val => {
+            const num = Number(val) || 0;
+            return isDegreeArray ? (num * Math.PI / 180) : num;
+        });
         for (let i = 0; i < 6; i++) {
-            this.targetQ[i] = q[i];
+            this.targetQ[i] = rads[i];
         }
+        this.needsRender = true;
+    }
+
+    setTargetAngles(q, speed = 0.1) {
+        this.setJointAngles(q);
     }
 
     setPhotoPose() {
@@ -804,19 +815,21 @@ class UR3Visualizer {
 
     buildNiryoMaterials() {
         this.matNiryoDark = new THREE.MeshStandardMaterial({
-            color: 0x1e222b,
+            color: 0x1e293b,
             metalness: 0.35,
-            roughness: 0.55
+            roughness: 0.45
         });
         this.matNiryoTeal = new THREE.MeshStandardMaterial({
-            color: 0x00bcd4,
+            color: 0x00e5ff,
+            emissive: 0x00838f,
+            emissiveIntensity: 0.65,
             metalness: 0.2,
-            roughness: 0.35
+            roughness: 0.25
         });
         this.matNiryoAccent = new THREE.MeshStandardMaterial({
-            color: 0x374151,
+            color: 0x38bdf8,
             metalness: 0.45,
-            roughness: 0.4
+            roughness: 0.35
         });
         this.matNiryoMetal = new THREE.MeshStandardMaterial({
             color: 0xd1d5db,
@@ -824,7 +837,7 @@ class UR3Visualizer {
             roughness: 0.22
         });
         this.matNiryoGripper = new THREE.MeshStandardMaterial({
-            color: 0x111827,
+            color: 0x0f172a,
             metalness: 0.4,
             roughness: 0.65
         });
@@ -902,8 +915,8 @@ class UR3Visualizer {
         j0TealBand.position.y = 0.098;
         this.j0.add(j0TealBand);
 
-        // ── j1_frame — shoulder pivot at height 0.103m ───────────────────
-        const d1 = 0.103;
+        // ── j1_frame — shoulder pivot at height 0.1065m ───────────────────
+        const d1 = 0.1065;
         this.j1_frame = new THREE.Group();
         this.j1_frame.position.y = d1;
         this.j0.add(this.j1_frame);
@@ -937,8 +950,8 @@ class UR3Visualizer {
         j1TealRight.position.x = 0.049;
         this.j1.add(j1TealRight);
 
-        // Upper arm link — extends upward along local +Y (length L1 = 0.210m)
-        const L1 = 0.210;
+        // Upper arm link — extends upward along local +Y (length L1 = 0.1750m)
+        const L1 = 0.1750;
         const upperArm = new THREE.Mesh(
             new THREE.BoxGeometry(0.048, L1, 0.052),
             this.matNiryoDark
@@ -957,8 +970,7 @@ class UR3Visualizer {
         // ── j2_frame — elbow pivot at top of upper arm ───────────────────
         this.j2_frame = new THREE.Group();
         this.j2_frame.position.y = L1;
-        // At q2 = 0 the real Ned forearm is horizontal (L-shape): +90° about X maps local +Y to world +Z (forward)
-        this.j2_frame.rotation.x = Math.PI / 2;
+        // In Niryo upright pose, forearm extends straight up along +Y (same kinematic chain as simulator.py)
         this.j1.add(this.j2_frame);
 
         // j2 rotates around local X (elbow pitch: negative = bends down toward table/sleep)
@@ -989,8 +1001,8 @@ class UR3Visualizer {
         j2TealRight.position.x = 0.042;
         this.j2.add(j2TealRight);
 
-        // Forearm link — extends along local +Y (which points +Z forward when j2_frame rotation.x = pi/2)
-        const L2 = 0.190;
+        // Forearm link — extends along local +Y (length L2 = 0.1150m)
+        const L2 = 0.1150;
         const forearm = new THREE.Mesh(
             new THREE.BoxGeometry(0.038, L2, 0.042),
             this.matNiryoDark
@@ -1003,8 +1015,7 @@ class UR3Visualizer {
             new THREE.BoxGeometry(0.040, L2 * 0.62, 0.007),
             this.matNiryoTeal
         );
-        // Local -Z faces world up once the forearm frame is rotated +90° about X
-        forearmStripe.position.set(0, L2 / 2, -0.017);
+        forearmStripe.position.set(0, L2 / 2, 0.022);
         this.j2.add(forearmStripe);
 
         // ── j3_frame — forearm roll pivot at end of forearm ──────────────
@@ -1017,22 +1028,22 @@ class UR3Visualizer {
         this.j3_frame.add(this.j3);
 
         const rollCollar = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.032, 0.032, 0.030, 36),
+            new THREE.CylinderGeometry(0.032, 0.032, 0.020, 36),
             this.matNiryoDark
         );
-        rollCollar.position.y = 0.015;
+        rollCollar.position.y = 0.010;
         rollCollar.castShadow = true;
         this.j3.add(rollCollar);
 
         const rollRing = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.0325, 0.0325, 0.006, 36),
+            new THREE.CylinderGeometry(0.0325, 0.0325, 0.005, 36),
             this.matNiryoTeal
         );
-        rollRing.position.y = 0.029;
+        rollRing.position.y = 0.020;
         this.j3.add(rollRing);
 
         // ── j4_frame — wrist pitch pivot, offset from roll collar ────────
-        const d4 = 0.042;
+        const d4 = 0.0250;
         this.j4_frame = new THREE.Group();
         this.j4_frame.position.y = d4;
         this.j3.add(this.j4_frame);
@@ -1059,14 +1070,14 @@ class UR3Visualizer {
 
         // Small wrist neck link extends upward along local +Y to tool flange
         const wristLink = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.020, 0.020, 0.032, 28),
+            new THREE.CylinderGeometry(0.020, 0.020, 0.024, 28),
             this.matNiryoDark
         );
-        wristLink.position.y = 0.016;
+        wristLink.position.y = 0.012;
         this.j4.add(wristLink);
 
         // ── j5_frame — tool flange roll, offset from wrist link top ──────
-        const d5 = 0.035;
+        const d5 = 0.0299;
         this.j5_frame = new THREE.Group();
         this.j5_frame.position.y = d5;
         this.j4.add(this.j5_frame);

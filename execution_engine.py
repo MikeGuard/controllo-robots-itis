@@ -49,7 +49,7 @@ def _send_niryo_emergency_halt(ip: str):
         # Pre-probe socket with 0.3s timeout so pyniryo does not freeze for 20s
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.3)
-        s.connect((ip, getattr(config, "NIRYO_PORT", 9090)))
+        s.connect((ip, getattr(config, "NIRYO_PORT", 40001)))
         s.close()
 
         import pyniryo
@@ -262,10 +262,19 @@ class ExecutionEngine:
             proc_env["ROBOT_MODEL"] = model
             proc_env["ROBOT_IP"] = target_ip
             proc_env["UR_ROBOT_IP"] = getattr(config, "UR_IP", "10.0.10.60")
-            proc_env["NIRYO_ROBOT_IP"] = getattr(config, "NIRYO_IP", "10.0.10.61")
+            proc_env["NIRYO_ROBOT_IP"] = getattr(config, "NIRYO_IP", "10.0.130.49")
             # Ensure isolated project run directory and repo are both discoverable
             curr_py_path = proc_env.get("PYTHONPATH", "")
             proc_env["PYTHONPATH"] = f"{run_dir}{os.pathsep}{work_dir}{os.pathsep}{curr_py_path}".strip(os.pathsep)
+
+            # Niryo TCP server is single-client exclusive: ensure background sampler releases the port
+            if model == "niryo":
+                try:
+                    from telemetry import telemetry_hub
+                    telemetry_hub.pause_sampler("niryo")
+                    await asyncio.sleep(0.08)
+                except Exception:
+                    pass
 
             proc = await asyncio.create_subprocess_exec(
                 sys.executable, "-u", temp_path,

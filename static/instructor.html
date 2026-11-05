@@ -8,7 +8,7 @@
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Monaco Editor CDN -->
-    <link rel="stylesheet" data-name="vs/editor/editor.main"
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
     <!-- Three.js and OrbitControls for 3D Visualizer -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -275,136 +275,113 @@
                 </div>
             </section>
 
-            <!-- ===================== VIEW 2: CODE STUDIO (PREVIEW & IN-PLACE EDITOR) ===================== -->
-            <section id="adminViewCode" class="hidden flex-1 p-3 sm:p-4 min-h-0 flex flex-col space-y-2" aria-label="Code Studio">
-                <!-- Preview Context Banner (Identifies currently loaded project) -->
-                <div id="studioPreviewContextBanner" class="px-4 py-2 bg-slate-900 border border-slate-800 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs shadow flex-shrink-0">
-                    <div class="flex items-center space-x-2.5">
-                        <button onclick="switchAdminTab('projects')" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 rounded-lg text-xs font-bold transition flex items-center space-x-1 border border-slate-700">
-                            <span>←</span><span>Back to Projects Table</span>
-                        </button>
-                        <span class="text-slate-700">|</span>
-                        <div class="flex items-center space-x-2">
-                            <span class="text-slate-400 font-semibold uppercase text-[10px] tracking-wider">Previewing:</span>
-                            <span id="studioLoadedSubBadge" class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">#New - Admin Routine</span>
-                            <span id="studioLoadedAuthorBadge" class="px-2 py-0.5 rounded text-xs font-medium bg-slate-800 text-sky-400">Student: Instructor</span>
-                            <span id="studioLoadedModelBadge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-300">UR3</span>
-                        </div>
-                    </div>
-                    <div class="flex items-center space-x-2">
-                        <span id="studioSaveToast" class="text-xs text-emerald-400 font-medium opacity-0 transition-opacity duration-300 whitespace-nowrap">✓ Saved to Database</span>
-                    </div>
-                </div>
+            <!-- ===================== VIEW 2: CODE STUDIO (VS CODE WORKSPACE + STUDENT SYNC & BRANCHING) ===================== -->
+            <section id="adminViewCode" class="hidden flex-1 p-2 sm:p-3 min-h-0 flex flex-col space-y-2 overflow-hidden" aria-label="Code Studio">
+                <div class="flex-1 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-2xl overflow-hidden min-h-0">
 
-                <!-- Editor Workspace Card -->
-                <div class="flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-2xl overflow-hidden flex-1 min-h-0">
-                    <!-- Project + Run Toolbar -->
-                    <div class="px-4 py-2.5 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
-                        <div class="flex items-center flex-wrap gap-2.5">
-                            <label for="studioProjectSelect" class="text-xs font-bold text-slate-400">📁 Workspace</label>
-                            <select id="studioProjectSelect" onchange="studioSwitchProject(this.value)"
-                                class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono max-w-[180px]"></select>
-                            <button onclick="studioNewProject()" title="Create a new project folder"
-                                class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition">➕ New</button>
-                            <button onclick="studioDeleteProject()" title="Delete this project folder"
-                                class="px-2 py-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 text-xs rounded-lg border border-slate-700 transition">🗑️</button>
-                            <span class="text-slate-700">|</span>
-                            <label for="creatorProgName" class="text-xs font-semibold text-slate-400">Name</label>
-                            <input id="creatorProgName" type="text" placeholder="e.g., Admin Routine" value="Admin Routine"
-                                class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium w-40 transition">
-                            <label for="creatorModelSelect" class="text-xs font-semibold text-slate-400">Target</label>
-                            <select id="creatorModelSelect" onchange="onStudioModelChange()"
-                                class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 transition font-medium">
-                                <option value="ur">UR3 Arm</option>
-                                <option value="niryo">Niryo Ned</option>
-                            </select>
-                        </div>
+                    <!-- Top Project & Execution Toolbar (Matches Student Code Studio) -->
+                    <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5 flex-shrink-0">
+                        <div class="flex items-center flex-wrap gap-2 flex-1 min-w-[300px]">
+                            <button onclick="switchAdminTab('projects')" title="Back to Projects &amp; Queue Table"
+                                class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 rounded-lg text-xs font-bold transition flex items-center space-x-1 border border-slate-700">
+                                <span>←</span><span>Queue</span>
+                            </button>
 
-                        <div class="flex items-center flex-wrap gap-2">
-                            <!-- Templates dropdown -->
-                            <div class="relative inline-block text-left">
-                                <button id="btnCreatorTemplates" onclick="toggleCreatorTemplatesMenu(event)"
-                                    class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
-                                    <span>📋 Templates ▾</span>
+                            <div class="flex items-center space-x-1.5">
+                                <label for="studioProjectSelect" class="text-xs font-bold text-slate-400 whitespace-nowrap flex items-center space-x-1">
+                                    <span>📁</span><span>Project:</span>
+                                </label>
+                                <select id="studioProjectSelect" onchange="studioSwitchProject(this.value)"
+                                    class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono font-bold max-w-[260px]"></select>
+                                <button onclick="studioNewProject()" title="Create New Admin Project"
+                                    class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
+                                    <span>➕</span><span class="hidden sm:inline">New</span>
                                 </button>
-                                <div id="creatorTemplatesDropdown"
-                                    class="hidden absolute left-0 mt-1 w-64 max-w-[calc(100vw-2rem)] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
-                                    <div class="p-1.5 bg-slate-850">
-                                        <button onclick="openSaveAsExampleModal()" class="w-full text-left px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-slate-800 rounded transition flex items-center space-x-1.5">
-                                            <span>⭐</span><span>Save Code as Example</span>
-                                        </button>
-                                    </div>
-                                    <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-indigo-400 uppercase">UR Arm Presets (RTDE)</div>
-                                    <div class="py-1 text-xs">
-                                        <button onclick="loadCreatorTemplate('default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">📄 Default UR_RTDE Script</button>
-                                        <button onclick="loadCreatorTemplate('cartesian')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">1. Cartesian Probe (moveJ + moveL)</button>
-                                        <button onclick="loadCreatorTemplate('square')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">2. Square Contour Path</button>
-                                        <button onclick="loadCreatorTemplate('joint')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">3. Joint Articulation (moveJ)</button>
-                                        <button onclick="loadCreatorTemplate('gripper')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">4. Gripper / Digital Output</button>
-                                    </div>
-                                    <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-cyan-400 uppercase">Niryo One Presets (pyniryo)</div>
-                                    <div class="py-1 text-xs">
-                                        <button onclick="loadCreatorTemplate('niryo_default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">🤖 Default Niryo Routine</button>
-                                        <button onclick="loadCreatorTemplate('niryo_pick')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">1. Niryo Pick &amp; Place</button>
-                                        <button onclick="loadCreatorTemplate('niryo_joint')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">2. Niryo Joint Articulation</button>
-                                        <button onclick="loadCreatorTemplate('niryo_gripper')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">3. Niryo Gripper Tool Test</button>
-                                    </div>
-                                </div>
+                                <button onclick="studioRenameProject()" title="Rename Project"
+                                    class="p-1 px-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">
+                                    ✏️
+                                </button>
+                                <button onclick="studioDeleteProject()" title="Delete Project Folder"
+                                    class="p-1 px-1.5 text-slate-400 hover:text-rose-400 rounded hover:bg-slate-800 transition text-xs">
+                                    🗑️
+                                </button>
                             </div>
-                            <button onclick="studioSaveNow()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
-                                <span>💾</span><span>Save</span>
+
+                            <!-- Sync Mode / Branch Status Pill -->
+                            <div id="studioSyncModeBadge" class="px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center space-x-1.5 bg-emerald-950/70 text-emerald-300 border border-emerald-700/60">
+                                <span id="studioSyncModeDot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                <span id="studioLoadedSubBadge">Admin Workspace</span>
+                                <span class="text-slate-500">•</span>
+                                <span id="studioLoadedAuthorBadge" class="font-mono text-[10px] text-emerald-200">Isolated</span>
+                            </div>
+
+                            <input id="creatorProgName" type="hidden" value="Admin Routine">
+                        </div>
+
+                        <!-- Right Controls: Platform Selector + Check + Simulate + Run -->
+                        <div class="flex items-center flex-wrap gap-2">
+                            <div class="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
+                                <label for="creatorModelSelect" class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Platform:</label>
+                                <select id="creatorModelSelect" onchange="onStudioModelChange()"
+                                    class="bg-transparent text-xs text-white focus:outline-none font-bold cursor-pointer">
+                                    <option value="ur" class="bg-slate-900 text-white">🦾 UR3 Arm</option>
+                                    <option value="niryo" class="bg-slate-900 text-white">🤖 Niryo Ned</option>
+                                </select>
+                            </div>
+                            <span id="studioLoadedModelBadge" class="hidden">UR3</span>
+
+                            <button id="btnStudioCheck" onclick="checkCreatorSyntax()"
+                                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
+                                <span>🔍 Check Syntax</span>
                             </button>
-                            <button onclick="exportAdminProjectZip()" title="Download current project files as a .zip"
-                                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
-                                <span>📦</span><span>Download .zip</span>
+                            <button id="btnSimulateCreator" onclick="simulateCreatorCode()"
+                                class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center space-x-1">
+                                <span>🎮 Simulate in 3D</span>
                             </button>
-                            <button onclick="openSaveAsExampleModal()" title="Save current code into the shared Examples &amp; Templates Library"
-                                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
-                                <span>⭐</span><span>Save as Example</span>
-                            </button>
-                            <button onclick="sendCreatorCode(false)" title="Add to execution queue without immediate launch"
-                                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
-                                <span>📥</span><span>Send to Queue</span>
-                            </button>
-                            <button id="btnStudioCheck" onclick="checkCreatorSyntax()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1">
-                                <span>🔍</span><span>Check Syntax</span>
-                            </button>
-                            <button id="btnSimulateCreator" onclick="simulateCreatorCode()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center space-x-1">
-                                <span>🎮</span><span>Simulate 3D</span>
-                            </button>
-                            <!-- Big Action: Run on Physical Robot & Switch to Run Page -->
                             <button id="btnExecuteStudioProject" onclick="executeCurrentStudioProject()"
-                                class="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center space-x-1.5 ring-2 ring-emerald-500/40">
-                                <span>🚀 Run on Physical Robot</span>
+                                class="px-4 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center space-x-1.5">
+                                <span>🚀 Run on Robot</span>
                             </button>
                         </div>
                     </div>
 
-                    <!-- File Tabs Bar -->
+                    <!-- VS Code Editor Tab Bar -->
                     <div class="px-2 py-1 bg-slate-850/95 flex items-center justify-between border-b border-slate-800 text-xs text-slate-400 select-none flex-shrink-0">
                         <div class="flex items-center space-x-1.5 overflow-x-auto py-0.5 flex-1 min-w-0">
-                            <button onclick="studioToggleExplorer()" title="Toggle project file explorer"
+                            <button id="btnStudioToggleExplorer" onclick="studioToggleExplorer()" title="Toggle Project File Explorer"
                                 class="px-2.5 py-1 rounded text-xs font-semibold transition flex items-center space-x-1.5 bg-slate-800 text-sky-400 hover:bg-slate-700 mr-1 border border-slate-700/80">
-                                <span>📁</span><span class="font-mono text-[11px]">Explorer</span>
+                                <span>📁</span>
+                                <span class="font-mono text-[11px]">Explorer</span>
+                                <span id="studioTabFilesCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-sky-900/80 text-sky-300">1</span>
                             </button>
-                            <div id="studioFileTabs" class="flex items-center space-x-1 overflow-x-auto"></div>
-                            <button onclick="studioNewFile()" title="Create new file"
-                                class="px-2 py-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded text-xs font-bold transition">+</button>
+                            <div id="studioFileTabs" class="flex items-center space-x-1 overflow-x-auto scrollbar-none"></div>
+                            <button onclick="studioNewFile()" title="Create New File (+)"
+                                class="px-2 py-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded text-xs font-bold transition flex items-center space-x-1">
+                                <span>+</span>
+                            </button>
                         </div>
-                        <span id="studioActiveIndicator" class="font-mono text-[11px] text-slate-400 hidden md:inline pl-2">main.py (Python)</span>
+                        <div class="flex items-center space-x-3 flex-shrink-0 pl-2">
+                            <span id="studioSaveToast" class="text-xs text-emerald-400 font-medium opacity-0 transition-opacity duration-300 whitespace-nowrap">✓ Saved</span>
+                            <span id="studioActiveIndicator" class="font-mono text-[11px] text-slate-400 hidden md:inline">main.py (Python)</span>
+                        </div>
                     </div>
 
-                    <!-- Explorer + Monaco Editor Container -->
+                    <!-- Split Workspace (Collapsible Explorer Sidebar + Whole-Page Monaco Editor) -->
                     <div class="flex flex-1 min-h-0 relative overflow-hidden bg-slate-950">
-                        <div id="studioExplorer" class="w-60 flex-shrink-0 bg-slate-950 border-r border-slate-800 flex flex-col select-none">
+                        <div id="studioExplorer" class="w-60 flex-shrink-0 bg-slate-950 border-r border-slate-800 flex flex-col transition-all duration-150 select-none">
                             <div class="px-3 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
                                 <span class="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 font-mono">Project Files</span>
                                 <div class="flex items-center space-x-1">
-                                    <button onclick="studioNewFile()" title="New file" class="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">➕</button>
+                                    <button onclick="studioNewFile()" title="Create New File" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-sky-300 rounded text-[10px] font-semibold transition border border-slate-700 flex items-center space-x-1">
+                                        <span>+ New File</span>
+                                    </button>
+                                    <button onclick="studioToggleExplorer()" title="Collapse Sidebar" class="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">
+                                        ◀
+                                    </button>
                                 </div>
                             </div>
                             <div class="px-3 py-1.5 bg-slate-900/50 text-[11px] font-semibold text-slate-300 flex items-center space-x-1.5 border-b border-slate-800/60">
-                                <span>📂</span><span id="studioFolderName" class="truncate font-mono">admin_project/</span>
+                                <span>📂</span><span id="studioFolderName" class="truncate font-mono">admin_default/</span>
                             </div>
                             <div id="studioFilesList" class="flex-1 overflow-y-auto p-1.5 space-y-0.5"></div>
                             <div class="p-2 border-t border-slate-800/80 bg-slate-900/60 text-[10px] text-slate-400 flex items-center justify-between">
@@ -415,8 +392,73 @@
                                 </label>
                             </div>
                         </div>
-                        <div id="studioEditorContainer" class="flex-1 min-w-0 h-full"></div>
+                        <div id="studioEditorContainer" class="flex-1 min-w-0 min-h-[380px] w-full h-full relative overflow-hidden"></div>
                     </div>
+
+                    <!-- Bottom Action Bar (Save, Branch, Save as Example, Examples & Templates, Export .zip) -->
+                    <div class="p-3 sm:px-4 sm:py-2.5 bg-slate-850 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+                        <div class="flex items-center flex-wrap gap-2">
+                            <button onclick="studioSaveNow(true)"
+                                class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1.5 shadow">
+                                <span>💾</span><span id="btnStudioSaveLabel">Save Project</span>
+                            </button>
+
+                            <button onclick="studioBranchCurrentProject()" title="Create an isolated admin branch of this project so your edits do NOT affect the student's project"
+                                class="px-3.5 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 text-xs font-bold rounded-lg border border-purple-500/40 transition flex items-center space-x-1.5 shadow">
+                                <span>🌿</span><span>Create Branch (Isolated Copy)</span>
+                            </button>
+
+                            <button onclick="openSaveAsExampleModal()" title="Save current code or branch as a shared example for students"
+                                class="px-3.5 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold rounded-lg border border-amber-500/30 transition flex items-center space-x-1.5 shadow">
+                                <span>⭐</span><span>Save as Example</span>
+                            </button>
+
+                            <!-- Unified Examples & Templates Upward Dropdown -->
+                            <div class="relative inline-block text-left">
+                                <button id="btnCreatorTemplates" onclick="toggleCreatorTemplatesMenu(event)"
+                                    class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1.5 shadow">
+                                    <span>📚 Examples &amp; Templates ▾</span>
+                                </button>
+                                <div id="creatorTemplatesDropdown"
+                                    class="hidden absolute left-0 bottom-full mb-2 w-80 max-w-[calc(100vw-2rem)] bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-96 divide-y divide-slate-800">
+                                    <div class="px-3 py-2 bg-slate-850 text-[10px] font-bold text-amber-400 uppercase flex items-center justify-between">
+                                        <span>⭐ Shared Lab Examples</span>
+                                        <button onclick="event.stopPropagation(); openExampleModal()" class="text-sky-400 hover:underline text-[10px] font-normal">Manage All</button>
+                                    </div>
+                                    <div id="studioSharedExamplesMenuList" class="overflow-y-auto max-h-40 divide-y divide-slate-800/60 p-1">
+                                        <div class="p-2 text-xs text-slate-500 text-center">Loading examples...</div>
+                                    </div>
+                                    <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-indigo-400 uppercase">🦾 UR3 Starter Templates (RTDE)</div>
+                                    <div class="py-1 text-xs">
+                                        <button onclick="loadCreatorTemplate('default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">📄 Default UR3 RTDE Script</button>
+                                        <button onclick="loadCreatorTemplate('cartesian')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">1. Cartesian Probe (moveJ + moveL)</button>
+                                        <button onclick="loadCreatorTemplate('square')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">2. Square Contour Path</button>
+                                        <button onclick="loadCreatorTemplate('joint')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">3. Joint Articulation (moveJ)</button>
+                                        <button onclick="loadCreatorTemplate('gripper')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-indigo-600 hover:text-white transition">4. Gripper / Digital Output</button>
+                                    </div>
+                                    <div class="px-3 py-1.5 bg-slate-850 text-[10px] font-bold text-cyan-400 uppercase">🤖 Niryo Ned Starter Templates (pyniryo)</div>
+                                    <div class="py-1 text-xs">
+                                        <button onclick="loadCreatorTemplate('niryo_default')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">🤖 Default Niryo Routine</button>
+                                        <button onclick="loadCreatorTemplate('niryo_pick')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">1. Niryo Pick &amp; Place</button>
+                                        <button onclick="loadCreatorTemplate('niryo_joint')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">2. Niryo Joint Articulation</button>
+                                        <button onclick="loadCreatorTemplate('niryo_gripper')" class="w-full text-left px-3 py-1.5 text-slate-200 hover:bg-cyan-700 hover:text-white transition">3. Niryo Gripper Tool Test</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button onclick="exportAdminProjectZip()" title="Download current project as .zip"
+                                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
+                                <span>📦</span><span>Download .zip</span>
+                            </button>
+                        </div>
+
+                        <div class="flex items-center space-x-3 text-slate-500 text-xs font-mono">
+                            <span id="studioBottomStatus">📁 Workspace Ready</span>
+                            <span>•</span>
+                            <span class="text-slate-400">Ctrl+S to save</span>
+                        </div>
+                    </div>
+
                 </div>
             </section>
 
@@ -435,8 +477,7 @@
                             <button data-speed="1.0" onclick="setSimSpeed(1.0)" class="sim-speed-btn px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-600 text-white shadow-sm transition">1.0x</button>
                             <button data-speed="2.0" onclick="setSimSpeed(2.0)" class="sim-speed-btn px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition">2.0x</button>
                         </div>
-                        <button onclick="simulateStudioProject()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition">▶ Simulate Studio Code</button>
-                        <button onclick="clearSimTerminal()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition">Clear Output</button>
+                        <button onclick="simulateStudioProject()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition">▶ Re-Simulate Studio Code</button>
                     </div>
                 </div>
 
@@ -498,25 +539,30 @@
                         </div>
                     </div>
 
-                    <!-- Safety & Execution Actions -->
+                    <!-- Telemetry Controls (Emergency Abort & Reset E-Stop are in the sticky top header) -->
                     <div class="flex items-center flex-wrap gap-2.5">
-                        <button id="btnRunResetEStop" onclick="resetEmergencyStop()" class="hidden px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-amber-600/30 flex items-center space-x-1 transition">
-                            <span>🔄 Reset E-Stop</span>
-                        </button>
-                        <button onclick="abortRobot('Run Page ABORT Button')" class="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-extrabold tracking-wider uppercase rounded-lg shadow-lg shadow-red-600/30 flex items-center space-x-1.5 transition animate-pulse">
-                            <span>🛑 EMERGENCY ABORT</span>
-                            <span class="px-1 py-0.2 rounded bg-black/40 text-[9px] font-mono border border-white/20 font-bold">SPACE</span>
+                        <button onclick=" switchAdminTab('code') " class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg border border-slate-700 transition">
+                            💻 Open Code Studio
                         </button>
                         <button onclick="resetTelemetryAnalytics()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 transition" title="Reset distance and speed counters">
                             📊 Reset Stats
-                        </button>
-                        <button onclick="clearAdminTerminal()" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs rounded-lg transition">
-                            Clear Logs
                         </button>
                     </div>
                 </div>
 
                 <!-- 4 Real-Time Analytics & Telemetry Cards Grid -->
+                <!-- Hardware Disconnected Banner (Shown when no physical robot is connected) -->
+                <div id="adminTelDisconnectedBanner" class="p-3 bg-slate-900 border border-amber-500/40 rounded-xl flex items-center justify-between text-xs text-amber-300 shadow-lg">
+                    <div class="flex items-center space-x-2.5">
+                        <span class="text-lg">🔌</span>
+                        <div>
+                            <strong class="font-bold text-amber-200">No Physical Robot Connected:</strong>
+                            <span class="text-amber-300/80"> Hardware telemetry stream and live robot mirror are offline. Connect the physical arm to view live kinematics and sensor telemetry.</span>
+                        </div>
+                    </div>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800 uppercase">HARDWARE OFFLINE</span>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-shrink-0">
                     <!-- Card 1: Speed & Dynamics Analytics -->
                     <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col justify-between">
@@ -526,9 +572,9 @@
                         </div>
                         <div class="space-y-2">
                             <div class="flex items-baseline space-x-2">
-                                <span id="telSpeedNum" class="text-3xl font-black font-mono text-emerald-400">0.000</span>
+                                <span id="telSpeedNum" class="text-3xl font-black font-mono text-emerald-400">—</span>
                                 <span class="text-xs text-slate-400 font-bold">m/s</span>
-                                <span class="text-xs text-slate-500 font-mono">(<span id="telSpeedMm">0</span> mm/s)</span>
+                                <span class="text-xs text-slate-500 font-mono">(<span id="telSpeedMm">—</span> mm/s)</span>
                             </div>
                             <!-- Dynamic Speed Bar -->
                             <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
@@ -537,19 +583,19 @@
                             <div class="grid grid-cols-2 gap-2 text-xs pt-1">
                                 <div>
                                     <span class="text-slate-500 text-[10px] uppercase block">Peak Speed:</span>
-                                    <span id="telMaxSpeed" class="font-mono text-slate-200 font-semibold">0.000 m/s</span>
+                                    <span id="telMaxSpeed" class="font-mono text-slate-200 font-semibold">—</span>
                                 </div>
                                 <div>
                                     <span class="text-slate-500 text-[10px] uppercase block">Average Speed:</span>
-                                    <span id="telAvgSpeed" class="font-mono text-slate-200 font-semibold">0.000 m/s</span>
+                                    <span id="telAvgSpeed" class="font-mono text-slate-200 font-semibold">—</span>
                                 </div>
                                 <div>
                                     <span class="text-slate-500 text-[10px] uppercase block">Path Traveled:</span>
-                                    <span id="telPathLen" class="font-mono text-indigo-300 font-semibold">0.00 m</span>
+                                    <span id="telPathLen" class="font-mono text-indigo-300 font-semibold">—</span>
                                 </div>
                                 <div>
                                     <span class="text-slate-500 text-[10px] uppercase block">Motion Time:</span>
-                                    <span id="telMovingTime" class="font-mono text-slate-200 font-semibold">0.0 s</span>
+                                    <span id="telMovingTime" class="font-mono text-slate-200 font-semibold">—</span>
                                 </div>
                             </div>
                         </div>
@@ -565,25 +611,25 @@
                             <div class="grid grid-cols-3 gap-2">
                                 <div class="bg-slate-950 p-2 rounded-lg border border-slate-800/80 text-center">
                                     <span class="text-rose-400 font-bold block text-[10px]">X (mm)</span>
-                                    <span id="telPosX" class="text-sm font-bold text-white">0.0</span>
+                                    <span id="telPosX" class="text-sm font-bold text-white">—</span>
                                 </div>
                                 <div class="bg-slate-950 p-2 rounded-lg border border-slate-800/80 text-center">
                                     <span class="text-emerald-400 font-bold block text-[10px]">Y (mm)</span>
-                                    <span id="telPosY" class="text-sm font-bold text-white">0.0</span>
+                                    <span id="telPosY" class="text-sm font-bold text-white">—</span>
                                 </div>
                                 <div class="bg-slate-950 p-2 rounded-lg border border-slate-800/80 text-center">
                                     <span class="text-sky-400 font-bold block text-[10px]">Z (mm)</span>
-                                    <span id="telPosZ" class="text-sm font-bold text-white">0.0</span>
+                                    <span id="telPosZ" class="text-sm font-bold text-white">—</span>
                                 </div>
                             </div>
                             <div class="grid grid-cols-3 gap-2 text-[11px] pt-1 text-slate-400">
-                                <div>Rx: <span id="telRotRx" class="text-slate-200 font-semibold">0.00°</span></div>
-                                <div>Ry: <span id="telRotRy" class="text-slate-200 font-semibold">0.00°</span></div>
-                                <div>Rz: <span id="telRotRz" class="text-slate-200 font-semibold">0.00°</span></div>
+                                <div>Rx: <span id="telRotRx" class="text-slate-200 font-semibold">—</span></div>
+                                <div>Ry: <span id="telRotRy" class="text-slate-200 font-semibold">—</span></div>
+                                <div>Rz: <span id="telRotRz" class="text-slate-200 font-semibold">—</span></div>
                             </div>
                             <div class="text-[10px] text-slate-500 pt-1 flex items-center justify-between">
-                                <span>Speed Scaling: <strong id="telSpeedScale" class="text-slate-300">100%</strong></span>
-                                <span>Force: <strong id="telTcpForce" class="text-slate-300">0.0 N</strong></span>
+                                <span>Speed Scaling: <strong id="telSpeedScale" class="text-slate-300">—</strong></span>
+                                <span>Force: <strong id="telTcpForce" class="text-slate-300">—</strong></span>
                             </div>
                         </div>
                     </div>
@@ -597,33 +643,33 @@
                         <div class="space-y-1.5 text-[11px] font-mono">
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-400 font-semibold">J1 Base:</span>
-                                <span id="telQ0" class="text-sky-300 font-bold">0.0°</span>
-                                <span id="telQd0" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                                <span id="telQ0" class="text-sky-300 font-bold">—</span>
+                                <span id="telQd0" class="text-slate-500 text-[10px]">—</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-400 font-semibold">J2 Shoulder:</span>
-                                <span id="telQ1" class="text-sky-300 font-bold">-90.0°</span>
-                                <span id="telQd1" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                                <span id="telQ1" class="text-sky-300 font-bold">—</span>
+                                <span id="telQd1" class="text-slate-500 text-[10px]">—</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-400 font-semibold">J3 Elbow:</span>
-                                <span id="telQ2" class="text-sky-300 font-bold">90.0°</span>
-                                <span id="telQd2" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                                <span id="telQ2" class="text-sky-300 font-bold">—</span>
+                                <span id="telQd2" class="text-slate-500 text-[10px]">—</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-400 font-semibold">J4 Wrist 1:</span>
-                                <span id="telQ3" class="text-sky-300 font-bold">-90.0°</span>
-                                <span id="telQd3" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                                <span id="telQ3" class="text-sky-300 font-bold">—</span>
+                                <span id="telQd3" class="text-slate-500 text-[10px]">—</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-400 font-semibold">J5 Wrist 2:</span>
-                                <span id="telQ4" class="text-sky-300 font-bold">-90.0°</span>
-                                <span id="telQd4" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                                <span id="telQ4" class="text-sky-300 font-bold">—</span>
+                                <span id="telQd4" class="text-slate-500 text-[10px]">—</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-400 font-semibold">J6 Wrist 3:</span>
-                                <span id="telQ5" class="text-sky-300 font-bold">0.0°</span>
-                                <span id="telQd5" class="text-slate-500 text-[10px]">0.0 rad/s</span>
+                                <span id="telQ5" class="text-sky-300 font-bold">—</span>
+                                <span id="telQd5" class="text-slate-500 text-[10px]">—</span>
                             </div>
                         </div>
                     </div>
@@ -632,28 +678,28 @@
                     <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg flex flex-col justify-between">
                         <div class="flex items-center justify-between border-b border-slate-800/80 pb-2 mb-2">
                             <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Diagnostics &amp; Health</span>
-                            <span id="telConnectedPill" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">CONNECTED</span>
+                            <span id="telConnectedPill" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">OFFLINE</span>
                         </div>
                         <div class="space-y-1.5 text-xs">
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-400 text-[11px]">Robot Mode:</span>
-                                <span id="telRobotMode" class="font-bold font-mono text-emerald-400 uppercase text-[11px]">RUNNING</span>
+                                <span id="telRobotMode" class="font-bold font-mono text-slate-500 uppercase text-[11px]">DISCONNECTED</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-400 text-[11px]">Safety State:</span>
-                                <span id="telSafetyMode" class="font-bold font-mono text-sky-300 uppercase text-[11px]">NORMAL</span>
+                                <span id="telSafetyMode" class="font-bold font-mono text-slate-500 uppercase text-[11px]">OFFLINE</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-400 text-[11px]">Joint Temps:</span>
-                                <span id="telJointTemp" class="font-mono text-slate-300 text-[11px]">31° | 32° | 30°</span>
+                                <span id="telJointTemp" class="font-mono text-slate-400 text-[11px]">—</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-slate-400 text-[11px]">Voltage / Current:</span>
-                                <span id="telPower" class="font-mono text-slate-300 text-[11px]">48.1V • 1.2A</span>
+                                <span id="telPower" class="font-mono text-slate-400 text-[11px]">—</span>
                             </div>
                             <div class="pt-1 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
                                 <span class="text-slate-400">Protective Stop:</span>
-                                <span id="telProtectiveStop" class="font-bold text-slate-500">NO</span>
+                                <span id="telProtectiveStop" class="font-bold text-slate-600">—</span>
                             </div>
                         </div>
                     </div>
@@ -1096,11 +1142,16 @@
 
         let adminProjectState = {
             current_project: "admin_default",
+            owner: null,
+            is_student_project: false,
+            submission_id: null,
+            robot_model: "ur",
             entry_point: "main.py",
             active_file: "main.py",
             files: {}
         };
         let isStudioExplorerOpen = true;
+        let allWorkspaceProjectsCache = [];
 
         // Run Page Execution & Telemetry State
         let runExecutionTimer = null;
@@ -1121,24 +1172,24 @@ rtde_r = RTDEReceive(ROBOT_IP)
 
 # Move to safe home configuration (joint space)
 home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
-printf("Moving to home joint configuration...")
+print("Moving to home joint configuration...")
 rtde_c.moveJ(home_q, 0.5, 0.5)
 
 # Read current TCP Cartesian pose
 tcp_pose = rtde_r.getActualTCPPose()
-printf("Current TCP Pose: %s", [round(x, 3) for x in tcp_pose[:3]])
+print("Current TCP Pose:", [round(x, 3) for x in tcp_pose[:3]])
 
 # Descend 10 cm in Z
 target_pose = tcp_pose[:]
 target_pose[2] -= 0.10
-printf("Descending 10cm in Z...")
+print("Descending 10cm in Z...")
 rtde_c.moveL(target_pose, 0.25, 0.5)
 
 # Return home
 rtde_c.moveL(tcp_pose, 0.25, 0.5)
 rtde_c.moveJ(home_q, 0.5, 0.5)
 rtde_c.stopScript()
-printf("Routine completed successfully!")
+print("Routine completed successfully!")
 `,
             cartesian: (ip) => `import numpy as np
 from rtde_control import RTDEControlInterface as RTDEControl
@@ -1149,11 +1200,11 @@ rtde_c = RTDEControl(ROBOT_IP)
 rtde_r = RTDEReceive(ROBOT_IP)
 
 home_q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
-printf("Moving to home configuration...")
+print("Moving to home configuration...")
 rtde_c.moveJ(home_q, 0.5, 0.5)
 
 tcp_pose = rtde_r.getActualTCPPose()
-printf("TCP pose at home: %s", [round(x, 3) for x in tcp_pose[:3]])
+print("TCP pose at home:", [round(x, 3) for x in tcp_pose[:3]])
 
 pose_down = tcp_pose[:]
 pose_down[2] -= 0.15
@@ -1166,7 +1217,7 @@ rtde_c.moveL(pose_side, 0.25, 0.5)
 rtde_c.moveL(tcp_pose, 0.25, 0.5)
 rtde_c.moveJ(home_q, 0.5, 0.5)
 rtde_c.stopScript()
-printf("Cartesian probe routine completed!")
+print("Cartesian probe routine completed!")
 `,
             square: (ip) => `import numpy as np
 from rtde_control import RTDEControlInterface as RTDEControl
@@ -1193,7 +1244,7 @@ rtde_c.moveL(p3, 0.20, 0.4)
 rtde_c.moveL(start_pose, 0.20, 0.4)
 rtde_c.moveJ(home_q, 0.5, 0.5)
 rtde_c.stopScript()
-printf("Square contour path completed!")
+print("Square contour path completed!")
 `,
             joint: (ip) => `import numpy as np, time
 from rtde_control import RTDEControlInterface as RTDEControl
@@ -1211,7 +1262,7 @@ time.sleep(0.5)
 
 rtde_c.moveJ(q_home, 0.5, 0.5)
 rtde_c.stopScript()
-printf("Joint sweep finished.")
+print("Joint sweep finished.")
 `,
             gripper: (ip) => `from rtde_io import RTDEIOInterface as RTDEIO
 from rtde_control import RTDEControlInterface as RTDEControl
@@ -1221,31 +1272,31 @@ ROBOT_IP = "${ip}"
 rtde_io = RTDEIO(ROBOT_IP)
 rtde_c = RTDEControl(ROBOT_IP)
 
-printf("Opening tool gripper...")
+print("Opening tool gripper...")
 rtde_io.setToolDigitalOut(0, True)
 time.sleep(1.0)
 
-printf("Closing tool gripper...")
+print("Closing tool gripper...")
 rtde_io.setToolDigitalOut(0, False)
 time.sleep(1.0)
 rtde_c.stopScript()
-printf("Gripper test completed.")
+print("Gripper test completed.")
 `,
             niryo_default: (ip) => `from pyniryo import NiryoRobot
 import time
 
 ROBOT_IP = "${ip}"
-printf("Connecting to Niryo robot at %s...", ROBOT_IP)
+print("Connecting to Niryo robot at", ROBOT_IP)
 robot = NiryoRobot(ROBOT_IP)
 
 robot.calibrate_auto()
-printf("Calibrated. Moving to home joints...")
+print("Calibrated. Moving to home joints...")
 robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
 pose = robot.get_pose()
-printf("Current Pose: %s", pose)
+print("Current Pose:", pose)
 robot.close_connection()
-printf("Niryo routine completed.")
+print("Niryo routine completed.")
 `,
             niryo_pick: (ip) => `from pyniryo import NiryoRobot, PoseObject
 import time
@@ -1254,7 +1305,7 @@ ROBOT_IP = "${ip}"
 robot = NiryoRobot(ROBOT_IP)
 robot.calibrate_auto()
 
-printf("Moving to observation pose...")
+print("Moving to observation pose...")
 robot.move_joints([0.0, 0.2, -0.4, 0.0, 0.0, 0.0])
 robot.release_with_tool()
 time.sleep(1.0)
@@ -1262,7 +1313,7 @@ robot.grasp_with_tool()
 time.sleep(1.0)
 robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 robot.close_connection()
-printf("Niryo pick and place test done.")
+print("Niryo pick and place test done.")
 `,
             niryo_joint: (ip) => `from pyniryo import NiryoRobot
 
@@ -1272,7 +1323,7 @@ robot.calibrate_auto()
 robot.move_joints([0.3, -0.2, 0.2, 0.1, -0.2, 0.0])
 robot.move_joints([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 robot.close_connection()
-printf("Niryo articulation done.")
+print("Niryo articulation done.")
 `,
             niryo_gripper: (ip) => `from pyniryo import NiryoRobot
 import time
@@ -1284,13 +1335,19 @@ time.sleep(1.0)
 robot.close_gripper(500)
 time.sleep(1.0)
 robot.close_connection()
-printf("Gripper test finished.")
+print("Gripper test finished.")
 `
         };
 
         // --- DOM Initialization ---
         window.addEventListener("DOMContentLoaded", () => {
-            adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
+            try {
+                if (typeof UR3Visualizer !== 'undefined') {
+                    adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
+                }
+            } catch (visErr) {
+                console.warn("Admin 3D visualizer init warning:", visErr);
+            }
             // Check auth immediately on DOM load
             checkAdminAuth();
             initMonacoEditor();
@@ -1305,9 +1362,15 @@ printf("Gripper test finished.")
                 require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
                 require(['vs/editor/editor.main'], function () {
                     const studioCont = document.getElementById('studioEditorContainer');
-                    if (studioCont) {
+                    if (studioCont && !studioEditor) {
+                        const existingCode = (adminProjectState.files && adminProjectState.files[adminProjectState.active_file])
+                            ? adminProjectState.files[adminProjectState.active_file]
+                            : CREATOR_TEMPLATES.default(urIp);
+                        if (!adminProjectState.files || Object.keys(adminProjectState.files).length === 0) {
+                            adminProjectState.files = { "main.py": existingCode };
+                        }
                         studioEditor = monaco.editor.create(studioCont, {
-                            value: CREATOR_TEMPLATES.default(urIp),
+                            value: existingCode,
                             language: 'python',
                             theme: 'vs-dark',
                             readOnly: false,
@@ -1322,7 +1385,8 @@ printf("Gripper test finished.")
                                 vertical: 'visible',
                                 horizontal: 'auto',
                                 verticalScrollbarSize: 10,
-                                horizontalScrollbarSize: 10
+                                horizontalScrollbarSize: 10,
+                                alwaysConsumeMouseWheel: false
                             }
                         });
                         viewer = studioEditor;
@@ -1334,7 +1398,7 @@ printf("Gripper test finished.")
                         });
 
                         studioEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () {
-                            studioSaveNow();
+                            studioSaveNow(true);
                         });
 
                         // Spacebar emergency stop guard inside editor when robot is running
@@ -1346,6 +1410,16 @@ printf("Gripper test finished.")
                                 studioEditor.trigger('keyboard', 'type', { text: ' ' });
                             }
                         });
+                        if (window.ResizeObserver) {
+                            const ro = new ResizeObserver(() => {
+                                if (studioEditor) studioEditor.layout();
+                            });
+                            ro.observe(studioCont);
+                        }
+
+                        studioRenderFileTabs();
+                        studioRenderExplorer();
+                        updateStudioContextUI();
                     }
 
                     window.addEventListener('resize', () => {
@@ -1354,6 +1428,7 @@ printf("Gripper test finished.")
                 });
             } catch (err) {
                 console.error("Monaco initialization error:", err);
+                setTimeout(initMonacoEditor, 200);
             }
         }
 
@@ -1387,13 +1462,17 @@ printf("Gripper test finished.")
             if (tabRun) tabRun.className = tab === 'run' ? activeClass : inactiveClass;
 
             if (tab === 'code') {
+                if (!studioEditor) initMonacoEditor();
+                fetchAdminExamplesForStudioMenu();
                 setTimeout(() => { if (studioEditor) studioEditor.layout(); }, 60);
             } else if (tab === 'sim') {
-                if (!adminUr3Vis && typeof UR3Visualizer !== 'undefined') {
-                    adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
-                    const targetModel = document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : (activeRobotModel || 'ur');
-                    adminUr3Vis.setRobotModel(targetModel);
-                }
+                try {
+                    if (!adminUr3Vis && typeof UR3Visualizer !== 'undefined') {
+                        adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
+                        const targetModel = document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : (activeRobotModel || 'ur');
+                        adminUr3Vis.setRobotModel(targetModel);
+                    }
+                } catch (e) {}
                 setTimeout(() => {
                     if (adminUr3Vis && typeof adminUr3Vis.onWindowResize === 'function') {
                         adminUr3Vis.onWindowResize();
@@ -1404,10 +1483,12 @@ printf("Gripper test finished.")
                 }, 60);
             } else if (tab === 'run') {
                 const targetModel = activeRunModel || activeRobotModel || 'ur';
-                if (!adminRunVis) {
-                    adminRunVis = new UR3Visualizer("adminRunCanvasContainer");
-                    adminRunVis.setRobotModel(targetModel);
-                }
+                try {
+                    if (!adminRunVis && typeof UR3Visualizer !== 'undefined') {
+                        adminRunVis = new UR3Visualizer("adminRunCanvasContainer");
+                        adminRunVis.setRobotModel(targetModel);
+                    }
+                } catch (e) {}
                 setTimeout(() => {
                     if (adminRunVis && typeof adminRunVis.onWindowResize === 'function') {
                         adminRunVis.onWindowResize();
@@ -1431,68 +1512,255 @@ printf("Gripper test finished.")
         }
 
         // ==========================================
-        // --- Admin Code Studio (Multi-File Workspace) ---
+        // --- Admin Code Studio (Multi-File Workspace, Student Sync & Branching) ---
         // ==========================================
 
-        async function studioLoadProjects() {
+        function updateStudioContextUI() {
+            const isStudent = !!adminProjectState.is_student_project;
+            const owner = adminProjectState.owner || currentAdminUser || "admin";
+            const projName = adminProjectState.current_project || "admin_default";
+            const model = adminProjectState.robot_model || "ur";
+
+            const syncBadge = document.getElementById("studioSyncModeBadge");
+            const syncDot = document.getElementById("studioSyncModeDot");
+            const subBadge = document.getElementById("studioLoadedSubBadge");
+            const authorBadge = document.getElementById("studioLoadedAuthorBadge");
+            const saveLabel = document.getElementById("btnStudioSaveLabel");
+            const bottomStatus = document.getElementById("studioBottomStatus");
+            const fName = document.getElementById("studioFolderName");
+            const modelSel = document.getElementById("creatorModelSelect");
+            const nameInput = document.getElementById("creatorProgName");
+
+            if (nameInput) nameInput.value = projName;
+            if (fName) fName.innerText = isStudent ? `${owner}/${projName}/` : `${projName}/`;
+
+            if (modelSel) {
+                modelSel.disabled = false; // Admin can ALWAYS change platform!
+                modelSel.value = (model === 'niryo') ? 'niryo' : 'ur';
+                modelSel.title = `Default platform for "${projName}" is ${model === 'niryo' ? 'Niryo Ned' : 'UR3 Arm'}. As admin, you can switch platforms anytime.`;
+            }
+
+            if (isStudent) {
+                if (syncBadge) {
+                    syncBadge.className = "px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center space-x-1.5 bg-sky-950/80 text-sky-300 border border-sky-500/40 shadow-sm";
+                }
+                if (syncDot) syncDot.className = "w-2 h-2 rounded-full bg-sky-400 animate-pulse";
+                if (subBadge) subBadge.innerText = selectedSubId ? `Student #${selectedSubId}: ${projName}` : `Student Project: ${projName}`;
+                if (authorBadge) {
+                    authorBadge.innerText = `👤 ${owner} (Edits Sync to Student)`;
+                    authorBadge.className = "font-mono text-[10px] text-sky-200";
+                }
+                if (saveLabel) saveLabel.innerText = "Save & Sync to Student";
+                if (bottomStatus) bottomStatus.innerText = `🟢 Live Student Sync (${owner}/${projName}) — Create a Branch to edit without affecting student`;
+            } else {
+                if (syncBadge) {
+                    syncBadge.className = "px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center space-x-1.5 bg-purple-950/70 text-purple-300 border border-purple-500/40 shadow-sm";
+                }
+                if (syncDot) syncDot.className = "w-2 h-2 rounded-full bg-purple-400";
+                if (subBadge) subBadge.innerText = `🌿 Branch: ${projName}`;
+                if (authorBadge) {
+                    authorBadge.innerText = `Admin (${owner}) • Isolated Copy`;
+                    authorBadge.className = "font-mono text-[10px] text-purple-200";
+                }
+                if (saveLabel) saveLabel.innerText = "Save Branch";
+                if (bottomStatus) bottomStatus.innerText = `🌿 Isolated Admin Branch (${projName}) — Student projects unaffected`;
+            }
+
+            // Highlight matching option in #studioProjectSelect if present
+            const sel = document.getElementById("studioProjectSelect");
+            if (sel) {
+                const expectedVal = `${isStudent ? 'student' : 'admin'}:${owner}:${projName}`;
+                const hasOpt = Array.from(sel.options).some(o => o.value === expectedVal);
+                if (hasOpt) sel.value = expectedVal;
+            }
+        }
+
+        async function studioLoadProjects(skipAutoSwitch = false) {
+            if (!currentAdminToken) return;
             try {
-                const res = await fetch('/api/workspace/projects', {
+                const res = await fetch('/api/workspace/projects?all_users=true', {
                     headers: { 'Authorization': `Bearer ${currentAdminToken}` }
                 });
                 if (!res.ok) return;
                 const data = await res.json();
                 const projects = data.projects || [];
+                allWorkspaceProjectsCache = projects;
+
+                const adminUserLower = (currentAdminUser || "admin").toLowerCase();
+                const adminProjects = projects.filter(p => (p.owner || '').toLowerCase() === adminUserLower || (p.owner || '').toLowerCase() === 'admin' || (p.owner || '').toLowerCase() === 'mike');
+                const studentProjects = projects.filter(p => !adminProjects.includes(p));
+
                 const sel = document.getElementById("studioProjectSelect");
                 if (sel) {
-                    sel.innerHTML = projects.map(p => 
-                        `<option value="${escapeHtml(p.name)}" ${p.name === adminProjectState.current_project ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
-                    ).join("");
+                    let html = '';
+                    if (studentProjects.length > 0) {
+                        html += `<optgroup label="🎓 Student Projects (Edits Sync to Student)">` +
+                            studentProjects.map(p => {
+                                const val = `student:${p.owner}:${p.name}`;
+                                const mTag = (p.robot_model || 'ur').toUpperCase();
+                                return `<option value="${escapeHtml(val)}">👤 ${escapeHtml(p.owner)} / ${escapeHtml(p.name)} [${mTag}]</option>`;
+                            }).join("") +
+                            `</optgroup>`;
+                    }
+                    if (adminProjects.length > 0) {
+                        html += `<optgroup label="🌿 Admin Branches &amp; Projects (Isolated)">` +
+                            adminProjects.map(p => {
+                                const val = `admin:${p.owner || currentAdminUser}:${p.name}`;
+                                const mTag = (p.robot_model || 'ur').toUpperCase();
+                                return `<option value="${escapeHtml(val)}">🌿 ${escapeHtml(p.name)} [${mTag}]</option>`;
+                            }).join("") +
+                            `</optgroup>`;
+                    }
+                    if (!html) {
+                        html = `<option value="admin:${escapeHtml(currentAdminUser || 'admin')}:admin_default">🌿 admin_default [UR]</option>`;
+                    }
+                    sel.innerHTML = html;
                 }
-                const currentName = sel && sel.value ? sel.value : (projects[0] ? projects[0].name : "admin_default");
-                await studioSwitchProject(currentName, false);
+
+                if (!skipAutoSwitch) {
+                    const hasFilesLoaded = adminProjectState.files && Object.keys(adminProjectState.files).length > 0 && selectedSubId;
+                    if (!hasFilesLoaded && sel && sel.options.length > 0) {
+                        const targetVal = sel.value || sel.options[0].value;
+                        await studioSwitchProject(targetVal, false);
+                    } else {
+                        updateStudioContextUI();
+                    }
+                } else {
+                    updateStudioContextUI();
+                }
             } catch (e) {
                 console.error("studioLoadProjects error:", e);
             }
         }
 
-        async function studioSwitchProject(name, saveCurrent = true) {
-            if (!name) return;
-            if (saveCurrent && studioEditor && adminProjectState.active_file) {
+        async function studioSwitchProject(encodedVal, saveCurrent = true) {
+            if (!encodedVal) return;
+            if (saveCurrent && studioEditor && adminProjectState.active_file && Object.keys(adminProjectState.files || {}).length > 0) {
                 adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
                 await studioSaveNow(false);
             }
 
+            let mode = "admin";
+            let owner = currentAdminUser || "admin";
+            let name = encodedVal;
+
+            if (encodedVal.includes(":")) {
+                const parts = encodedVal.split(":");
+                mode = parts[0];
+                owner = parts[1] || owner;
+                name = parts.slice(2).join(":");
+            }
+
             try {
-                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(name)}`, {
+                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(name)}?owner=${encodeURIComponent(owner)}`, {
                     headers: { 'Authorization': `Bearer ${currentAdminToken}` }
                 });
                 if (!res.ok) return;
                 const data = await res.json();
+
+                const isStudent = (mode === "student") || (owner.toLowerCase() !== (currentAdminUser || "admin").toLowerCase() && owner.toLowerCase() !== "mike" && owner.toLowerCase() !== "admin");
                 adminProjectState.current_project = name;
-                adminProjectState.files = data.files || { "main.py": CREATOR_TEMPLATES.default(urIp) };
-                adminProjectState.entry_point = ("main.py" in adminProjectState.files) ? "main.py" : Object.keys(adminProjectState.files)[0];
+                adminProjectState.owner = owner;
+                adminProjectState.is_student_project = isStudent;
+
+                // Link to latest submission for this student project if available
+                if (isStudent) {
+                    const matchSub = submissionsList.find(s =>
+                        (s.student_name || '').toLowerCase() === owner.toLowerCase() &&
+                        ((s.project_name || '') === name || (s.task_id || '') === name)
+                    );
+                    selectedSubId = matchSub ? matchSub.id : null;
+                    adminProjectState.submission_id = selectedSubId;
+                } else {
+                    selectedSubId = null;
+                    adminProjectState.submission_id = null;
+                }
+
+                const loadedFiles = (data.files && Object.keys(data.files).length > 0)
+                    ? data.files
+                    : { "main.py": CREATOR_TEMPLATES.default(urIp) };
+                adminProjectState.files = loadedFiles;
+                adminProjectState.entry_point = (data.entry_point && data.entry_point in loadedFiles)
+                    ? data.entry_point
+                    : (("main.py" in loadedFiles) ? "main.py" : Object.keys(loadedFiles)[0]);
                 adminProjectState.active_file = adminProjectState.entry_point;
 
-                const sel = document.getElementById("studioProjectSelect");
-                if (sel) sel.value = name;
-                const fName = document.getElementById("studioFolderName");
-                if (fName) fName.innerText = `${name}/`;
+                const allCode = Object.values(adminProjectState.files).join(" ");
+                const projModel = data.robot_model || ((allCode.includes('pyniryo') || allCode.includes('NiryoRobot')) ? 'niryo' : 'ur');
+                adminProjectState.robot_model = projModel;
 
                 if (studioEditor) {
+                    studioEditor.updateOptions({ readOnly: false });
                     studioEditor.setValue(adminProjectState.files[adminProjectState.active_file] || "");
+                    setTimeout(() => { if (studioEditor) studioEditor.layout(); }, 50);
                 }
                 studioRenderFileTabs();
                 studioRenderExplorer();
+                updateStudioContextUI();
             } catch (e) {
                 console.error("studioSwitchProject error:", e);
             }
         }
 
+        async function studioBranchCurrentProject() {
+            if (studioEditor && adminProjectState.active_file) {
+                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
+            }
+            const baseName = (adminProjectState.current_project || "project").replace(/_branch$/i, "");
+            const suggested = `${baseName}_branch`;
+            const branchNameInput = prompt(
+                "Create an isolated Admin Branch:\nEdits to this branch will NOT affect the student's project, and you can save it as a shared Example.",
+                suggested
+            );
+            if (!branchNameInput || !branchNameInput.trim()) return;
+            const cleanBranch = branchNameInput.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+            const targetModel = document.getElementById("creatorModelSelect")?.value || adminProjectState.robot_model || "ur";
+            const adminOwner = currentAdminUser || "admin";
+
+            try {
+                // Save directly into the admin's own workspace
+                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(cleanBranch)}?owner=${encodeURIComponent(adminOwner)}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAdminToken}`
+                    },
+                    body: JSON.stringify({
+                        files: { ...adminProjectState.files },
+                        entry_point: adminProjectState.entry_point || "main.py",
+                        robot_model: targetModel
+                    })
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert("Could not create branch: " + (err.detail || "Error"));
+                    return;
+                }
+
+                // Switch active context to the new isolated admin branch
+                selectedSubId = null;
+                adminProjectState.submission_id = null;
+                adminProjectState.current_project = cleanBranch;
+                adminProjectState.owner = adminOwner;
+                adminProjectState.is_student_project = false;
+                adminProjectState.robot_model = targetModel;
+
+                await studioLoadProjects(true);
+                updateStudioContextUI();
+                studioRenderFileTabs();
+                studioRenderExplorer();
+                showActionToast(`🌿 Created isolated branch "${cleanBranch}". Edits will not affect the student.`);
+            } catch (e) {
+                alert("Error creating branch: " + e.message);
+            }
+        }
+
         async function studioNewProject() {
-            const name = prompt("Enter a folder name for the new admin project:");
+            const name = prompt("Enter a folder name for the new admin project/branch:");
             if (!name || !name.trim()) return;
             const clean = name.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
             const targetModel = document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : "ur";
+            const adminOwner = currentAdminUser || "admin";
             try {
                 const res = await fetch('/api/workspace/projects', {
                     method: 'POST',
@@ -1500,18 +1768,54 @@ printf("Gripper test finished.")
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${currentAdminToken}`
                     },
-                    body: JSON.stringify({ name: clean, template: targetModel })
+                    body: JSON.stringify({ name: clean, template: targetModel, robot_model: targetModel })
                 });
                 if (!res.ok) {
                     const err = await res.json();
                     alert("Could not create project folder: " + (err.detail || "Error"));
                     return;
                 }
-                await studioLoadProjects();
-                await studioSwitchProject(clean);
-                showActionToast(`Created project folder "${clean}".`);
+                await studioLoadProjects(true);
+                await studioSwitchProject(`admin:${adminOwner}:${clean}`, false);
+                showActionToast(`Created admin project "${clean}".`);
             } catch (e) {
                 alert("Error creating project: " + e.message);
+            }
+        }
+
+        async function studioRenameProject() {
+            const current = adminProjectState.current_project;
+            if (!current || current === 'default' || current === 'admin_default') {
+                alert("Cannot rename the default project folder.");
+                return;
+            }
+            if (adminProjectState.is_student_project) {
+                alert("To rename without breaking the student's workspace link, click '🌿 Create Branch' first.");
+                return;
+            }
+            const newName = prompt(`Rename admin project "${current}" to:`, current);
+            if (!newName || !newName.trim() || newName.trim() === current) return;
+            const clean = newName.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+            try {
+                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(current)}/rename`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAdminToken}`
+                    },
+                    body: JSON.stringify({ new_name: clean })
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert("Rename failed: " + (err.detail || "Error"));
+                    return;
+                }
+                adminProjectState.current_project = clean;
+                await studioLoadProjects(true);
+                updateStudioContextUI();
+                showActionToast(`Renamed project to "${clean}".`);
+            } catch (e) {
+                alert("Error renaming project: " + e.message);
             }
         }
 
@@ -1521,15 +1825,18 @@ printf("Gripper test finished.")
                 alert("Cannot delete the default project folder.");
                 return;
             }
-            if (!confirm(`Permanently delete project folder "${current}"?`)) return;
+            const owner = adminProjectState.owner || currentAdminUser || "admin";
+            if (!confirm(`Permanently delete project folder "${owner}/${current}"?`)) return;
             try {
-                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(current)}`, {
+                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(current)}?owner=${encodeURIComponent(owner)}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${currentAdminToken}` }
                 });
                 if (res.ok) {
                     showActionToast(`Deleted project folder "${current}".`);
-                    await studioLoadProjects();
+                    selectedSubId = null;
+                    adminProjectState.files = {};
+                    await studioLoadProjects(false);
                 }
             } catch (e) {
                 alert("Error deleting project: " + e.message);
@@ -1541,8 +1848,41 @@ printf("Gripper test finished.")
                 adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
             }
             const projName = adminProjectState.current_project || "admin_default";
+            const targetModel = document.getElementById("creatorModelSelect")?.value || adminProjectState.robot_model || "ur";
+            adminProjectState.robot_model = targetModel;
+            const owner = adminProjectState.is_student_project
+                ? (adminProjectState.owner || "student")
+                : (currentAdminUser || "admin");
+
             try {
-                await fetch(`/api/workspace/projects/${encodeURIComponent(projName)}`, {
+                // 1. If editing a student submission/project, update the submission and live-sync to student!
+                if (adminProjectState.is_student_project && selectedSubId) {
+                    const entryCode = adminProjectState.files[adminProjectState.entry_point] || (studioEditor ? studioEditor.getValue() : "");
+                    await fetch(`/api/submissions/${selectedSubId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${currentAdminToken}`
+                        },
+                        body: JSON.stringify({
+                            code: entryCode,
+                            files: adminProjectState.files,
+                            entry_point: adminProjectState.entry_point,
+                            robot_model: targetModel
+                        })
+                    });
+                    // Update local submissionsList cache so table stays in sync
+                    const subItem = submissionsList.find(s => s.id === selectedSubId);
+                    if (subItem) {
+                        subItem.code = entryCode;
+                        subItem.files = { ...adminProjectState.files };
+                        subItem.entry_point = adminProjectState.entry_point;
+                        subItem.robot_model = targetModel;
+                    }
+                }
+
+                // 2. Save to the target workspace (student workspace if in Student Sync mode; admin workspace if in Branch mode)
+                await fetch(`/api/workspace/projects/${encodeURIComponent(projName)}?owner=${encodeURIComponent(owner)}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1550,15 +1890,23 @@ printf("Gripper test finished.")
                     },
                     body: JSON.stringify({
                         files: adminProjectState.files,
-                        entry_point: adminProjectState.entry_point
+                        entry_point: adminProjectState.entry_point,
+                        robot_model: targetModel
                     })
                 });
+
                 if (showToast) {
                     const toast = document.getElementById("studioSaveToast");
                     if (toast) {
+                        toast.innerText = adminProjectState.is_student_project
+                            ? `✓ Saved & Synced to ${owner}`
+                            : "✓ Saved Branch";
                         toast.style.opacity = '1';
-                        setTimeout(() => { toast.style.opacity = '0'; }, 1800);
+                        setTimeout(() => { toast.style.opacity = '0'; }, 2000);
                     }
+                    showActionToast(adminProjectState.is_student_project
+                        ? `✓ Saved & synced changes to student "${owner}"`
+                        : `✓ Saved admin branch "${projName}"`);
                 }
             } catch (e) {
                 console.warn("studioSaveNow error:", e);
@@ -1568,19 +1916,28 @@ printf("Gripper test finished.")
         function studioRenderFileTabs() {
             const tabsCont = document.getElementById("studioFileTabs");
             if (!tabsCont) return;
-            const files = Object.keys(adminProjectState.files);
+            const files = Object.keys(adminProjectState.files || {});
             const badge = document.getElementById("adminTabFilesBadge");
             if (badge) badge.innerText = `${files.length} file${files.length === 1 ? '' : 's'}`;
+            const tabCountBadge = document.getElementById("studioTabFilesCountBadge");
+            if (tabCountBadge) tabCountBadge.innerText = files.length;
 
             tabsCont.innerHTML = files.map(fname => {
                 const isActive = (fname === adminProjectState.active_file);
                 const isEntry = (fname === adminProjectState.entry_point);
+                let icon = '🐍';
+                if (fname.endsWith('.json')) icon = '📋';
+                else if (fname.endsWith('.txt') || fname.endsWith('.md')) icon = '📄';
                 return `
-                    <div class="inline-flex items-center rounded-t border-b-2 px-3 py-1 font-mono text-xs cursor-pointer transition ${isActive ? 'bg-slate-900 text-sky-400 font-bold border-sky-400' : 'text-slate-400 hover:text-white border-transparent hover:bg-slate-900/60'}"
-                         onclick="studioSwitchFile('${escapeHtml(fname)}')">
-                        <span>${fname.endsWith('.py') ? '🐍' : '📄'}</span>
-                        <span class="ml-1.5">${escapeHtml(fname)}</span>
-                        ${isEntry ? '<span class="ml-1 text-[9px] text-amber-400 font-sans uppercase">main</span>' : ''}
+                    <div class="group flex items-center space-x-1.5 px-3 py-1 rounded-t-lg text-xs font-mono cursor-pointer border-t border-x transition select-none ${
+                        isActive
+                            ? 'bg-slate-950 text-sky-400 border-slate-700 font-bold shadow-sm'
+                            : 'bg-slate-900/60 text-slate-400 border-transparent hover:bg-slate-800/70 hover:text-slate-200'
+                    }" onclick="studioSwitchFile('${escapeHtml(fname)}')">
+                        <span>${icon}</span>
+                        <span>${escapeHtml(fname)}</span>
+                        ${isEntry ? '<span title="Entry Point Script" class="px-1 py-0.2 text-[9px] rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-sans font-bold">ENTRY</span>' : ''}
+                        ${files.length > 1 ? `<button onclick="event.stopPropagation(); studioDeleteFile('${escapeHtml(fname)}')" title="Delete ${escapeHtml(fname)}" class="ml-1 text-slate-500 hover:text-rose-400 opacity-60 group-hover:opacity-100 transition">×</button>` : ''}
                     </div>
                 `;
             }).join("");
@@ -1589,28 +1946,35 @@ printf("Gripper test finished.")
         function studioRenderExplorer() {
             const list = document.getElementById("studioFilesList");
             if (!list) return;
-            const files = Object.keys(adminProjectState.files);
+            const files = Object.keys(adminProjectState.files || {});
             list.innerHTML = files.map(fname => {
                 const isActive = (fname === adminProjectState.active_file);
                 const isEntry = (fname === adminProjectState.entry_point);
+                let icon = '🐍';
+                if (fname.endsWith('.json')) icon = '📋';
+                else if (fname.endsWith('.txt') || fname.endsWith('.md')) icon = '📄';
                 return `
-                    <div class="group flex items-center justify-between px-2 py-1 rounded cursor-pointer text-xs font-mono transition ${isActive ? 'bg-sky-950/70 text-sky-300 font-bold' : 'text-slate-300 hover:bg-slate-800'}"
-                         onclick="studioSwitchFile('${escapeHtml(fname)}')">
-                        <div class="flex items-center space-x-1.5 truncate">
-                            <span>${fname.endsWith('.py') ? '🐍' : '📄'}</span>
+                    <div class="group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-mono cursor-pointer transition ${
+                        isActive
+                            ? 'bg-blue-600/20 text-sky-300 border border-blue-500/30 font-bold'
+                            : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200 border border-transparent'
+                    }" onclick="studioSwitchFile('${escapeHtml(fname)}')">
+                        <div class="flex items-center space-x-2 min-w-0">
+                            <span>${icon}</span>
                             <span class="truncate">${escapeHtml(fname)}</span>
-                            ${isEntry ? '<span class="text-[9px] text-amber-400 font-sans font-bold">★</span>' : ''}
+                            ${isEntry ? '<span class="text-[9px] px-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-sans">Entry</span>' : ''}
                         </div>
-                        <div class="hidden group-hover:flex items-center space-x-1">
-                            ${!isEntry ? `<button onclick="event.stopPropagation(); studioSetEntryPoint('${escapeHtml(fname)}')" title="Set as entry point" class="text-[10px] text-slate-400 hover:text-amber-300 px-1">★</button>` : ''}
-                            ${fname !== 'main.py' ? `<button onclick="event.stopPropagation(); studioDeleteFile('${escapeHtml(fname)}')" title="Delete file" class="text-[10px] text-slate-400 hover:text-rose-400 px-1">🗑️</button>` : ''}
+                        <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition">
+                            ${(!isEntry && fname.endsWith('.py')) ? `<button onclick="event.stopPropagation(); studioSetEntryPoint('${escapeHtml(fname)}')" title="Set as Entry Point" class="p-0.5 text-[10px] text-slate-400 hover:text-emerald-400">⭐</button>` : ''}
+                            <button onclick="event.stopPropagation(); studioRenameFile('${escapeHtml(fname)}')" title="Rename File" class="p-0.5 text-[10px] text-slate-400 hover:text-sky-400">✏️</button>
+                            ${files.length > 1 ? `<button onclick="event.stopPropagation(); studioDeleteFile('${escapeHtml(fname)}')" title="Delete File" class="p-0.5 text-[10px] text-slate-400 hover:text-rose-400">🗑️</button>` : ''}
                         </div>
                     </div>
                 `;
             }).join("");
 
             const stats = document.getElementById("studioFooterStats");
-            if (stats) stats.innerText = `${files.length} file(s) • Entry: ${adminProjectState.entry_point}`;
+            if (stats) stats.innerText = `${files.length} file${files.length > 1 ? 's' : ''} • Entry: ${adminProjectState.entry_point}`;
         }
 
         function studioSwitchFile(fname) {
@@ -1631,14 +1995,18 @@ printf("Gripper test finished.")
             }
 
             const ind = document.getElementById("studioActiveIndicator");
-            if (ind) ind.innerText = `${fname}`;
+            if (ind) {
+                const ext = fname.split('.').pop().toUpperCase();
+                ind.innerText = `${fname} (${ext})`;
+            }
 
             studioRenderFileTabs();
             studioRenderExplorer();
+            setTimeout(() => { if (studioEditor) studioEditor.layout(); }, 30);
         }
 
         function studioNewFile() {
-            const name = prompt("Enter new file name (e.g., config.py, helpers.py, notes.txt, data.json):");
+            const name = prompt("Enter new file name (e.g., helpers.py, waypoints.py, config.json, notes.txt):");
             if (!name || !name.trim()) return;
             let clean = name.trim();
             if (!clean.includes(".")) clean += ".py";
@@ -1647,37 +2015,63 @@ printf("Gripper test finished.")
                 alert(`File "${clean}" already exists.`);
                 return;
             }
-            adminProjectState.files[clean] = clean.endsWith('.py') ? `# ${clean}
-` : "";
+            adminProjectState.files[clean] = clean.endsWith('.py') ? `# ${clean}\n` : (clean.endsWith('.json') ? `{\n  "speed": 0.5\n}\n` : "");
             studioSwitchFile(clean);
-            studioSaveNow();
+            studioSaveNow(false);
             showActionToast(`Created file "${clean}".`);
+        }
+
+        function studioRenameFile(oldName) {
+            const newNameInput = prompt(`Rename file "${oldName}" to:`, oldName);
+            if (!newNameInput || !newNameInput.trim() || newNameInput.trim() === oldName) return;
+            let clean = newNameInput.trim().replace(/[^a-zA-Z0-9_.-]/g, "");
+            if (!clean.includes(".")) {
+                const oldExt = oldName.includes(".") ? "." + oldName.split(".").pop() : ".py";
+                clean += oldExt;
+            }
+            if (clean in adminProjectState.files) {
+                alert(`File "${clean}" already exists.`);
+                return;
+            }
+            if (studioEditor && adminProjectState.active_file) {
+                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
+            }
+            adminProjectState.files[clean] = adminProjectState.files[oldName];
+            delete adminProjectState.files[oldName];
+            if (adminProjectState.entry_point === oldName) adminProjectState.entry_point = clean;
+            if (adminProjectState.active_file === oldName) adminProjectState.active_file = clean;
+            studioSwitchFile(adminProjectState.active_file);
+            studioSaveNow(false);
+            showActionToast(`Renamed "${oldName}" to "${clean}".`);
         }
 
         function studioSetEntryPoint(fname) {
             adminProjectState.entry_point = fname;
             studioRenderFileTabs();
             studioRenderExplorer();
+            studioSaveNow(false);
             showActionToast(`Entry point set to "${fname}".`);
         }
 
         function studioDeleteFile(fname) {
-            if (fname === 'main.py') {
-                alert("Cannot delete main.py.");
+            const keys = Object.keys(adminProjectState.files || {});
+            if (keys.length <= 1) {
+                alert("A project must contain at least one file.");
                 return;
             }
             if (!confirm(`Delete file "${fname}"?`)) return;
             delete adminProjectState.files[fname];
+            const remaining = Object.keys(adminProjectState.files);
             if (adminProjectState.entry_point === fname) {
-                adminProjectState.entry_point = "main.py";
+                adminProjectState.entry_point = remaining.find(f => f.endsWith('.py')) || remaining[0];
             }
             if (adminProjectState.active_file === fname) {
-                adminProjectState.active_file = "main.py";
-                if (studioEditor) studioEditor.setValue(adminProjectState.files["main.py"] || "");
+                adminProjectState.active_file = adminProjectState.entry_point;
+                if (studioEditor) studioEditor.setValue(adminProjectState.files[adminProjectState.active_file] || "");
             }
             studioRenderFileTabs();
             studioRenderExplorer();
-            studioSaveNow();
+            studioSaveNow(false);
             showActionToast(`Deleted file "${fname}".`);
         }
 
@@ -1697,7 +2091,7 @@ printf("Gripper test finished.")
                 const fname = file.name.replace(/[^a-zA-Z0-9_.-]/g, "");
                 adminProjectState.files[fname] = e.target.result;
                 studioSwitchFile(fname);
-                studioSaveNow();
+                studioSaveNow(false);
                 showActionToast(`Imported "${fname}".`);
             };
             reader.readAsText(file);
@@ -1706,7 +2100,9 @@ printf("Gripper test finished.")
         function onStudioModelChange() {
             const sel = document.getElementById("creatorModelSelect");
             if (!sel) return;
-            showActionToast(`Target robot switched to ${sel.value === 'niryo' ? 'Niryo Ned' : 'UR3 Arm'}.`);
+            adminProjectState.robot_model = sel.value;
+            if (adminUr3Vis) adminUr3Vis.setRobotModel(sel.value);
+            showActionToast(`Target execution platform set to ${sel.value === 'niryo' ? 'Niryo Ned' : 'UR3 Arm'}.`);
         }
 
         function copyCurrentToStudio() {
@@ -2048,7 +2444,21 @@ printf("Gripper test finished.")
             renderProjectsFullTable(filtered);
         }
 
+        let collapsedProjectGroups = new Set();
+        let lastFilteredSubmissions = [];
+
+        function toggleProjectGroup(groupKey, e) {
+            if (e) e.stopPropagation();
+            if (collapsedProjectGroups.has(groupKey)) {
+                collapsedProjectGroups.delete(groupKey);
+            } else {
+                collapsedProjectGroups.add(groupKey);
+            }
+            renderProjectsFullTable(lastFilteredSubmissions);
+        }
+
         function renderProjectsFullTable(subs) {
+            lastFilteredSubmissions = subs || [];
             const tbody = document.getElementById("projectsFullTableBody");
             if (!tbody) return;
 
@@ -2057,81 +2467,195 @@ printf("Gripper test finished.")
                 return;
             }
 
-            tbody.innerHTML = subs.map(sub => {
+            // Group submissions by student_name + project/task_id + subModel
+            const groupsMap = new Map();
+            subs.forEach(sub => {
                 const subModel = sub.robot_model || ((sub.code && sub.code.includes('pyniryo')) ? 'niryo' : 'ur');
-                const modelBadge = subModel === 'niryo'
+                const progName = sub.task_id || sub.project_name || 'Program Routine';
+                const studentName = sub.student_name || 'Anonymous Student';
+                const groupKey = `${studentName}___${progName}___${subModel}`;
+
+                if (!groupsMap.has(groupKey)) {
+                    groupsMap.set(groupKey, {
+                        key: groupKey,
+                        progName,
+                        studentName,
+                        subModel,
+                        submissions: []
+                    });
+                }
+                groupsMap.get(groupKey).submissions.push(sub);
+            });
+
+            let html = "";
+            for (const grp of groupsMap.values()) {
+                // Ensure submissions are ordered newest first (by id descending)
+                grp.submissions.sort((a, b) => b.id - a.id);
+                const latestSub = grp.submissions[0];
+                const isCollapsed = collapsedProjectGroups.has(grp.key);
+                const totalVersions = grp.submissions.length;
+
+                const modelBadge = grp.subModel === 'niryo'
                     ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">NIRYO</span>'
                     : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>';
 
-                const isAdmin = sub.task_id === 'Admin' || (sub.student_name && sub.student_name.toLowerCase().startsWith('admin'));
+                const isAdmin = latestSub.task_id === 'Admin' || (grp.studentName && grp.studentName.toLowerCase().startsWith('admin'));
                 const adminBadge = isAdmin ? '<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">ADMIN</span>' : '';
 
-                const isThisRunning = (subModel === 'niryo' && isExecutingNiryo && activeSubNiryo === sub.id) ||
-                                      (subModel === 'ur' && isExecutingUR && activeSubUR === sub.id);
+                const latestFiles = formatSubmissionFilesCount(latestSub);
+                const latestLoc = calculateLOC(latestSub);
+                const latestDate = formatDateTimeSent(latestSub.submitted_at);
+                const latestStatus = getStatusBadge(latestSub.status);
 
-                const progName = sub.task_id || sub.project_name || 'Program Routine';
-                const studentName = sub.student_name || 'Anonymous Student';
-                const statusBadge = getStatusBadge(sub.status);
-                const locCount = calculateLOC(sub);
-                const filesInfo = formatSubmissionFilesCount(sub);
-                const dateTimeHtml = formatDateTimeSent(sub.submitted_at);
+                const isGroupRunning = grp.submissions.some(s => 
+                    (grp.subModel === 'niryo' && isExecutingNiryo && activeSubNiryo === s.id) ||
+                    (grp.subModel === 'ur' && isExecutingUR && activeSubUR === s.id)
+                );
 
-                const isSelected = (selectedSubId === sub.id);
-
-                return `
-                    <tr onclick="openSubmissionInStudio(${sub.id})" class="cursor-pointer hover:bg-slate-800/80 transition group ${isSelected ? 'bg-slate-800/90 border-l-4 border-indigo-500' : ''} ${isThisRunning ? 'bg-blue-950/40 ring-1 ring-blue-500/40' : ''}">
-                        <td class="p-3.5 text-center font-mono text-slate-400 font-bold">
-                            <span class="text-indigo-400 group-hover:text-indigo-300 font-bold text-xs">#${sub.id}</span>
-                        </td>
-                        <td class="p-3.5">
-                            <div class="flex items-center space-x-2">
-                                <span class="font-bold text-slate-100 group-hover:text-white transition text-xs">${escapeHtml(progName)}</span>
-                                ${modelBadge}
-                                ${adminBadge}
-                            </div>
-                            <div class="text-[10px] text-slate-500 font-mono mt-0.5 flex items-center space-x-2">
-                                <span>Entry: <code class="text-indigo-300 font-semibold">${escapeHtml(filesInfo.entry)}</code></span>
-                                <span>•</span>
-                                <span>Target: ${subModel === 'niryo' ? 'Niryo One/Ned' : 'UR3 CB3'}</span>
-                            </div>
-                        </td>
-                        <td class="p-3.5 font-medium text-sky-400">
-                            <div class="flex items-center space-x-1.5">
-                                <span class="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs">👤</span>
-                                <span class="font-semibold text-slate-200 text-xs">${escapeHtml(studentName)}</span>
-                            </div>
-                        </td>
-                        <td class="p-3.5 text-slate-300 text-xs">
-                            ${dateTimeHtml}
-                        </td>
-                        <td class="p-3.5 text-center">
-                            <span title="${escapeHtml(filesInfo.list)}" class="px-2.5 py-1 rounded text-[11px] font-mono bg-slate-800 text-slate-300 border border-slate-700 font-semibold cursor-help inline-flex items-center space-x-1">
-                                <span>📁</span><span>${filesInfo.count}</span>
+                // Parent Project Row
+                html += `
+                    <tr onclick="toggleProjectGroup('${escapeHtml(grp.key)}', event)" class="cursor-pointer bg-slate-850 hover:bg-slate-800 border-b border-slate-700/60 font-medium transition select-none ${isGroupRunning ? 'bg-blue-950/40 ring-1 ring-blue-500/40' : ''}">
+                        <td class="p-3 text-center">
+                            <span class="inline-flex items-center justify-center w-6 h-6 rounded bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700 font-mono text-xs transition shadow-sm">
+                                ${isCollapsed ? '▶' : '▼'}
                             </span>
                         </td>
-                        <td class="p-3.5 text-center font-mono text-slate-300 text-xs">
-                            <span class="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 font-semibold text-emerald-400">${locCount} lines</span>
+                        <td class="p-3">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold text-slate-100 hover:text-white transition text-xs">${escapeHtml(grp.progName)}</span>
+                                ${modelBadge}
+                                ${adminBadge}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                                    ${totalVersions} iteration${totalVersions > 1 ? 's' : ''}
+                                </span>
+                            </div>
+                            <div class="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center space-x-2">
+                                <span>Project: <code class="text-indigo-300 font-semibold">${escapeHtml(grp.progName)}_${grp.subModel}</code></span>
+                                <span>•</span>
+                                <span>Latest Iteration: #${latestSub.id}</span>
+                            </div>
                         </td>
-                        <td class="p-3.5">
-                            ${statusBadge}
+                        <td class="p-3 font-medium text-sky-400">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs">👤</span>
+                                <span class="font-semibold text-slate-200 text-xs">${escapeHtml(grp.studentName)}</span>
+                            </div>
                         </td>
-                        <td class="p-3.5 text-right whitespace-nowrap space-x-1.5" onclick="event.stopPropagation()">
-                            <button onclick="openSubmissionInStudio(${sub.id})" title="Preview in Code Studio"
-                                class="px-3 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold transition inline-flex items-center space-x-1 shadow">
-                                <span>👁️ Preview</span>
-                            </button>
-                            <button onclick="quickRunSubmission(${sub.id}, event)" title="Launch directly on robot and open Run Page"
-                                class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition inline-flex items-center space-x-1 shadow">
-                                <span>🚀 Run</span>
-                            </button>
-                            <button onclick="deleteSubmission(${sub.id}, event)" title="Delete submission"
-                                class="p-1.5 px-2 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700 text-xs transition inline-flex items-center">
-                                🗑️
-                            </button>
+                        <td class="p-3 text-slate-300 text-xs">
+                            ${latestDate}
+                        </td>
+                        <td class="p-3 text-center">
+                            <span title="${escapeHtml(latestFiles.list)}" class="px-2.5 py-1 rounded text-[11px] font-mono bg-slate-800 text-slate-300 border border-slate-700 font-semibold cursor-help inline-flex items-center space-x-1">
+                                <span>📁</span><span>${latestFiles.count}</span>
+                            </span>
+                        </td>
+                        <td class="p-3 text-center font-mono text-slate-300 text-xs">
+                            <span class="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 font-semibold text-emerald-400">${latestLoc} lines</span>
+                        </td>
+                        <td class="p-3">
+                            ${latestStatus}
+                        </td>
+                        <td class="p-3 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                            <div class="inline-flex items-center space-x-1.5">
+                                <button onclick="openSubmissionInStudio(${latestSub.id})" title="Open &amp; Edit in Code Studio"
+                                    class="px-2.5 py-1.5 rounded-lg bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-bold transition inline-flex items-center space-x-1 shadow">
+                                    <span>💻 Edit</span>
+                                </button>
+                                <div class="inline-flex items-center bg-slate-950 border border-slate-700 rounded-lg overflow-hidden shadow">
+                                    <select id="runPlatformGrp_${latestSub.id}" title="Select Execution Platform (Defaults to project platform)"
+                                        class="bg-slate-950 text-[11px] font-bold text-slate-200 px-2 py-1.5 border-r border-slate-700 focus:outline-none cursor-pointer">
+                                        <option value="ur" ${grp.subModel !== 'niryo' ? 'selected' : ''}>🦾 UR3</option>
+                                        <option value="niryo" ${grp.subModel === 'niryo' ? 'selected' : ''}>🤖 Niryo</option>
+                                    </select>
+                                    <button onclick="quickRunSubmission(${latestSub.id}, event, document.getElementById('runPlatformGrp_${latestSub.id}')?.value)" title="Launch latest version on selected robot platform &amp; open Run Monitor"
+                                        class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition inline-flex items-center space-x-1">
+                                        <span>🚀 Run</span>
+                                    </button>
+                                </div>
+                            </div>
                         </td>
                     </tr>
                 `;
-            }).join("");
+
+                // If not collapsed, list iterations with commit messages (visibly indented from the left)
+                if (!isCollapsed) {
+                    grp.submissions.forEach((sub, idx) => {
+                        const iterNum = totalVersions - idx;
+                        const itemModel = sub.robot_model || grp.subModel || 'ur';
+                        const isThisRunning = (itemModel === 'niryo' && isExecutingNiryo && activeSubNiryo === sub.id) ||
+                                              (itemModel === 'ur' && isExecutingUR && activeSubUR === sub.id);
+                        const isSelected = (selectedSubId === sub.id);
+                        const statusBadge = getStatusBadge(sub.status);
+                        const locCount = calculateLOC(sub);
+                        const filesInfo = formatSubmissionFilesCount(sub);
+                        const dateTimeHtml = formatDateTimeSent(sub.submitted_at);
+
+                        const commitMsg = (sub.commit_message || "").trim();
+                        const commitMsgHtml = commitMsg
+                            ? `<div class="text-[11px] text-amber-300/90 mt-0.5 flex items-center space-x-1.5 font-sans"><span class="text-amber-400">💬</span><span class="italic font-medium">"${escapeHtml(commitMsg)}"</span></div>`
+                            : `<div class="text-[10px] text-slate-500 mt-0.5 italic">Initial submission (no commit notes)</div>`;
+
+                        html += `
+                            <tr onclick="openSubmissionInStudio(${sub.id})" class="cursor-pointer bg-slate-950/70 hover:bg-slate-800/80 border-b border-slate-800/40 transition group ${isSelected ? 'bg-slate-800/90 border-l-4 border-indigo-500' : ''} ${isThisRunning ? 'bg-blue-950/40 ring-1 ring-blue-500/40' : ''}">
+                                <td class="p-2.5 pl-7 text-left font-mono whitespace-nowrap">
+                                    <span class="text-slate-600 mr-1">└─</span><span class="text-indigo-400 group-hover:text-indigo-300 font-bold text-xs">#${sub.id}</span>
+                                </td>
+                                <td class="p-2.5 pl-8">
+                                    <div class="border-l-2 border-indigo-500/40 pl-3.5 ml-2">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="text-xs font-semibold text-slate-300">Commit / Iteration ${iterNum}</span>
+                                            ${idx === 0 ? '<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">LATEST</span>' : ''}
+                                        </div>
+                                        ${commitMsgHtml}
+                                    </div>
+                                </td>
+                                <td class="p-2.5 pl-5 font-normal text-slate-400 text-xs">
+                                    <span>${escapeHtml(grp.studentName)}</span>
+                                </td>
+                                <td class="p-2.5 text-slate-400 text-xs font-mono">
+                                    ${dateTimeHtml}
+                                </td>
+                                <td class="p-2.5 text-center">
+                                    <span title="${escapeHtml(filesInfo.list)}" class="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-850 text-slate-400 border border-slate-800 inline-flex items-center space-x-1 cursor-help">
+                                        <span>📁</span><span>${filesInfo.count}</span>
+                                    </span>
+                                </td>
+                                <td class="p-2.5 text-center font-mono text-slate-400 text-xs">
+                                    <span>${locCount} lines</span>
+                                </td>
+                                <td class="p-2.5">
+                                    ${statusBadge}
+                                </td>
+                                <td class="p-2.5 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                                    <div class="inline-flex items-center space-x-1.5">
+                                        <button onclick="openSubmissionInStudio(${sub.id})" title="Open commit in Code Studio"
+                                            class="px-2.5 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white text-[11px] font-semibold transition inline-flex items-center space-x-1 border border-slate-700">
+                                            <span>💻 Edit</span>
+                                        </button>
+                                        <div class="inline-flex items-center bg-slate-950 border border-slate-700 rounded overflow-hidden">
+                                            <select id="runPlatformSub_${sub.id}" title="Select Execution Platform"
+                                                class="bg-slate-950 text-[10px] font-bold text-slate-200 px-1.5 py-1 border-r border-slate-700 focus:outline-none cursor-pointer">
+                                                <option value="ur" ${itemModel !== 'niryo' ? 'selected' : ''}>🦾 UR3</option>
+                                                <option value="niryo" ${itemModel === 'niryo' ? 'selected' : ''}>🤖 Niryo</option>
+                                            </select>
+                                            <button onclick="quickRunSubmission(${sub.id}, event, document.getElementById('runPlatformSub_${sub.id}')?.value)" title="Launch commit on selected robot platform"
+                                                class="px-2.5 py-1 bg-emerald-700/90 hover:bg-emerald-600 text-white text-[11px] font-semibold transition inline-flex items-center space-x-1">
+                                                <span>🚀 Run</span>
+                                            </button>
+                                        </div>
+                                        <button onclick="deleteSubmission(${sub.id}, event)" title="Delete submission"
+                                            class="p-1 px-1.5 rounded bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700 text-[11px] transition inline-flex items-center">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                }
+            }
+
+            tbody.innerHTML = html;
         }
 
         function openSubmissionInStudio(id) {
@@ -2147,38 +2671,41 @@ printf("Gripper test finished.")
                 files = { "main.py": sub.code || "" };
             }
 
-            adminProjectState.current_project = `submission_${sub.id}`;
+            const allCode = (sub.code || "") + " " + Object.values(files).join(" ");
+            const subModel = sub.robot_model || ((allCode.includes('pyniryo') || allCode.includes('NiryoRobot')) ? 'niryo' : 'ur');
+            const studentOwner = sub.student_name || "student";
+            const isAdminSub = studentOwner.toLowerCase().startsWith("admin") || sub.task_id === "Admin";
+
+            adminProjectState.current_project = sub.project_name || sub.task_id || `submission_${sub.id}`;
+            adminProjectState.owner = isAdminSub ? (currentAdminUser || "admin") : studentOwner;
+            adminProjectState.is_student_project = !isAdminSub;
+            adminProjectState.submission_id = sub.id;
             adminProjectState.files = { ...files };
             adminProjectState.entry_point = sub.entry_point || (("main.py" in files) ? "main.py" : Object.keys(files)[0]);
             adminProjectState.active_file = adminProjectState.entry_point;
-
-            // Update UI preview context badges
-            const progName = sub.task_id || sub.project_name || 'Program Routine';
-            const subBadge = document.getElementById("studioLoadedSubBadge");
-            if (subBadge) subBadge.innerText = `#${sub.id} - ${progName}`;
-            const authorBadge = document.getElementById("studioLoadedAuthorBadge");
-            if (authorBadge) authorBadge.innerText = `Author: ${sub.student_name || 'Anonymous'}`;
-            const subModel = sub.robot_model || ((sub.code && sub.code.includes('pyniryo')) ? 'niryo' : 'ur');
-            const modelBadge = document.getElementById("studioLoadedModelBadge");
-            if (modelBadge) modelBadge.innerText = subModel.toUpperCase();
-
-            // Set form controls
-            const nameInput = document.getElementById("creatorProgName");
-            if (nameInput) nameInput.value = progName;
-            const modelSel = document.getElementById("creatorModelSelect");
-            if (modelSel) modelSel.value = subModel;
-
-            // Update Monaco editor
-            if (studioEditor) {
-                studioEditor.setValue(adminProjectState.files[adminProjectState.active_file] || "");
-            }
+            adminProjectState.robot_model = subModel;
 
             studioRenderFileTabs();
             studioRenderExplorer();
+            updateStudioContextUI();
 
             // Switch to Code Studio tab
             switchAdminTab('code');
-            showActionToast(`Loaded submission #${sub.id} in Code Studio.`);
+
+            const fileContent = adminProjectState.files[adminProjectState.active_file] || "";
+            setTimeout(() => {
+                if (studioEditor) {
+                    studioEditor.updateOptions({ readOnly: false });
+                    studioEditor.setValue(fileContent);
+                    studioEditor.layout();
+                }
+            }, 60);
+
+            showActionToast(
+                adminProjectState.is_student_project
+                    ? `Opened student project "${adminProjectState.owner}/${adminProjectState.current_project}" (Edits sync to student)`
+                    : `Opened #${sub.id} in Code Studio`
+            );
         }
 
         function newStudioBlankProject() {
@@ -2187,23 +2714,21 @@ printf("Gripper test finished.")
             const targetIp = (targetModel === 'niryo') ? niryoIp : urIp;
             const templateCode = targetModel === 'niryo' ? CREATOR_TEMPLATES.niryo_default(targetIp) : CREATOR_TEMPLATES.default(targetIp);
 
-            adminProjectState.current_project = "admin_new";
+            adminProjectState.current_project = "admin_routine";
+            adminProjectState.owner = currentAdminUser || "admin";
+            adminProjectState.is_student_project = false;
+            adminProjectState.submission_id = null;
+            adminProjectState.robot_model = targetModel;
             adminProjectState.files = { "main.py": templateCode };
             adminProjectState.entry_point = "main.py";
             adminProjectState.active_file = "main.py";
-
-            const subBadge = document.getElementById("studioLoadedSubBadge");
-            if (subBadge) subBadge.innerText = "#New - Custom Routine";
-            const authorBadge = document.getElementById("studioLoadedAuthorBadge");
-            if (authorBadge) authorBadge.innerText = `Author: ${currentAdminUser || 'Instructor'}`;
-            const modelBadge = document.getElementById("studioLoadedModelBadge");
-            if (modelBadge) modelBadge.innerText = targetModel.toUpperCase();
 
             if (studioEditor) {
                 studioEditor.setValue(templateCode);
             }
             studioRenderFileTabs();
             studioRenderExplorer();
+            updateStudioContextUI();
             switchAdminTab('code');
         }
 
@@ -2217,50 +2742,49 @@ printf("Gripper test finished.")
                 adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
             }
 
-            const targetModel = document.getElementById("creatorModelSelect")?.value || "ur";
+            const targetModel = document.getElementById("creatorModelSelect")?.value || adminProjectState.robot_model || "ur";
+            adminProjectState.robot_model = targetModel;
             const entryCode = adminProjectState.files[adminProjectState.entry_point] || (studioEditor ? studioEditor.getValue() : "");
-            const progName = document.getElementById("creatorProgName")?.value.trim() || "Admin Routine";
+            const progName = adminProjectState.current_project || "Admin Routine";
+            const authorName = adminProjectState.owner || currentAdminUser || "Admin";
+
+            await studioSaveNow(false);
 
             if (selectedSubId) {
-                // Save changes to submission
+                // Immediately navigate to Run page so admin sees telemetry & logs right away
+                launchRunPageForSubmission(selectedSubId, progName, targetModel, authorName);
+
                 try {
-                    await fetch(`/api/submissions/${selectedSubId}`, {
-                        method: 'PUT',
+                    const res = await fetch(`/api/submissions/${selectedSubId}/approve`, {
+                        method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${currentAdminToken}`
                         },
-                        body: JSON.stringify({
-                            code: entryCode,
-                            files: adminProjectState.files,
-                            entry_point: adminProjectState.entry_point
-                        })
-                    });
-                } catch (_) { }
-
-                // Launch execution
-                try {
-                    const res = await fetch(`/api/submissions/${selectedSubId}/approve`, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                        body: JSON.stringify({ robot_model: targetModel })
                     });
                     if (!res.ok) {
                         const err = await res.json();
-                        alert("Could not launch submission: " + (err.detail || "Error"));
+                        const detail = err.detail || "Could not launch on physical robot";
+                        appendLog(`\n[DISPATCH] ⚠️ ${detail}\n`, false);
+                        showActionToast(`⚠️ ${detail}`);
                         return;
                     }
-                    showActionToast(`🚀 Launched submission #${selectedSubId} on robot!`);
-                    const sub = submissionsList.find(s => s.id === selectedSubId);
-                    launchRunPageForSubmission(selectedSubId, progName, targetModel, sub ? sub.student_name : currentAdminUser);
+                    showActionToast(`🚀 Launched #${selectedSubId} on ${targetModel === 'niryo' ? 'Niryo Ned' : 'UR3 Arm'}!`);
+                    fetchSubmissions();
                 } catch (e) {
-                    alert("Execution launch error: " + e.message);
+                    appendLog(`\n[DISPATCH ERROR] ${e.message}\n`, false);
                 }
             } else {
-                // Direct custom admin routine
+                // Direct custom admin routine / branch
                 if (!hasAdminPermission("can_direct_send")) {
                     alert("Permission Denied: Your account does not have permission for direct dispatch (can_direct_send).");
                     return;
                 }
+                // Navigate immediately to Run page
+                switchAdminTab('run');
+                switchRunModel(targetModel);
+
                 try {
                     const res = await fetch('/api/admin/send-code', {
                         method: 'POST',
@@ -2278,57 +2802,85 @@ printf("Gripper test finished.")
                             robot_model: targetModel
                         })
                     });
+                    const data = await res.json();
                     if (!res.ok) {
-                        const err = await res.json();
-                        alert("Execution error: " + (err.detail || "Failed to dispatch"));
+                        const detail = data.detail || "Failed to dispatch";
+                        appendLog(`\n[DISPATCH] ⚠️ ${detail}\n`, false);
+                        showActionToast(`⚠️ ${detail}`);
                         return;
                     }
-                    const data = await res.json();
-                    showActionToast(`🚀 Program #${data.submission_id} launched on arm!`);
+                    showActionToast(`🚀 Program #${data.submission_id} launched on ${targetModel === 'niryo' ? 'Niryo Ned' : 'UR3 Arm'}!`);
                     launchRunPageForSubmission(data.submission_id, progName, targetModel, currentAdminUser);
                 } catch (e) {
-                    alert("Error sending code: " + e.message);
+                    appendLog(`\n[DISPATCH ERROR] ${e.message}\n`, false);
                 }
             }
         }
 
-        async function quickRunSubmission(id, event) {
+        async function quickRunSubmission(id, event, chosenModel = null) {
             if (event) event.stopPropagation();
             if (!hasAdminPermission("can_execute")) {
                 alert("Permission Denied: Your admin account does not have permission to execute code on robots (can_execute).");
                 return;
             }
             const sub = submissionsList.find(s => s.id === id);
-            const subModel = sub ? (sub.robot_model || 'ur') : 'ur';
+            const targetModel = chosenModel || (sub ? (sub.robot_model || 'ur') : 'ur');
             const progName = sub ? (sub.task_id || sub.project_name || `Program #${id}`) : `Program #${id}`;
+
+            // Immediately switch to the Run & Telemetry page!
+            launchRunPageForSubmission(id, progName, targetModel, sub?.student_name);
 
             try {
                 const res = await fetch(`/api/submissions/${id}/approve`, {
                     method: 'POST',
-                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentAdminToken}`
+                    },
+                    body: JSON.stringify({ robot_model: targetModel })
                 });
                 if (!res.ok) {
                     const err = await res.json();
-                    alert("Could not launch submission: " + (err.detail || "Error"));
+                    const detail = err.detail || "Could not launch submission";
+                    appendLog(`\n[DISPATCH] ⚠️ ${detail}\n`, false);
+                    showActionToast(`⚠️ ${detail}`);
                     return;
                 }
-                showActionToast(`🚀 Executing #${id} on ${subModel.toUpperCase()}!`);
-                launchRunPageForSubmission(id, progName, subModel, sub?.student_name);
+                showActionToast(`🚀 Executing #${id} on ${targetModel.toUpperCase()}!`);
+                fetchSubmissions();
             } catch (e) {
-                alert("Error launching program: " + e.message);
+                appendLog(`\n[DISPATCH ERROR] ${e.message}\n`, false);
             }
         }
 
         function launchRunPageForSubmission(subId, progName, model, author = "") {
-            activeRunModel = model || 'ur';
+            activeRunModel = (model === 'niryo') ? 'niryo' : 'ur';
             switchAdminTab('run');
 
             const label = document.getElementById("runActiveProgramLabel");
             if (label) label.innerText = `RUNNING #${subId} — ${progName}`;
             const modelBadge = document.getElementById("runActiveModelBadge");
-            if (modelBadge) modelBadge.innerText = (model || 'ur').toUpperCase();
+            if (modelBadge) {
+                modelBadge.innerText = activeRunModel === 'niryo' ? 'NIRYO NED' : 'UR3 ARM';
+                modelBadge.className = activeRunModel === 'niryo'
+                    ? "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-950 text-cyan-300 border border-cyan-800"
+                    : "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-950 text-indigo-300 border border-indigo-800";
+            }
             const authorSpan = document.getElementById("runActiveAuthor");
             if (authorSpan) authorSpan.innerText = `Author: ${author || currentAdminUser || 'User'}`;
+
+            // Keep both UR3 and Niryo buttons enabled for the admin, and highlight the selected platform
+            const btnRunUR = document.getElementById("btnRunModelUR");
+            const btnRunNiryo = document.getElementById("btnRunModelNiryo");
+            if (btnRunUR && btnRunNiryo) {
+                btnRunUR.disabled = false;
+                btnRunNiryo.disabled = false;
+                btnRunUR.classList.remove("opacity-40", "cursor-not-allowed");
+                btnRunNiryo.classList.remove("opacity-40", "cursor-not-allowed");
+            }
+            if (typeof switchRunModel === 'function') {
+                switchRunModel(activeRunModel);
+            }
 
             // Reset and start elapsed timer
             startRunTimer();
@@ -2551,23 +3103,45 @@ printf("Gripper test finished.")
         // --- New Script Studio Functions ---
         // ==========================================
 
-        function onStudioModelChange() {
-            const model = document.getElementById("creatorModelSelect").value;
-            if (adminUr3Vis) adminUr3Vis.setRobotModel(model);
-        }
-
-        function saveStudioDraftLocally() {
-            try {
-                localStorage.setItem("ur_admin_code_draft", viewer.getValue());
-                const nameInput = document.getElementById("creatorProgName");
-                if (nameInput) localStorage.setItem("ur_admin_prog_name", nameInput.value.trim());
-            } catch (e) { }
-        }
-
         function toggleCreatorTemplatesMenu(event) {
             if (event) event.stopPropagation();
             const dd = document.getElementById("creatorTemplatesDropdown");
-            if (dd) dd.classList.toggle("hidden");
+            if (dd) {
+                const willShow = dd.classList.contains("hidden");
+                dd.classList.toggle("hidden");
+                if (willShow) {
+                    fetchAdminExamplesForStudioMenu();
+                }
+            }
+        }
+
+        async function fetchAdminExamplesForStudioMenu() {
+            const listEl = document.getElementById("studioSharedExamplesMenuList");
+            try {
+                const res = await fetch('/api/examples?model=all');
+                const data = await res.json();
+                const examples = data.examples || [];
+                adminExamples = examples;
+                if (!listEl) return;
+                if (examples.length === 0) {
+                    listEl.innerHTML = '<div class="p-2 text-xs text-slate-500 text-center">No shared examples saved yet.</div>';
+                    return;
+                }
+                listEl.innerHTML = examples.map(ex => {
+                    const isNiryo = (ex.robot_model || '').toLowerCase() === 'niryo';
+                    const badge = isNiryo
+                        ? '<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300">NIRYO</span>'
+                        : '<span class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300">UR3</span>';
+                    return `
+                        <button onclick="loadExampleIntoStudio(${ex.id})" class="w-full text-left px-2.5 py-1.5 hover:bg-slate-800 rounded transition flex items-center justify-between gap-2 group">
+                            <span class="text-xs text-slate-200 group-hover:text-amber-300 font-semibold truncate">${escapeHtml(ex.title)}</span>
+                            ${badge}
+                        </button>
+                    `;
+                }).join("");
+            } catch (e) {
+                if (listEl) listEl.innerHTML = '<div class="p-2 text-xs text-rose-400 text-center">Could not load examples.</div>';
+            }
         }
 
         window.addEventListener("click", () => {
@@ -3249,10 +3823,17 @@ printf("Gripper test finished.")
         function updateRunTelemetryUI(data) {
             if (!data) return;
 
+            const isConn = Boolean(data.connected);
+            const discBanner = document.getElementById("adminTelDisconnectedBanner");
+            if (discBanner) {
+                if (isConn) discBanner.classList.add("hidden");
+                else discBanner.classList.remove("hidden");
+            }
+
             // Connected Status Badge
             const connEl = document.getElementById("telConnectedPill");
             if (connEl) {
-                if (data.connected) {
+                if (isConn) {
                     connEl.innerText = "CONNECTED";
                     connEl.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800";
                 } else {
@@ -3280,8 +3861,70 @@ printf("Gripper test finished.")
                 else btnReset.classList.add("hidden");
             }
 
+            // IF NO ROBOT IS CONNECTED, NO TELEMETRY SHOULD BE SHOWN!
+            if (!isConn) {
+                const speedNum = document.getElementById("telSpeedNum");
+                if (speedNum) speedNum.innerText = "—";
+                const speedMm = document.getElementById("telSpeedMm");
+                if (speedMm) speedMm.innerText = "—";
+                const speedBar = document.getElementById("telSpeedBar");
+                if (speedBar) speedBar.style.width = "0%";
+
+                const maxSpeed = document.getElementById("telMaxSpeed");
+                if (maxSpeed) maxSpeed.innerText = "—";
+                const avgSpeed = document.getElementById("telAvgSpeed");
+                if (avgSpeed) avgSpeed.innerText = "—";
+                const pathLen = document.getElementById("telPathLen");
+                if (pathLen) pathLen.innerText = "—";
+                const movingTime = document.getElementById("telMovingTime");
+                if (movingTime) movingTime.innerText = "—";
+
+                const posX = document.getElementById("telPosX");
+                const posY = document.getElementById("telPosY");
+                const posZ = document.getElementById("telPosZ");
+                if (posX) posX.innerText = "—";
+                if (posY) posY.innerText = "—";
+                if (posZ) posZ.innerText = "—";
+
+                const rotRx = document.getElementById("telRotRx");
+                const rotRy = document.getElementById("telRotRy");
+                const rotRz = document.getElementById("telRotRz");
+                if (rotRx) rotRx.innerText = "—";
+                if (rotRy) rotRy.innerText = "—";
+                if (rotRz) rotRz.innerText = "—";
+
+                for (let i = 0; i < 6; i++) {
+                    const elQ = document.getElementById(`telQ${i}`);
+                    if (elQ) elQ.innerText = "—";
+                    const elQd = document.getElementById(`telQd${i}`);
+                    if (elQd) elQd.innerText = "—";
+                }
+
+                const modeEl = document.getElementById("telRobotMode");
+                if (modeEl) {
+                    modeEl.innerText = "DISCONNECTED";
+                    modeEl.className = "font-bold text-slate-500 uppercase text-xs";
+                }
+                const safetyEl = document.getElementById("telSafetyMode");
+                if (safetyEl) {
+                    safetyEl.innerText = "OFFLINE";
+                    safetyEl.className = "font-bold text-slate-500 uppercase text-xs";
+                }
+                const tempsEl = document.getElementById("telJointTemp");
+                if (tempsEl) tempsEl.innerText = "—";
+                const powerEl = document.getElementById("telPower");
+                if (powerEl) powerEl.innerText = "—";
+                const protEl = document.getElementById("telProtectiveStop");
+                if (protEl) {
+                    protEl.innerText = "—";
+                    protEl.className = "font-bold text-slate-600";
+                }
+                return;
+            }
+
+            // ROBOT CONNECTED: RENDER LIVE TELEMETRY
             // Speed & Dynamics Analytics
-            const speed = data.tcp_speed || 0; // m/s
+            const speed = (typeof data.speed === 'number') ? data.speed : ((typeof data.tcp_speed === 'number') ? data.tcp_speed : 0);
             const speedNum = document.getElementById("telSpeedNum");
             if (speedNum) speedNum.innerText = speed.toFixed(3);
             const speedMm = document.getElementById("telSpeedMm");
@@ -3293,20 +3936,26 @@ printf("Gripper test finished.")
                 speedBar.style.width = `${pct}%`;
             }
 
+            const stats = data.stats || {};
+            const maxSpeedVal = (typeof stats.max_speed === 'number') ? stats.max_speed : ((typeof data.max_speed === 'number') ? data.max_speed : 0);
+            const avgSpeedVal = (typeof stats.avg_speed === 'number') ? stats.avg_speed : ((typeof data.avg_speed === 'number') ? data.avg_speed : 0);
+            const pathLenVal = (typeof stats.path_length === 'number') ? stats.path_length : ((typeof data.path_distance === 'number') ? data.path_distance : ((typeof data.path_length_m === 'number') ? data.path_length_m : 0));
+            const movingTimeVal = (typeof stats.moving_time === 'number') ? stats.moving_time : ((typeof data.moving_time === 'number') ? data.moving_time : ((typeof data.moving_time_s === 'number') ? data.moving_time_s : 0));
+
             const maxSpeed = document.getElementById("telMaxSpeed");
-            if (maxSpeed) maxSpeed.innerText = `${(data.max_speed || 0).toFixed(3)} m/s`;
+            if (maxSpeed) maxSpeed.innerText = `${maxSpeedVal.toFixed(3)} m/s`;
             const avgSpeed = document.getElementById("telAvgSpeed");
-            if (avgSpeed) avgSpeed.innerText = `${(data.avg_speed || 0).toFixed(3)} m/s`;
+            if (avgSpeed) avgSpeed.innerText = `${avgSpeedVal.toFixed(3)} m/s`;
             const pathLen = document.getElementById("telPathLen");
-            if (pathLen) pathLen.innerText = `${(data.path_distance || 0).toFixed(2)} m`;
+            if (pathLen) pathLen.innerText = `${pathLenVal.toFixed(2)} m`;
             const movingTime = document.getElementById("telMovingTime");
-            if (movingTime) movingTime.innerText = `${(data.moving_time || 0).toFixed(1)} s`;
+            if (movingTime) movingTime.innerText = `${movingTimeVal.toFixed(1)} s`;
 
             // Cartesian Pose (TCP)
             const targetModelLabel = document.getElementById("telTargetModelLabel");
             if (targetModelLabel) targetModelLabel.innerText = activeRunModel.toUpperCase();
 
-            const pose = data.tcp_pose || [0, 0, 0, 0, 0, 0];
+            const pose = data.actual_tcp_pose || data.tcp_pose || [0, 0, 0, 0, 0, 0];
             const posX = document.getElementById("telPosX");
             if (posX) posX.innerText = (pose[0] * 1000).toFixed(1);
             const posY = document.getElementById("telPosY");
@@ -3325,32 +3974,41 @@ printf("Gripper test finished.")
             if (speedScale) speedScale.innerText = `${Math.round((data.speed_slider_mask || 1.0) * 100)}%`;
 
             // 6-DOF Joint Angles & Velocities
-            const q = data.actual_q || [0, 0, 0, 0, 0, 0];
-            const qd = data.actual_qd || [0, 0, 0, 0, 0, 0];
+            const rawQ = data.actual_q || data.q || data.joints || [0, 0, 0, 0, 0, 0];
+            const qd = data.actual_qd || data.qd || [0, 0, 0, 0, 0, 0];
+            const toDeg = 180 / Math.PI;
+            const qRad = rawQ.map(val => (typeof val === 'number' && Math.abs(val) > 6.5) ? (val * Math.PI / 180) : Number(val) || 0);
+            const qDeg = qRad.map(val => val * toDeg);
+
             for (let i = 0; i < 6; i++) {
                 const elQ = document.getElementById(`telQ${i}`);
-                if (elQ) elQ.innerText = `${(q[i] * 180 / Math.PI).toFixed(1)}°`;
+                if (elQ) elQ.innerText = `${(qDeg[i]).toFixed(1)}°`;
                 const elQd = document.getElementById(`telQd${i}`);
-                if (elQd) elQd.innerText = `${(qd[i]).toFixed(2)} rad/s`;
+                if (elQd) elQd.innerText = `${((qd[i] || 0)).toFixed(2)} rad/s`;
             }
 
-            if (adminRunVis && data.actual_q) {
-                adminRunVis.setJointAngles(data.actual_q);
+            if (adminRunVis) {
+                adminRunVis.setJointAngles(qRad);
             }
 
             // Diagnostics & Hardware Health
             const modeEl = document.getElementById("telRobotMode");
             if (modeEl) {
-                const modeStr = data.robot_mode || (data.connected ? "RUNNING" : "STANDBY");
+                const modeStr = data.robot_mode_str || data.robot_mode || "RUNNING";
                 modeEl.innerText = modeStr.toUpperCase();
+                modeEl.className = "font-bold text-emerald-400 uppercase text-xs";
             }
             const safetyEl = document.getElementById("telSafetyMode");
             if (safetyEl) {
-                safetyEl.innerText = (data.safety_mode || "NORMAL").toUpperCase();
+                const safetyStr = data.safety_mode_str || data.safety_mode || "NORMAL";
+                safetyEl.innerText = safetyStr.toUpperCase();
+                safetyEl.className = "font-bold text-sky-400 uppercase text-xs";
             }
             const tempsEl = document.getElementById("telJointTemp");
             if (tempsEl && data.joint_temperatures && data.joint_temperatures.length >= 3) {
                 tempsEl.innerText = `${Math.round(data.joint_temperatures[0])}° | ${Math.round(data.joint_temperatures[1])}° | ${Math.round(data.joint_temperatures[2])}°`;
+            } else if (tempsEl) {
+                tempsEl.innerText = "NORMAL";
             }
             const powerEl = document.getElementById("telPower");
             if (powerEl) {
@@ -4058,8 +4716,8 @@ printf("Gripper test finished.")
 
         function loadStudentCodeIntoInspector(subId, studentName) {
             closeUsersModal();
-            selectSubmission(subId);
-            showActionToast(`Opened program #${subId} (${studentName}) in Inspector.`);
+            openSubmissionInStudio(subId);
+            showActionToast(`Opened program #${subId} (${studentName}) in Code Studio.`);
         }
 
         // ==========================================
@@ -4301,25 +4959,42 @@ printf("Gripper test finished.")
             }
         }
 
-        function loadExampleIntoStudio(exId) {
-            const ex = adminExamples.find(e => e.id === exId);
+        async function loadExampleIntoStudio(exId) {
+            let ex = adminExamples.find(e => e.id === exId);
+            if (!ex) {
+                try {
+                    const res = await fetch(`/api/examples/${exId}`);
+                    if (res.ok) ex = await res.json();
+                } catch (_) {}
+            }
             if (!ex) return;
             closeExampleModal();
+            const dd = document.getElementById("creatorTemplatesDropdown");
+            if (dd) dd.classList.add("hidden");
+
+            const cleanTitle = (ex.title || `example_${ex.id}`).replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
             selectedSubId = null;
-            adminProjectState.current_project = `example_${ex.id}`;
+            adminProjectState.submission_id = null;
+            adminProjectState.current_project = cleanTitle;
+            adminProjectState.owner = currentAdminUser || "admin";
+            adminProjectState.is_student_project = false;
+            adminProjectState.robot_model = ex.robot_model || "ur";
             adminProjectState.files = { "main.py": ex.code || "" };
             adminProjectState.entry_point = "main.py";
             adminProjectState.active_file = "main.py";
-            const nameEl = document.getElementById("creatorProgName");
-            if (nameEl) nameEl.value = ex.title;
-            const modelEl = document.getElementById("creatorModelSelect");
-            if (modelEl) modelEl.value = ex.robot_model || "ur";
-            onStudioModelChange();
-            if (studioEditor) studioEditor.setValue(ex.code || "");
+
+            if (studioEditor) {
+                studioEditor.updateOptions({ readOnly: false });
+                studioEditor.setValue(ex.code || "");
+                setTimeout(() => studioEditor.layout(), 50);
+            }
             studioRenderFileTabs();
             studioRenderExplorer();
+            updateStudioContextUI();
             switchAdminTab('code');
-            showActionToast(`Loaded example "${ex.title}" into Studio.`);
+            await studioSaveNow(false);
+            await studioLoadProjects(true);
+            showActionToast(`Loaded example "${ex.title}" into isolated Studio branch.`);
         }
 
         async function deleteAdminExample(id) {

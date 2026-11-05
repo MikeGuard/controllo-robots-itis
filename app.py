@@ -80,6 +80,7 @@ class SubmissionRequest(BaseModel):
     files: Optional[Dict[str, str]] = None
     entry_point: Optional[str] = "main.py"
     project_name: Optional[str] = None
+    commit_message: Optional[str] = ""
 
 
 class CreateExampleRequest(BaseModel):
@@ -129,6 +130,10 @@ class UpdateSubmissionRequest(BaseModel):
     program_name: Optional[str] = None
     files: Optional[Dict[str, str]] = None
     entry_point: Optional[str] = None
+    robot_model: Optional[str] = None
+
+
+class ApproveSubmissionRequest(BaseModel):
     robot_model: Optional[str] = None
 
 
@@ -638,10 +643,20 @@ def _ws_error(e: Exception) -> HTTPException:
 
 
 @app.get("/api/workspace/projects")
-async def list_workspace_projects(owner: Optional[str] = None, authorization: Optional[str] = Header(default=None)):
+async def list_workspace_projects(
+    owner: Optional[str] = None,
+    all_users: bool = False,
+    authorization: Optional[str] = Header(default=None)
+):
     user = _workspace_owner(authorization, owner)
     try:
-        return {"owner": user, "projects": workspace.list_projects(user)}
+        projects = workspace.list_projects(user)
+        result: Dict[str, Any] = {"owner": user, "projects": projects}
+        if all_users:
+            session = verify_any_admin(authorization)
+            result["all_projects"] = workspace.list_all_users_projects()
+            result["admin_user"] = session["username"]
+        return result
     except workspace.WorkspaceError as e:
         raise _ws_error(e)
 
@@ -684,7 +699,43 @@ async def save_workspace_project(
 ):
     user = _workspace_owner(authorization, owner)
     try:
-        return workspace.save_project(user, name, payload.files, payload.entry_point, payload.robot_model)
+        saved = workspace.save_project(user, name, payload.files, payload.entry_point, payload.robot_model)
+        ep = saved.get("entry_point") or payload.entry_point or "main.py"
+        entry_code = (payload.files or {}).get(ep) or next(iter((payload.files or {}).values()), "")
+        model = payload.robot_model or saved.get("robot_model") or "ur"
+
+        if owner and owner.strip().lower() not in ("admin", "mike"):
+            target_owner = owner.strip()
+            # Also sync the latest submission for this student + project if one exists
+            try:
+                student_subs = await database.get_student_submissions(target_owner, limit=50)
+                for s in student_subs:
+                    s_proj = (s.get("project_name") or s.get("task_id") or "").strip()
+                    if s_proj.lower() == name.strip().lower():
+                        await database.update_submission_code(
+                            sub_id=s["id"],
+                            code=entry_code,
+                            robot_model=model,
+                            files=payload.files,
+                            entry_point=ep
+                        )
+                        await broadcast_to_admins({"type": "submission_updated", "id": s["id"]})
+                        break
+            except Exception as sync_err:
+                print(f"Could not sync student submission in DB: {sync_err}")
+
+            await broadcast_to_student(target_owner, {
+                "type": "code_synced",
+                "code": entry_code,
+                "files": payload.files,
+                "project_name": name,
+                "project": name,
+                "task_id": name,
+                "entry_point": ep,
+                "robot_model": model,
+                "message": "Instructor updated code in Code Studio."
+            })
+        return saved
     except workspace.WorkspaceError as e:
         raise _ws_error(e)
 
@@ -934,6 +985,13 @@ async def simulate_code(payload: SyntaxCheckRequest):
 
 # --- Submissions Management & Execution ---
 
+
+@app.get("/api/student/check-duplicate")
+async def check_duplicate_submission(student_name: str, program_name: Optional[str] = None, task_id: Optional[str] = None):
+    pname = (program_name or task_id or "").strip()
+    exists = await database.is_program_name_duplicate(student_name, pname)
+    return {"exists": exists, "is_duplicate": exists}
+
 @app.post("/api/submit")
 async def submit_code(payload: SubmissionRequest):
     """
@@ -948,12 +1006,12 @@ async def submit_code(payload: SubmissionRequest):
     if not program_name:
         raise HTTPException(status_code=400, detail="Program Name is required.")
 
-    # Check for duplicate program name for this student
+    # Check for duplicate program name for this student (allow if commit_message is provided for project versioning)
     is_duplicate = await database.is_program_name_duplicate(student_name, program_name)
-    if is_duplicate:
+    if is_duplicate and not (payload.commit_message or "").strip():
         raise HTTPException(
             status_code=400,
-            detail=f"You have already submitted a program named '{program_name}'. Please choose a new or versioned program name."
+            detail=f"You have already submitted a program named '{program_name}'. Please provide a commit message to submit a new version."
         )
 
     files = payload.files or {}
@@ -996,7 +1054,8 @@ async def submit_code(payload: SubmissionRequest):
         robot_model=model,
         files=payload.files,
         entry_point=payload.entry_point or "main.py",
-        project_name=(payload.project_name or None)
+        project_name=(payload.project_name or None),
+        commit_message=(payload.commit_message or "")
     )
 
     # Notify instructor dashboard of new submission
@@ -1005,7 +1064,8 @@ async def submit_code(payload: SubmissionRequest):
         "id": sub_id,
         "student": student_name,
         "program": program_name,
-        "robot_model": model
+        "robot_model": model,
+        "commit_message": payload.commit_message or ""
     })
     return {
         "submission_id": sub_id,
@@ -1134,6 +1194,8 @@ async def launch_submission_execution(
     # Launch execution in background task
     async def run_task():
         await asyncio.to_thread(telemetry_hub.reset_stats, active_model)
+        if active_model == "niryo":
+            telemetry_hub.pause_sampler("niryo")
         telemetry_hub.log(active_model, "info", f"Execution of submission #{sub_id} started on {active_model.upper()}", "supervisor")
         await broadcast_to_admins({"type": "execution_started", "id": sub_id, "robot_model": active_model})
         try:
@@ -1157,7 +1219,12 @@ async def launch_submission_execution(
 
 
 @app.post("/api/submissions/{sub_id}/approve")
-async def approve_submission(sub_id: int, authorization: Optional[str] = Header(default=None)):
+async def approve_submission(
+    sub_id: int,
+    robot_model: Optional[str] = None,
+    payload: Optional[ApproveSubmissionRequest] = None,
+    authorization: Optional[str] = Header(default=None)
+):
     verify_admin_permission(authorization, "can_execute")
     sub = await database.get_submission(sub_id)
     if not sub:
@@ -1170,8 +1237,12 @@ async def approve_submission(sub_id: int, authorization: Optional[str] = Header(
         except Exception:
             sub_files = None
 
+    override_model = ((payload.robot_model if payload else None) or robot_model or "").strip().lower()
     all_code = sub.get("code", "") + " " + " ".join((sub_files or {}).values())
-    sub_model = sub.get("robot_model") or ("niryo" if ("pyniryo" in all_code or "NiryoRobot" in all_code) else "ur")
+    if override_model in ("ur", "niryo"):
+        sub_model = override_model
+    else:
+        sub_model = sub.get("robot_model") or ("niryo" if ("pyniryo" in all_code or "NiryoRobot" in all_code) else "ur")
     model_name = "Niryo Ned" if sub_model == "niryo" else "UR3"
 
     if engine.is_model_executing(sub_model):
@@ -1199,7 +1270,7 @@ async def approve_submission(sub_id: int, authorization: Optional[str] = Header(
         workspace_owner=ws_owner,
         workspace_project=ws_project
     )
-    return {"status": "started", "message": f"Execution launched for submission #{sub_id} on {sub_model.upper()}"}
+    return {"status": "started", "robot_model": sub_model, "message": f"Execution launched for submission #{sub_id} on {sub_model.upper()}"}
 
 
 @app.post("/api/admin/send-code")
@@ -1232,11 +1303,13 @@ async def admin_send_code(payload: AdminSendCodeRequest, authorization: Optional
             content={"detail": "Safety check failed on custom code.", "errors": errors}
         )
 
-    # Detect robot model from code
+    # Determine robot model (respect admin explicit selection, fall back to code detection)
     all_text = payload.code + " " + " ".join(files.values())
-    detected_model = "niryo" if ("pyniryo" in all_text or "NiryoRobot" in all_text) else "ur"
-    if (payload.robot_model or "").strip().lower() in ("ur", "niryo") and not ("pyniryo" in all_text or "NiryoRobot" in all_text or "rtde" in all_text):
-        detected_model = payload.robot_model.strip().lower()
+    req_model = (payload.robot_model or "").strip().lower()
+    if req_model in ("ur", "niryo"):
+        detected_model = req_model
+    else:
+        detected_model = "niryo" if ("pyniryo" in all_text or "NiryoRobot" in all_text) else "ur"
     target_ip = config.NIRYO_IP if detected_model == "niryo" else config.UR_IP
     ws_project = (payload.project_name or "").strip() or None
 
@@ -1334,6 +1407,32 @@ async def update_submission_endpoint(sub_id: int, payload: UpdateSubmissionReque
         entry_point=payload.entry_point
     )
     await broadcast_to_admins({"type": "submission_updated", "id": sub_id})
+    
+    # Live two-way sync: persist to student's project on disk & notify student editor via WebSocket
+    student_name = sub.get("student_name")
+    proj_name = sub.get("project_name") or sub.get("task_id")
+    files_to_save = payload.files or ({"main.py": payload.code} if payload.code else None)
+    ep = payload.entry_point or sub.get("entry_point", "main.py")
+    if student_name and proj_name and files_to_save and not student_name.startswith("Admin ("):
+        try:
+            workspace.save_project(student_name, proj_name, files_to_save, ep, detected_model)
+        except Exception as e:
+            print(f"Could not sync student workspace project on disk: {e}")
+
+    if student_name:
+        await broadcast_to_student(student_name, {
+            "type": "code_synced",
+            "sub_id": sub_id,
+            "code": payload.code,
+            "files": payload.files or files_to_save,
+            "project_name": proj_name,
+            "project": proj_name,
+            "task_id": sub.get("task_id") or proj_name,
+            "entry_point": ep,
+            "robot_model": detected_model,
+            "message": "Instructor updated code in Code Studio."
+        })
+
     return {"status": "updated", "id": sub_id}
 
 
@@ -1640,6 +1739,34 @@ async def ws_logs(websocket: WebSocket, sub_id: int):
             if not active_log_sockets[sub_id]:
                 del active_log_sockets[sub_id]
 
+
+
+# Student WebSocket connections for live two-way code sync
+student_connections: Dict[str, Set[WebSocket]] = {}
+
+@app.websocket("/ws/student/{student_name}")
+async def student_websocket_endpoint(websocket: WebSocket, student_name: str):
+    await websocket.accept()
+    if student_name not in student_connections:
+        student_connections[student_name] = set()
+    student_connections[student_name].add(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        student_connections[student_name].discard(websocket)
+        if not student_connections[student_name]:
+            student_connections.pop(student_name, None)
+
+async def broadcast_to_student(student_name: str, payload: dict):
+    targets = student_connections.get(student_name, set())
+    for ws in list(targets):
+        try:
+            await ws.send_json(payload)
+        except Exception:
+            pass
 
 @app.websocket("/ws/admin")
 async def ws_admin(websocket: WebSocket):

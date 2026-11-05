@@ -102,11 +102,27 @@ def list_projects(username: str) -> List[Dict]:
             continue
         meta = _read_meta(pdir)
         count = len([n for n in os.listdir(pdir) if not n.startswith(".") and os.path.isfile(os.path.join(pdir, n))])
+        robot_model = meta.get("robot_model")
+        if not robot_model:
+            # Fallback inspection: check main.py
+            main_path = os.path.join(pdir, meta.get("entry_point", "main.py"))
+            if os.path.isfile(main_path):
+                try:
+                    with open(main_path, "r", encoding="utf-8") as mf:
+                        mcode = mf.read()
+                        robot_model = "niryo" if ("pyniryo" in mcode or "NiryoRobot" in mcode) else "ur"
+                except Exception:
+                    robot_model = "ur"
+            else:
+                robot_model = "ur"
+            meta["robot_model"] = robot_model
+            _write_meta(pdir, meta)
+
         result.append({
             "name": name,
             "files_count": count,
             "entry_point": meta.get("entry_point", "main.py"),
-            "robot_model": meta.get("robot_model"),
+            "robot_model": robot_model,
             "updated_at": datetime.datetime.fromtimestamp(os.path.getmtime(pdir)).isoformat(),
         })
     return result
@@ -185,9 +201,11 @@ def save_project(username: str, project: str, files: Dict[str, str],
     ep = (entry_point or meta.get("entry_point") or "main.py").strip()
     if ep not in cleaned:
         ep = "main.py" if "main.py" in cleaned else (next(iter(cleaned), "main.py"))
-    meta["entry_point"] = ep
     if robot_model in ("ur", "niryo"):
         meta["robot_model"] = robot_model
+    elif "robot_model" not in meta or not meta["robot_model"]:
+        meta["robot_model"] = "ur"
+    meta["entry_point"] = ep
     _write_meta(pdir, meta)
     return {"name": os.path.basename(pdir), "files": cleaned, "entry_point": ep, "robot_model": meta.get("robot_model")}
 
@@ -198,10 +216,52 @@ def load_project(username: str, project: str) -> Dict:
         raise WorkspaceError("Project not found.")
     meta = _read_meta(pdir)
     files = _list_files(pdir)
+    robot_model = meta.get("robot_model") or "ur"
+    if not files:
+        if robot_model == "niryo":
+            init_code = '''from pyniryo import *
+robot = NiryoRobot("10.0.130.49")
+print("Connected to Niryo")
+# Write your routine here
+robot.close_connection()
+'''
+        else:
+            init_code = '''import numpy as np
+from rtde_control import RTDEControlInterface as RTDEControl
+from rtde_receive import RTDEReceiveInterface as RTDEReceive
+
+ROBOT_IP = "10.0.10.60"
+rtde_c = RTDEControl(ROBOT_IP)
+rtde_r = RTDEReceive(ROBOT_IP)
+
+home_q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
+print("Moving to home joint configuration...")
+rtde_c.moveJ(home_q, 0.5, 0.5)
+rtde_c.stopScript()
+print("Routine completed successfully!")
+'''
+        files = {"main.py": init_code}
+        save_project(username, project, files, "main.py", robot_model)
     ep = meta.get("entry_point", "main.py")
     if ep not in files and files:
         ep = "main.py" if "main.py" in files else next(iter(files))
-    return {"name": os.path.basename(pdir), "files": files, "entry_point": ep, "robot_model": meta.get("robot_model")}
+    return {"name": os.path.basename(pdir), "files": files, "entry_point": ep, "robot_model": robot_model, "owner": username}
+
+
+def list_all_users_projects() -> List[Dict]:
+    if not os.path.isdir(WORKSPACES_DIR):
+        return []
+    all_projs: List[Dict] = []
+    for uname in sorted(os.listdir(WORKSPACES_DIR), key=str.lower):
+        udir = os.path.join(WORKSPACES_DIR, uname)
+        if uname.startswith(".") or not os.path.isdir(udir):
+            continue
+        try:
+            for p in list_projects(uname):
+                all_projs.append({**p, "owner": uname})
+        except Exception:
+            continue
+    return all_projs
 
 
 def delete_project(username: str, project: str) -> bool:

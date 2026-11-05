@@ -11,8 +11,8 @@ UR_IP = "192.168.56.101"     # Persisted UR-specific IP
 NIRYO_IP = "10.10.10.10"     # Persisted Niryo One IP
 ROBOT_RTDE_PORT = 30004
 ROBOT_SECONDARY_PORT = 30002
-NIRYO_PORT = 9090            # Default pyniryo TCP port
-EXECUTION_TIMEOUT_SEC = 45.0
+NIRYO_PORT = 40001            # Default pyniryo TCP server port
+EXECUTION_TIMEOUT_SEC = 200.0
 
 # Load runtime override if it exists
 if os.path.exists(RUNTIME_CONFIG_PATH):

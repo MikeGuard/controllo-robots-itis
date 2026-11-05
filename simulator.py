@@ -293,14 +293,17 @@ _C_THREE_TO_ROBOT = np.array([[0.0, 0.0, 1.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]
 # Tool frame: local x = approach axis (points down for pitch = +pi/2), identity at the zero pose.
 _NIRYO_TOOL_AXES = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, -1.0]])  # columns = x,y,z tool axes in j5 frame
 
-# (translation in parent frame, fixed rotation, joint axis) per joint, in Three.js coordinates
+NIRYO_J2_OFFSET = float(np.radians(-23.3))   # -0.40666 rad shoulder pitch zero-offset
+NIRYO_J3_OFFSET = float(np.radians(178.7))   #  3.11889 rad elbow pitch zero-offset
+
+# Calibrated link lengths matching physical Niryo Ned upright height (451.4 mm)
 NIRYO_CHAIN = [
-    ((0.0, 0.000, 0.0), np.eye(3), (0.0, 1.0, 0.0)),    # j0 base pan      (rotation.y =  q0)
-    ((0.0, 0.103, 0.0), np.eye(3), (-1.0, 0.0, 0.0)),   # j1 shoulder      (rotation.x = -q1)
-    ((0.0, 0.210, 0.0), _rx(np.pi / 2), (-1.0, 0.0, 0.0)),  # j2 elbow     (rotation.x = -q2)
-    ((0.0, 0.190, 0.0), np.eye(3), (0.0, 1.0, 0.0)),    # j3 forearm roll  (rotation.y =  q3)
-    ((0.0, 0.042, 0.0), np.eye(3), (-1.0, 0.0, 0.0)),   # j4 wrist pitch   (rotation.x = -q4)
-    ((0.0, 0.035, 0.0), np.eye(3), (0.0, 1.0, 0.0)),    # j5 tool roll     (rotation.y =  q5)
+    ((0.0, 0.0000, 0.0), np.eye(3), (0.0, 1.0, 0.0)),   # j0 base pan      (rotation.y =  q0)
+    ((0.0, 0.1065, 0.0), np.eye(3), (-1.0, 0.0, 0.0)),  # j1 shoulder      (rotation.x = -q1)
+    ((0.0, 0.1750, 0.0), np.eye(3), (-1.0, 0.0, 0.0)),  # j2 elbow         (rotation.x = -q2)
+    ((0.0, 0.1150, 0.0), np.eye(3), (0.0, 1.0, 0.0)),   # j3 forearm roll  (rotation.y =  q3)
+    ((0.0, 0.0250, 0.0), np.eye(3), (-1.0, 0.0, 0.0)),  # j4 wrist pitch   (rotation.x = -q4)
+    ((0.0, 0.0299, 0.0), np.eye(3), (0.0, 1.0, 0.0)),   # j5 tool roll     (rotation.y =  q5)
 ]
 
 
@@ -310,6 +313,10 @@ def _axis_rot(axis: Tuple[float, float, float], ang: float) -> np.ndarray:
 
 def fk_niryo(q: List[float]):
     """Returns (pos, rpy, R, joint_origins, joint_axes) in the Niryo robot frame (tool = flange + NIRYO_TCP_LEN)."""
+    q_adj = [float(x) for x in q]
+    if len(q_adj) >= 6:
+        q_adj[1] -= NIRYO_J2_OFFSET
+        q_adj[2] -= NIRYO_J3_OFFSET
     Rw = np.eye(3)
     pw = np.zeros(3)
     origins, axes = [], []
@@ -318,7 +325,7 @@ def fk_niryo(q: List[float]):
         Rw = Rw @ Rfix
         origins.append(_C_THREE_TO_ROBOT @ pw)
         axes.append(-_C_THREE_TO_ROBOT @ (Rw @ np.array(axis)))
-        Rw = Rw @ _axis_rot(axis, float(q[i]))
+        Rw = Rw @ _axis_rot(axis, float(q_adj[i]))
     pw = pw + Rw @ np.array([0.0, NIRYO_TCP_LEN, 0.0])
     pos = _C_THREE_TO_ROBOT @ pw
     R = _C_THREE_TO_ROBOT @ Rw @ _NIRYO_TOOL_AXES

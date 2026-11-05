@@ -30,17 +30,13 @@
             </div>
         </div>
 
-        <!-- Robot Selection Switcher (Student Model Selector) -->
-        <div class="flex items-center space-x-1.5 bg-slate-950/90 border border-slate-700/80 p-1 rounded-xl shadow-inner">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 px-2 hidden sm:inline">Active Robot:</span>
-            <button id="studentBtnModelUR" onclick="selectStudentRobotModel('ur')" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-1 ring-indigo-400/50">
-                <span id="studentDotUR" class="w-2 h-2 rounded-full bg-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.8)]"></span>
-                <span>🦾 UR3 Arm</span>
-            </button>
-            <button id="studentBtnModelNiryo" onclick="selectStudentRobotModel('niryo')" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-800/60">
-                <span id="studentDotNiryo" class="w-2 h-2 rounded-full bg-slate-500 opacity-40"></span>
-                <span>🤖 Niryo Ned</span>
-            </button>
+        <!-- Target Robot Badge (Locked to Current Project) -->
+        <div class="flex items-center space-x-2 bg-slate-950/90 border border-slate-700/80 px-3 py-1.5 rounded-xl shadow-inner">
+            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 hidden sm:inline">Target Robot:</span>
+            <span id="headerRobotBadge" class="px-2.5 py-0.5 rounded text-xs font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center space-x-1.5">
+                <span id="headerRobotDot" class="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.8)]"></span>
+                <span id="headerRobotLabel">🦾 UR3 Arm</span>
+            </span>
         </div>
 
         <div class="flex items-center flex-wrap gap-3">
@@ -102,7 +98,7 @@
             </button>
         </div>
 
-        <div class="flex items-center space-x-2 sm:space-x-3">
+        <div class="flex items-center space-x-2 sm:space-x-2.5">
             <button id="btnSyntax" onclick="checkSyntax()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700 flex items-center space-x-1.5">
                 <span>🔍 Check Syntax</span>
             </button>
@@ -195,17 +191,8 @@
                         <div class="px-3 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
                             <span class="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 font-mono">Project Files</span>
                             <div class="flex items-center space-x-1">
-                                <button onclick="openNewFileModal('txt')" title="Add Text File (.txt)" class="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded text-[10px] font-mono font-bold transition border border-slate-700">
-                                    +txt
-                                </button>
-                                <button onclick="openNewFileModal('py')" title="Add Python Script (.py)" class="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-sky-300 rounded text-[10px] font-mono font-bold transition border border-slate-700">
-                                    +py
-                                </button>
-                                <button onclick="openNewFileModal()" title="New File" class="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">
-                                    ➕
-                                </button>
-                                <button onclick="exportProjectZip()" title="Export Project as ZIP" class="p-1 text-slate-400 hover:text-sky-300 rounded hover:bg-slate-800 transition text-xs">
-                                    ⬇️
+                                <button onclick="openNewFileModal()" title="Create New File" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-sky-300 rounded text-[10px] font-semibold transition border border-slate-700 flex items-center space-x-1">
+                                    <span>+ New File</span>
                                 </button>
                                 <button onclick="toggleProjectExplorer()" title="Collapse Sidebar" class="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">
                                     ◀
@@ -235,7 +222,7 @@
                     </div>
 
                     <!-- Whole-Page Monaco Editor Container -->
-                    <div id="editorContainer" class="flex-1 min-w-0 h-full transition-all"></div>
+                    <div id="editorContainer" class="flex-1 min-w-0 h-full min-h-[350px] w-full relative transition-all"></div>
                 </div>
 
                 <!-- Robot Offline Notice Banner -->
@@ -306,9 +293,6 @@
                     <span id="statusBadge" class="hidden text-[10px] font-semibold px-2 py-0.5 rounded-full">PENDING</span>
                     <button onclick="simulateCode()" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition flex items-center space-x-1">
                         <span>🔄 Re-Simulate</span>
-                    </button>
-                    <button onclick="clearTerminal()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded transition">
-                        Clear Logs
                     </button>
                 </div>
             </div>
@@ -403,6 +387,18 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 </div>
             </div>
 
+            <!-- Hardware Disconnected Banner (Shown when no physical robot is connected) -->
+            <div id="studentTelDisconnectedBanner" class="p-3 bg-slate-900 border border-amber-500/40 rounded-xl flex items-center justify-between text-xs text-amber-300 shadow-lg">
+                <div class="flex items-center space-x-2.5">
+                    <span class="text-lg">🔌</span>
+                    <div>
+                        <strong class="font-bold text-amber-200">No Physical Robot Connected:</strong>
+                        <span class="text-amber-300/80"> Hardware telemetry stream and physical twin mirror are offline. Connect the robot arm to view live dynamics.</span>
+                    </div>
+                </div>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800 uppercase">HARDWARE OFFLINE</span>
+            </div>
+
             <!-- 4 Telemetry Cards Grid -->
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 flex-shrink-0">
                 <!-- Card 1: Speed & Dynamics -->
@@ -413,9 +409,9 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                     </div>
                     <div class="space-y-1.5">
                         <div class="flex items-baseline space-x-2">
-                            <span id="studentTelSpeedNum" class="text-2xl font-black font-mono text-emerald-400">0.000</span>
+                            <span id="studentTelSpeedNum" class="text-2xl font-black font-mono text-emerald-400">—</span>
                             <span class="text-xs text-slate-400 font-bold">m/s</span>
-                            <span class="text-xs text-slate-500 font-mono">(<span id="studentTelSpeedMm">0</span> mm/s)</span>
+                            <span class="text-xs text-slate-500 font-mono">(<span id="studentTelSpeedMm">—</span> mm/s)</span>
                         </div>
                         <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800">
                             <div id="studentTelSpeedBar" class="bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-500 h-1.5 rounded-full transition-all duration-200" style="width: 0%"></div>
@@ -423,19 +419,19 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                         <div class="grid grid-cols-2 gap-1.5 text-xs pt-1">
                             <div>
                                 <span class="text-slate-500 text-[10px] uppercase block">Peak Speed:</span>
-                                <span id="studentTelMaxSpeed" class="font-mono text-slate-200 font-semibold text-xs">0.000 m/s</span>
+                                <span id="studentTelMaxSpeed" class="font-mono text-slate-200 font-semibold text-xs">—</span>
                             </div>
                             <div>
                                 <span class="text-slate-500 text-[10px] uppercase block">Avg Speed:</span>
-                                <span id="studentTelAvgSpeed" class="font-mono text-slate-200 font-semibold text-xs">0.000 m/s</span>
+                                <span id="studentTelAvgSpeed" class="font-mono text-slate-200 font-semibold text-xs">—</span>
                             </div>
                             <div>
                                 <span class="text-slate-500 text-[10px] uppercase block">Path Traveled:</span>
-                                <span id="studentTelPathLen" class="font-mono text-indigo-300 font-semibold text-xs">0.00 m</span>
+                                <span id="studentTelPathLen" class="font-mono text-indigo-300 font-semibold text-xs">—</span>
                             </div>
                             <div>
                                 <span class="text-slate-500 text-[10px] uppercase block">Motion Time:</span>
-                                <span id="studentTelMovingTime" class="font-mono text-slate-200 font-semibold text-xs">0.0 s</span>
+                                <span id="studentTelMovingTime" class="font-mono text-slate-200 font-semibold text-xs">—</span>
                             </div>
                         </div>
                     </div>
@@ -451,21 +447,21 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                         <div class="grid grid-cols-3 gap-1.5">
                             <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80 text-center">
                                 <span class="text-rose-400 font-bold block text-[10px]">X (mm)</span>
-                                <span id="studentTelPosX" class="text-xs font-bold text-white">0.0</span>
+                                <span id="studentTelPosX" class="text-xs font-bold text-white">—</span>
                             </div>
                             <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80 text-center">
                                 <span class="text-emerald-400 font-bold block text-[10px]">Y (mm)</span>
-                                <span id="studentTelPosY" class="text-xs font-bold text-white">0.0</span>
+                                <span id="studentTelPosY" class="text-xs font-bold text-white">—</span>
                             </div>
                             <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80 text-center">
                                 <span class="text-sky-400 font-bold block text-[10px]">Z (mm)</span>
-                                <span id="studentTelPosZ" class="text-xs font-bold text-white">0.0</span>
+                                <span id="studentTelPosZ" class="text-xs font-bold text-white">—</span>
                             </div>
                         </div>
                         <div class="grid grid-cols-3 gap-1 text-[10px] pt-1 text-slate-400">
-                            <div>Rx: <span id="studentTelRotRx" class="text-slate-200 font-semibold">0.00°</span></div>
-                            <div>Ry: <span id="studentTelRotRy" class="text-slate-200 font-semibold">0.00°</span></div>
-                            <div>Rz: <span id="studentTelRotRz" class="text-slate-200 font-semibold">0.00°</span></div>
+                            <div>Rx: <span id="studentTelRotRx" class="text-slate-200 font-semibold">—</span></div>
+                            <div>Ry: <span id="studentTelRotRy" class="text-slate-200 font-semibold">—</span></div>
+                            <div>Rz: <span id="studentTelRotRz" class="text-slate-200 font-semibold">—</span></div>
                         </div>
                     </div>
                 </div>
@@ -479,21 +475,21 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                     <div class="space-y-1 text-[11px] font-mono">
                         <div class="flex items-center justify-between">
                             <span class="text-slate-400">J1:</span>
-                            <span id="studentTelQ0" class="text-sky-300 font-bold">0.0°</span>
+                            <span id="studentTelQ0" class="text-sky-300 font-bold">—</span>
                             <span class="text-slate-400">J2:</span>
-                            <span id="studentTelQ1" class="text-sky-300 font-bold">-90.0°</span>
+                            <span id="studentTelQ1" class="text-sky-300 font-bold">—</span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-slate-400">J3:</span>
-                            <span id="studentTelQ2" class="text-sky-300 font-bold">90.0°</span>
+                            <span id="studentTelQ2" class="text-sky-300 font-bold">—</span>
                             <span class="text-slate-400">J4:</span>
-                            <span id="studentTelQ3" class="text-sky-300 font-bold">-90.0°</span>
+                            <span id="studentTelQ3" class="text-sky-300 font-bold">—</span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-slate-400">J5:</span>
-                            <span id="studentTelQ4" class="text-sky-300 font-bold">-90.0°</span>
+                            <span id="studentTelQ4" class="text-sky-300 font-bold">—</span>
                             <span class="text-slate-400">J6:</span>
-                            <span id="studentTelQ5" class="text-sky-300 font-bold">0.0°</span>
+                            <span id="studentTelQ5" class="text-sky-300 font-bold">—</span>
                         </div>
                     </div>
                 </div>
@@ -502,24 +498,24 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-lg flex flex-col justify-between">
                     <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-1.5">
                         <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Diagnostics</span>
-                        <span id="studentTelConnectedPill" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">CONNECTED</span>
+                        <span id="studentTelConnectedPill" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">OFFLINE</span>
                     </div>
                     <div class="space-y-1 text-xs">
                         <div class="flex items-center justify-between">
                             <span class="text-slate-400 text-[11px]">Robot Mode:</span>
-                            <span id="studentTelRobotMode" class="font-bold font-mono text-emerald-400 uppercase text-[11px]">RUNNING</span>
+                            <span id="studentTelRobotMode" class="font-bold font-mono text-slate-500 uppercase text-[11px]">DISCONNECTED</span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-slate-400 text-[11px]">Safety State:</span>
-                            <span id="studentTelSafetyMode" class="font-bold font-mono text-sky-300 uppercase text-[11px]">NORMAL</span>
+                            <span id="studentTelSafetyMode" class="font-bold font-mono text-slate-500 uppercase text-[11px]">OFFLINE</span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-slate-400 text-[11px]">Power / Voltage:</span>
-                            <span id="studentTelPower" class="font-mono text-slate-300 text-[11px]">48.0V • 1.1A</span>
+                            <span id="studentTelPower" class="font-mono text-slate-400 text-[11px]">—</span>
                         </div>
                         <div class="flex items-center justify-between text-[11px]">
                             <span class="text-slate-400">Protective Stop:</span>
-                            <span id="studentTelProtectiveStop" class="font-bold text-slate-500">NO</span>
+                            <span id="studentTelProtectiveStop" class="font-bold text-slate-600">—</span>
                         </div>
                     </div>
                 </div>
@@ -581,10 +577,15 @@ When you run a 3D simulation or physical execution, trajectory playback and live
 
             <!-- Modal Nav Tabs -->
             <div class="flex border-b border-slate-800 bg-slate-900 px-5 pt-2 space-x-4">
-                <button id="tabBtnWorkspaceProjects" onclick="switchProjectsModalTab('workspaces')"
-                    class="pb-2 text-xs font-bold text-sky-400 border-b-2 border-sky-400 transition flex items-center space-x-1.5">
-                    <span>🗂️ Project Folders</span>
-                    <span id="workspaceCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-sky-900/80 text-sky-300 font-mono font-bold">1</span>
+                <button id="tabBtnNiryoProjects" onclick="switchProjectsModalTab('niryo')"
+                    class="pb-2 text-xs font-bold text-cyan-400 border-b-2 border-cyan-400 transition flex items-center space-x-1.5">
+                    <span>🤖 Niryo Ned Projects</span>
+                    <span id="niryoCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono font-bold">0</span>
+                </button>
+                <button id="tabBtnURProjects" onclick="switchProjectsModalTab('ur')"
+                    class="pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5">
+                    <span>🦾 UR3 Projects</span>
+                    <span id="urCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-400 font-mono font-bold">0</span>
                 </button>
                 <button id="tabBtnSubmissionsHistory" onclick="switchProjectsModalTab('history')"
                     class="pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5">
@@ -594,11 +595,11 @@ When you run a 3D simulation or physical execution, trajectory playback and live
             </div>
 
             <div class="p-4 overflow-y-auto flex-1 min-h-0 space-y-3">
-                <!-- Workspaces Section -->
+                <!-- Dedicated Projects Section (Niryo or UR3) -->
                 <div id="modalWorkspacesSection" class="space-y-3">
                     <div class="flex items-center justify-between bg-slate-850 p-3 rounded-xl border border-slate-800">
-                        <div class="text-xs text-slate-300 font-medium">Create a new workspace folder for custom scripts and output data:</div>
-                        <button onclick="promptNewProjectFolder()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
+                        <div id="modalWorkspacesSubtitle" class="text-xs text-slate-300 font-medium">Create a new workspace folder for custom scripts and output data:</div>
+                        <button id="btnModalNewProject" onclick="openNewProjectModal(false, currentModalTabModel)" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
                             <span>➕ New Project Folder</span>
                         </button>
                     </div>
@@ -675,10 +676,45 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                     class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition font-mono">
                 <p class="text-[11px] text-slate-500 mt-1.5">A new folder will be created with <code class="text-slate-300">main.py</code> ready to edit.</p>
             </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Target Robot Arm</label>
+                <select id="newProjectRobotSelect"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition font-medium">
+                    <option value="ur">🦾 Universal Robots UR3</option>
+                    <option value="niryo">🤖 Niryo Ned / One</option>
+                </select>
+                <p class="text-[11px] text-slate-500 mt-1.5">Select the target robot for this project (configures starter template and 3D kinematics).</p>
+            </div>
             <div class="flex items-center justify-end space-x-2 pt-2">
                 <button id="btnCancelNewProject" onclick="closeNewProjectModal()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition">Cancel</button>
                 <button onclick="confirmCreateProject()" class="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5">
                     <span>🚀 Create Project</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Commit Message Modal (Prompted on project resubmission) -->
+    <div id="commitMessageModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div class="flex items-center space-x-3 border-b border-slate-800 pb-3">
+                <span class="text-2xl">📝</span>
+                <div>
+                    <h3 class="text-base font-bold text-white">Project Resubmission Notes</h3>
+                    <p id="commitModalSubtitle" class="text-xs text-slate-400">A submission with this project name already exists. Enter a commit message to record what changed in this version:</p>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Commit Message / Version Description</label>
+                <input id="commitMessageInput" type="text" placeholder="e.g., Adjusted pick coordinates, tuned speed, fixed gripper timing"
+                    onkeydown="if(event.key==='Enter') confirmCommitSubmission()"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition font-sans">
+                <p class="text-[11px] text-slate-500 mt-1.5">This message will be attached to the new iteration in the instructor execution tree.</p>
+            </div>
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button id="btnCancelCommitModal" onclick="closeCommitMessageModal()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition">Cancel</button>
+                <button id="btnConfirmCommitModal" onclick="confirmCommitSubmission()" class="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5">
+                    <span>🚀 Submit New Version</span>
                 </button>
             </div>
         </div>
@@ -846,6 +882,7 @@ When you run a 3D simulation or physical execution, trajectory playback and live
         let isExplorerOpen = true;
 
         let projectState = {
+            current_project: "default",
             folderName: "robot_project",
             entry_point: "main.py",
             active_file: "main.py",
@@ -942,8 +979,8 @@ def offset_pose(pose, dx=0.0, dy=0.0, dz=0.0):
             }
         }
 
-        function getDefaultTemplate(model) {
-            const robotIp = configuredIp || (model === 'niryo' ? '10.0.130.49' : '10.0.10.60');
+        function getDefaultTemplate(model, ipOverride = null) {
+            const robotIp = ipOverride || configuredIp || (model === 'niryo' ? '10.0.130.49' : '10.0.10.60');
             if (model === 'niryo') {
                 return `import time
 from pyniryo import NiryoRobot
@@ -1008,9 +1045,49 @@ print("Routine completed successfully!")
 `;
         }
 
+        function buildDefaultCode(ip, model) {
+            return getDefaultTemplate(model || currentRobotModel || 'ur', ip);
+        }
+
+        function lockStudentProjectRobot(model) {
+            if (!model || (model !== 'ur' && model !== 'niryo')) return;
+            if (projectState) projectState.robot_model = model;
+            const btnUR = document.getElementById("studentBtnModelUR");
+            const btnNiryo = document.getElementById("studentBtnModelNiryo");
+            if (btnUR && btnNiryo) {
+                btnUR.disabled = (model !== 'ur');
+                btnNiryo.disabled = (model !== 'niryo');
+                btnUR.title = model === 'ur' ? 'Project is configured for UR3 Arm' : 'Disabled: project is locked to Niryo Ned';
+                btnNiryo.title = model === 'niryo' ? 'Project is configured for Niryo Ned' : 'Disabled: project is locked to UR3 Arm';
+                btnUR.classList.toggle("opacity-40", model !== 'ur');
+                btnUR.classList.toggle("cursor-not-allowed", model !== 'ur');
+                btnNiryo.classList.toggle("opacity-40", model !== 'niryo');
+                btnNiryo.classList.toggle("cursor-not-allowed", model !== 'niryo');
+            }
+
+            const runUR = document.getElementById("btnStudentRunUR");
+            const runNiryo = document.getElementById("btnStudentRunNiryo");
+            if (runUR && runNiryo) {
+                runUR.disabled = (model !== 'ur');
+                runNiryo.disabled = (model !== 'niryo');
+                runUR.title = model === 'ur' ? 'Locked to UR3 Arm' : 'Disabled: project is locked to Niryo Ned';
+                runNiryo.title = model === 'niryo' ? 'Locked to Niryo Ned' : 'Disabled: project is locked to UR3 Arm';
+                runUR.classList.toggle("opacity-40", model !== 'ur');
+                runUR.classList.toggle("cursor-not-allowed", model !== 'ur');
+                runNiryo.classList.toggle("opacity-40", model !== 'niryo');
+                runNiryo.classList.toggle("cursor-not-allowed", model !== 'niryo');
+            }
+
+            switchStudentRunModel(model);
+        }
+
         // Robot Selection Handlers (UR3 vs Niryo Ned)
         function selectStudentRobotModel(model, confirmCodeSwitch = true) {
             if (model !== 'ur' && model !== 'niryo') return;
+            if (projectState && projectState.robot_model && projectState.robot_model !== model) {
+                alert(`This project is locked to ${projectState.robot_model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}. You can only run it on that robot. To use another robot, please create or open a project configured for it.`);
+                return;
+            }
             if (currentRobotModel === model) return;
 
             const prevModel = currentRobotModel;
@@ -1063,26 +1140,20 @@ print("Routine completed successfully!")
         }
 
         function updateStudentRobotUI(model) {
-            const btnUR = document.getElementById("studentBtnModelUR");
-            const btnNiryo = document.getElementById("studentBtnModelNiryo");
-            const dotUR = document.getElementById("studentDotUR");
-            const dotNiryo = document.getElementById("studentDotNiryo");
+            const headerBadge = document.getElementById("headerRobotBadge");
+            const navBadge = document.getElementById("navRobotBadge");
             const badge = document.getElementById("robotSelectedBadge");
             const outBadge = document.getElementById("outputRobotBadge");
             const docsLink = document.getElementById("docsLink");
 
             if (model === 'niryo') {
-                if (btnUR) {
-                    btnUR.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-800/60";
+                if (headerBadge) {
+                    headerBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]"></span><span>🤖 NIRYO NED</span>`;
+                    headerBadge.className = "flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm";
                 }
-                if (dotUR) {
-                    dotUR.className = "w-2 h-2 rounded-full bg-slate-500 opacity-40";
-                }
-                if (btnNiryo) {
-                    btnNiryo.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-cyan-600 text-white shadow-md shadow-cyan-600/30 ring-1 ring-cyan-400/50";
-                }
-                if (dotNiryo) {
-                    dotNiryo.className = "w-2 h-2 rounded-full bg-cyan-200 shadow-[0_0_8px_rgba(34,211,238,0.8)]";
+                if (navBadge) {
+                    navBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span><span>NIRYO NED</span>`;
+                    navBadge.className = "px-2 py-1 rounded-md text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 flex items-center space-x-1.5";
                 }
                 if (badge) {
                     badge.innerText = "NIRYO NED";
@@ -1097,17 +1168,13 @@ print("Routine completed successfully!")
                     docsLink.title = "PyNiryo v1.2.5 Documentation";
                 }
             } else {
-                if (btnUR) {
-                    btnUR.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-1 ring-indigo-400/50";
+                if (headerBadge) {
+                    headerBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.8)]"></span><span>🦾 UR3 ARM</span>`;
+                    headerBadge.className = "flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm";
                 }
-                if (dotUR) {
-                    dotUR.className = "w-2 h-2 rounded-full bg-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.8)]";
-                }
-                if (btnNiryo) {
-                    btnNiryo.className = "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-slate-400 hover:text-slate-200 hover:bg-slate-800/60";
-                }
-                if (dotNiryo) {
-                    dotNiryo.className = "w-2 h-2 rounded-full bg-slate-500 opacity-40";
+                if (navBadge) {
+                    navBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span><span>UR3 ARM</span>`;
+                    navBadge.className = "px-2 py-1 rounded-md text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 flex items-center space-x-1.5";
                 }
                 if (badge) {
                     badge.innerText = "UR3 ARM";
@@ -1128,14 +1195,15 @@ print("Routine completed successfully!")
 
         // Initialize on DOM load
         window.addEventListener("DOMContentLoaded", () => {
-            ur3Vis = new UR3Visualizer("ur3CanvasContainer");
-            if (currentRobotModel) {
-                ur3Vis.setRobotModel(currentRobotModel);
-            }
-            
-            const savedName = localStorage.getItem(STORAGE_PROG_KEY);
-            if (savedName) {
-                // Program name unified with project name
+            try {
+                if (typeof UR3Visualizer !== 'undefined') {
+                    ur3Vis = new UR3Visualizer("ur3CanvasContainer");
+                    if (currentRobotModel && ur3Vis) {
+                        ur3Vis.setRobotModel(currentRobotModel);
+                    }
+                }
+            } catch (visErr) {
+                console.warn("3D Visualizer init warning:", visErr);
             }
 
             // Check student authentication
@@ -1486,9 +1554,74 @@ print("Routine completed successfully!")
             appendStudentLog(`\n[AUTH] Logged in as ${isMgr ? currentStudentUser.role : 'student'} "${currentStudentUser.username}". Sandbox unlocked.\n`, false);
             fetchStudentProjects();
             fetchWorkspaceFolders();
+            connectStudentLiveWs();
+            setTimeout(() => {
+                if (editor) editor.layout();
+            }, 120);
+        }
+
+        let studentLiveWs = null;
+        let hasLoadedInitialWorkspaceProject = false;
+
+        function connectStudentLiveWs() {
+            if (!currentStudentUser || !currentStudentUser.username) return;
+            if (studentLiveWs && (studentLiveWs.readyState === WebSocket.OPEN || studentLiveWs.readyState === WebSocket.CONNECTING)) {
+                return;
+            }
+            try {
+                const proto = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+                const wsUrl = `${proto}//${location.host}/ws/student/${encodeURIComponent(currentStudentUser.username)}`;
+                studentLiveWs = new WebSocket(wsUrl);
+
+                studentLiveWs.onmessage = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'code_synced') {
+                            const curProj = projectState.current_project || 'default';
+                            const incomingProj = msg.project_name || msg.project || msg.task_id || '';
+                            if (!incomingProj || incomingProj === curProj || curProj === 'default') {
+                                if (msg.files && typeof msg.files === 'object') {
+                                    projectState.files = msg.files;
+                                } else if (msg.code) {
+                                    projectState.files[projectState.active_file || 'main.py'] = msg.code;
+                                }
+                                if (msg.robot_model && msg.robot_model !== currentRobotModel) {
+                                    projectState.robot_model = msg.robot_model;
+                                    selectStudentRobotModel(msg.robot_model, false);
+                                }
+                                if (editor && projectState.active_file && projectState.files[projectState.active_file] !== undefined) {
+                                    const pos = editor.getPosition();
+                                    editor.setValue(projectState.files[projectState.active_file]);
+                                    if (pos) editor.setPosition(pos);
+                                }
+                                saveProjectToStorage();
+                                renderEditorTabs();
+                                renderProjectExplorer();
+                                appendStudentLog(`\n[LIVE SYNC] 🔄 Code updated from Instructor Code Studio (${new Date().toLocaleTimeString()}).\n`);
+                            }
+                        }
+                    } catch(e) {
+                        console.error("Live sync msg error:", e);
+                    }
+                };
+
+                studentLiveWs.onclose = () => {
+                    studentLiveWs = null;
+                    if (currentStudentUser) {
+                        setTimeout(connectStudentLiveWs, 4000);
+                    }
+                };
+            } catch(e) {
+                console.warn("Failed to connect live student WS:", e);
+            }
         }
 
         function logoutStudent() {
+            hasLoadedInitialWorkspaceProject = false;
+            if (studentLiveWs) {
+                try { studentLiveWs.close(); } catch(e) {}
+                studentLiveWs = null;
+            }
             if (currentAuthToken) {
                 fetch('/api/auth/logout', {
                     method: 'POST',
@@ -1514,8 +1647,9 @@ print("Routine completed successfully!")
         // ==========================================
 
         let studentWorkspaceFolders = [];
+        let currentModalTabModel = 'niryo';
 
-        async function fetchWorkspaceFolders() {
+        async function fetchWorkspaceFolders(skipAutoLoad = false) {
             if (!currentStudentUser) return;
             try {
                 const res = await fetch('/api/workspace/projects', {
@@ -1525,11 +1659,33 @@ print("Routine completed successfully!")
                 const data = await res.json();
                 studentWorkspaceFolders = data.projects || [];
 
+                const niryoProjects = studentWorkspaceFolders.filter(p => (p.robot_model || '').toLowerCase() === 'niryo');
+                const urProjects = studentWorkspaceFolders.filter(p => (p.robot_model || '').toLowerCase() !== 'niryo');
+
+                const niryoBadge = document.getElementById("niryoCountBadge");
+                if (niryoBadge) niryoBadge.innerText = niryoProjects.length;
+
+                const urBadge = document.getElementById("urCountBadge");
+                if (urBadge) urBadge.innerText = urProjects.length;
+
+                const activeProjName = projectState.current_project || 'default';
                 const select = document.getElementById("studentProjectSelect");
                 if (select) {
-                    select.innerHTML = studentWorkspaceFolders.map(p => 
-                        `<option value="${escapeHtml(p.name)}" ${p.name === (projectState.current_project || 'default') ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
-                    ).join("");
+                    let html = '';
+                    if (niryoProjects.length > 0) {
+                        html += `<optgroup label="🤖 Niryo Ned Projects">` +
+                            niryoProjects.map(p => `<option value="${escapeHtml(p.name)}" ${p.name === activeProjName ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join("") +
+                            `</optgroup>`;
+                    }
+                    if (urProjects.length > 0) {
+                        html += `<optgroup label="🦾 UR3 Projects">` +
+                            urProjects.map(p => `<option value="${escapeHtml(p.name)}" ${p.name === activeProjName ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join("") +
+                            `</optgroup>`;
+                    }
+                    if (!html) {
+                        html = studentWorkspaceFolders.map(p => `<option value="${escapeHtml(p.name)}" ${p.name === activeProjName ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join("");
+                    }
+                    select.innerHTML = html;
                 }
 
                 const badge = document.getElementById("workspaceCountBadge");
@@ -1538,7 +1694,13 @@ print("Routine completed successfully!")
                 renderModalWorkspacesList(studentWorkspaceFolders);
 
                 if (studentWorkspaceFolders.length === 0) {
-                    openNewProjectModal(true);
+                    openNewProjectModal(true, currentRobotModel || 'niryo');
+                } else if (!skipAutoLoad && (!hasLoadedInitialWorkspaceProject || !studentWorkspaceFolders.some(p => p.name === activeProjName))) {
+                    hasLoadedInitialWorkspaceProject = true;
+                    const match = studentWorkspaceFolders.find(p => p.name === activeProjName) || studentWorkspaceFolders[0];
+                    if (match && match.name) {
+                        await onSelectStudentProject(match.name, true);
+                    }
                 }
             } catch (e) {
                 console.error("Failed to fetch workspace folders:", e);
@@ -1548,20 +1710,31 @@ print("Routine completed successfully!")
         function renderModalWorkspacesList(projects) {
             const list = document.getElementById("modalWorkspacesList");
             if (!list) return;
-            if (!projects || projects.length === 0) {
-                list.innerHTML = `<div class="p-6 text-xs text-slate-500 text-center">No custom project folders created yet. Click "New Project Folder" above.</div>`;
+            const targetModel = currentModalTabModel;
+            const filtered = (projects || []).filter(p => {
+                const m = (p.robot_model || '').toLowerCase();
+                return targetModel === 'niryo' ? (m === 'niryo') : (m !== 'niryo');
+            });
+
+            if (filtered.length === 0) {
+                list.innerHTML = `<div class="p-8 text-xs text-slate-500 text-center bg-slate-950/40 rounded-xl border border-slate-800">No ${targetModel === 'niryo' ? 'Niryo Ned' : 'UR3'} projects created yet.<br><span class="text-[11px] text-slate-400">Click "+ New Project Folder" above to create one.</span></div>`;
                 return;
             }
-            list.innerHTML = projects.map(p => {
+            list.innerHTML = filtered.map(p => {
                 const isCurrent = (p.name === (projectState.current_project || 'default'));
-                const modifiedStr = p.modified ? new Date(p.modified * 1000).toLocaleString() : 'N/A';
+                const modifiedStr = p.updated_at ? new Date(p.updated_at).toLocaleString() : (p.modified ? new Date(p.modified * 1000).toLocaleString() : 'N/A');
+                const isNiryo = (p.robot_model || '').toLowerCase() === 'niryo';
+                const modelBadge = isNiryo
+                    ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Niryo</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>';
                 return `
-                    <div class="p-3 bg-slate-850 hover:bg-slate-800 rounded-xl border ${isCurrent ? 'border-sky-500/60 bg-sky-950/20' : 'border-slate-800'} transition flex items-center justify-between gap-3">
+                    <div class="p-3 bg-slate-850 hover:bg-slate-800 rounded-xl border ${isCurrent ? (isNiryo ? 'border-cyan-500/60 bg-cyan-950/20' : 'border-indigo-500/60 bg-indigo-950/20') : 'border-slate-800'} transition flex items-center justify-between gap-3">
                         <div class="flex items-center space-x-2.5 min-w-0">
-                            <span class="text-xl">📁</span>
+                            <span class="text-xl">${isNiryo ? '🤖' : '🦾'}</span>
                             <div>
                                 <div class="flex items-center space-x-2">
                                     <span class="text-xs font-bold text-white font-mono">${escapeHtml(p.name)}</span>
+                                    ${modelBadge}
                                     ${isCurrent ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-600 text-white">ACTIVE</span>' : ''}
                                 </div>
                                 <div class="text-[10px] text-slate-400 mt-0.5">${p.files_count || 0} file(s) • Modified: ${modifiedStr}</div>
@@ -1576,9 +1749,9 @@ print("Routine completed successfully!")
             }).join("");
         }
 
-        async function onSelectStudentProject(projectName) {
+        async function onSelectStudentProject(projectName, fromAutoLoad = false) {
             if (!projectName) return;
-            if (editor && projectState.active_file) {
+            if (!fromAutoLoad && editor && projectState.active_file) {
                 projectState.files[projectState.active_file] = editor.getValue();
             }
             try {
@@ -1586,18 +1759,32 @@ print("Routine completed successfully!")
                     headers: { 'Authorization': `Bearer ${currentAuthToken}` }
                 });
                 if (!res.ok) {
-                    alert("Could not load project folder.");
+                    if (!fromAutoLoad) alert("Could not load project folder.");
                     return;
                 }
                 const data = await res.json();
+                let model = data.robot_model;
+                if (!model) {
+                    const allCode = Object.values(data.files || {}).join(" ");
+                    model = (allCode.includes('pyniryo') || allCode.includes('NiryoRobot')) ? 'niryo' : 'ur';
+                }
+                projectState.robot_model = model;
+                selectStudentRobotModel(model, false);
+                lockStudentProjectRobot(model);
+
                 projectState.current_project = projectName;
-                projectState.files = data.files || { "main.py": buildDefaultCode(configuredIp, currentRobotModel) };
+                projectState.folderName = projectName;
+                const loadedFiles = (data.files && Object.keys(data.files).length > 0)
+                    ? data.files
+                    : { "main.py": buildDefaultCode(configuredIp, model) };
+                projectState.files = loadedFiles;
                 projectState.entry_point = ("main.py" in projectState.files) ? "main.py" : Object.keys(projectState.files)[0];
                 projectState.active_file = projectState.entry_point;
                 saveProjectToStorage();
 
                 if (editor) {
                     editor.setValue(projectState.files[projectState.active_file] || "");
+                    setTimeout(() => editor.layout(), 40);
                 }
                 renderEditorTabs();
                 renderProjectExplorer();
@@ -1605,8 +1792,10 @@ print("Routine completed successfully!")
                 const select = document.getElementById("studentProjectSelect");
                 if (select) select.value = projectName;
 
-                appendStudentLog(`\n[WORKSPACE] Switched to project folder "${projectName}" (${Object.keys(projectState.files).length} files).\n`);
-                fetchWorkspaceFolders();
+                appendStudentLog(`\n[WORKSPACE] Loaded project folder "${projectName}" (${Object.keys(projectState.files).length} files).\n`, false);
+                if (!fromAutoLoad) {
+                    fetchWorkspaceFolders(true);
+                }
             } catch (e) {
                 console.error("Error loading project folder:", e);
             }
@@ -1682,20 +1871,35 @@ print("Routine completed successfully!")
         }
 
         function switchProjectsModalTab(tab) {
-            const btnWs = document.getElementById("tabBtnWorkspaceProjects");
+            const btnNiryo = document.getElementById("tabBtnNiryoProjects");
+            const btnUR = document.getElementById("tabBtnURProjects");
             const btnHist = document.getElementById("tabBtnSubmissionsHistory");
             const secWs = document.getElementById("modalWorkspacesSection");
             const secHist = document.getElementById("modalHistorySection");
+            const subTitle = document.getElementById("modalWorkspacesSubtitle");
 
-            if (tab === 'workspaces') {
-                if (btnWs) btnWs.className = "pb-2 text-xs font-bold text-sky-400 border-b-2 border-sky-400 transition flex items-center space-x-1.5";
+            if (tab === 'niryo') {
+                currentModalTabModel = 'niryo';
+                if (btnNiryo) btnNiryo.className = "pb-2 text-xs font-bold text-cyan-400 border-b-2 border-cyan-400 transition flex items-center space-x-1.5";
+                if (btnUR) btnUR.className = "pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5";
                 if (btnHist) btnHist.className = "pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5";
                 if (secWs) secWs.classList.remove("hidden");
                 if (secHist) secHist.classList.add("hidden");
-                fetchWorkspaceFolders();
+                if (subTitle) subTitle.innerText = "Niryo Ned project folders for custom routines, vision, and gripper tasks:";
+                renderModalWorkspacesList(studentWorkspaceFolders);
+            } else if (tab === 'ur') {
+                currentModalTabModel = 'ur';
+                if (btnUR) btnUR.className = "pb-2 text-xs font-bold text-indigo-400 border-b-2 border-indigo-400 transition flex items-center space-x-1.5";
+                if (btnNiryo) btnNiryo.className = "pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5";
+                if (btnHist) btnHist.className = "pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5";
+                if (secWs) secWs.classList.remove("hidden");
+                if (secHist) secHist.classList.add("hidden");
+                if (subTitle) subTitle.innerText = "Universal Robots UR3 project folders for industrial trajectory scripts:";
+                renderModalWorkspacesList(studentWorkspaceFolders);
             } else {
                 if (btnHist) btnHist.className = "pb-2 text-xs font-bold text-sky-400 border-b-2 border-sky-400 transition flex items-center space-x-1.5";
-                if (btnWs) btnWs.className = "pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5";
+                if (btnNiryo) btnNiryo.className = "pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5";
+                if (btnUR) btnUR.className = "pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5";
                 if (secHist) secHist.classList.remove("hidden");
                 if (secWs) secWs.classList.add("hidden");
                 fetchStudentProjects();
@@ -1732,9 +1936,10 @@ print("Routine completed successfully!")
 
         function openMyProjectsModal() {
             document.getElementById("myProjectsModal").classList.remove("hidden");
-            switchProjectsModalTab('workspaces');
-            fetchStudentProjects();
+            const activeModel = (projectState && projectState.robot_model) || currentRobotModel || 'niryo';
+            switchProjectsModalTab(activeModel === 'niryo' ? 'niryo' : 'ur');
             fetchWorkspaceFolders();
+            fetchStudentProjects();
         }
 
         function closeMyProjectsModal() {
@@ -1800,9 +2005,9 @@ print("Routine completed successfully!")
             if (!proj) return;
             if (confirm(`Load project "${proj.task_id}" into editor? This replaces current editor code.`)) {
                 const projModel = proj.robot_model || ((proj.code && proj.code.includes('pyniryo')) ? 'niryo' : 'ur');
-                if (projModel !== currentRobotModel) {
-                    selectStudentRobotModel(projModel, false);
-                }
+                projectState.robot_model = projModel;
+                selectStudentRobotModel(projModel, false);
+                lockStudentProjectRobot(projModel);
 
                 // Restore multi-file project if available
                 let restoredFiles = null;
@@ -1868,6 +2073,7 @@ print("Routine completed successfully!")
             const initialCode = (legacyCode && legacyCode.trim()) ? legacyCode : buildDefaultCode(configuredIp, currentRobotModel);
 
             projectState = {
+                current_project: "default",
                 folderName: "robot_project",
                 entry_point: "main.py",
                 active_file: "main.py",
@@ -1896,6 +2102,7 @@ print("Routine completed successfully!")
             const progName = projectState.current_project || "default";
             localStorage.setItem(STORAGE_PROG_KEY, progName);
             saveProjectToStorage();
+            syncActiveProjectToServer();
             
             const toast = document.getElementById("saveToast");
             if (toast) {
@@ -1932,6 +2139,7 @@ print("Routine completed successfully!")
             saveProjectToStorage();
             renderEditorTabs();
             renderProjectExplorer();
+            setTimeout(() => { if (editor) editor.layout(); }, 30);
         }
 
         function renderEditorTabs() {
@@ -2122,18 +2330,22 @@ print("Routine completed successfully!")
 
         let isInitialProjectCreation = false;
 
-        function openNewProjectModal(isInitial = false) {
+        function openNewProjectModal(isInitial = false, defaultModel = null) {
             isInitialProjectCreation = isInitial;
             const modal = document.getElementById("newProjectModal");
             const input = document.getElementById("newProjectNameInput");
+            const robotSel = document.getElementById("newProjectRobotSelect");
             const title = document.getElementById("newProjectModalTitle");
             const subtitle = document.getElementById("newProjectModalSubtitle");
             const cancelBtn = document.getElementById("btnCancelNewProject");
 
             if (modal && input) {
+                if (robotSel) {
+                    robotSel.value = defaultModel || currentModalTabModel || currentRobotModel || 'niryo';
+                }
                 if (isInitial) {
                     if (title) title.innerText = "Create Your First Project";
-                    if (subtitle) subtitle.innerText = "No project found. Choose a name for your first project to get started:";
+                    if (subtitle) subtitle.innerText = "No project found. Choose a name and target robot to get started:";
                     if (cancelBtn) cancelBtn.classList.add("hidden");
                     input.value = "my_robot_project";
                 } else {
@@ -2159,6 +2371,8 @@ print("Routine completed successfully!")
 
         async function confirmCreateProject() {
             const input = document.getElementById("newProjectNameInput");
+            const robotSel = document.getElementById("newProjectRobotSelect");
+            const selectedModel = robotSel ? robotSel.value : (currentRobotModel || 'ur');
             let rawName = input ? input.value.trim() : "";
             if (!rawName) rawName = "my_robot_project";
             const clean = rawName.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -2170,7 +2384,7 @@ print("Routine completed successfully!")
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${currentAuthToken}`
                     },
-                    body: JSON.stringify({ name: clean, template: currentRobotModel })
+                    body: JSON.stringify({ name: clean, template: selectedModel, robot_model: selectedModel })
                 });
                 const data = await res.json();
                 if (!res.ok) {
@@ -2180,7 +2394,8 @@ print("Routine completed successfully!")
                 const modal = document.getElementById("newProjectModal");
                 if (modal) modal.classList.add("hidden");
                 isInitialProjectCreation = false;
-                appendStudentLog(`\n[WORKSPACE] Created project folder "${clean}".\n`);
+                appendStudentLog(`\n[WORKSPACE] Created project folder "${clean}" for ${selectedModel === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}.\n`);
+                selectStudentRobotModel(selectedModel, false);
                 await fetchWorkspaceFolders();
                 await onSelectStudentProject(clean);
             } catch (e) {
@@ -2388,90 +2603,113 @@ print("Routine completed successfully!")
         // Monaco Editor Setup
         // ==========================================
 
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
-        require(['vs/editor/editor.main'], async function () {
-            try {
-                const confRes = await fetch('/api/config');
-                const confData = await confRes.json();
-                allRobotIps.ur = confData.ur_ip || confData.robot_ip || '10.0.10.60';
-                allRobotIps.niryo = confData.niryo_ip || '10.0.130.49';
-
-                const savedModel = localStorage.getItem(STORAGE_ROBOT_KEY);
-                if (savedModel && (savedModel === 'ur' || savedModel === 'niryo')) {
-                    currentRobotModel = savedModel;
-                } else if (confData.robot_model && (confData.robot_model === 'ur' || confData.robot_model === 'niryo')) {
-                    currentRobotModel = confData.robot_model;
-                }
-
-                configuredIp = allRobotIps[currentRobotModel] || confData.robot_ip;
-                updateStudentRobotUI(currentRobotModel);
-                if (ur3Vis) {
-                    ur3Vis.setRobotModel(currentRobotModel);
-                }
-            } catch (e) {
-                console.error("Config fetch error:", e);
+        function initStudentMonacoEditor() {
+            if (typeof require === 'undefined') {
+                setTimeout(initStudentMonacoEditor, 60);
+                return;
             }
+            try {
+                require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
+                require(['vs/editor/editor.main'], async function () {
+                    initProjectState();
 
-            initProjectState();
+                    const initialCode = (projectState.files && projectState.files[projectState.active_file]) || buildDefaultCode(configuredIp, currentRobotModel);
+                    const edCont = document.getElementById('editorContainer');
+                    if (edCont && !editor) {
+                        editor = monaco.editor.create(edCont, {
+                            value: initialCode,
+                            language: 'python',
+                            theme: 'vs-dark',
+                            automaticLayout: true,
+                            minimap: { enabled: true, maxColumn: 80 },
+                            fontSize: 13,
+                            fontFamily: "Fira Code, Menlo, Monaco, Consolas, monospace",
+                            lineNumbers: "on",
+                            scrollBeyondLastLine: false,
+                            tabSize: 4,
+                            scrollbar: {
+                                vertical: 'visible',
+                                horizontal: 'auto',
+                                verticalScrollbarSize: 10,
+                                horizontalScrollbarSize: 10,
+                                alwaysConsumeMouseWheel: false
+                            }
+                        });
 
-            const initialCode = projectState.files[projectState.active_file] || "";
+                        if (window.ResizeObserver) {
+                            const ro = new ResizeObserver(() => {
+                                if (editor) editor.layout();
+                            });
+                            ro.observe(edCont);
+                        }
 
-            editor = monaco.editor.create(document.getElementById('editorContainer'), {
-                value: initialCode,
-                language: 'python',
-                theme: 'vs-dark',
-                automaticLayout: true,
-                minimap: { enabled: true, maxColumn: 80 },
-                fontSize: 13,
-                fontFamily: "Fira Code, Menlo, Monaco, Consolas, monospace",
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-                tabSize: 4,
-                scrollbar: {
-                    vertical: 'visible',
-                    horizontal: 'auto',
-                    verticalScrollbarSize: 10,
-                    horizontalScrollbarSize: 10,
-                    alwaysConsumeMouseWheel: false
-                }
-            });
+                        window.addEventListener('resize', () => {
+                            if (editor) editor.layout();
+                        });
 
-            window.addEventListener('resize', () => {
-                if (editor) editor.layout();
-            });
+                        editor.onDidChangeModelContent(() => {
+                            if (projectState.active_file) {
+                                projectState.files[projectState.active_file] = editor.getValue();
+                                saveProjectToStorage();
+                            }
+                        });
 
-            editor.onDidChangeModelContent(() => {
-                if (projectState.active_file) {
-                    projectState.files[projectState.active_file] = editor.getValue();
-                    saveProjectToStorage();
-                }
-            });
+                        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
+                            saveCodeLocally();
+                        });
 
-// programName input listener removed
+                        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function() {
+                            submitCode();
+                        });
 
-            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
-                saveCodeLocally();
-            });
+                        editor.addCommand(monaco.KeyCode.Space, function() {
+                            if (isStudentExecuting) {
+                                abortStudentRobot("SPACE Key (inside Code Editor)");
+                            } else {
+                                editor.trigger('keyboard', 'type', { text: ' ' });
+                            }
+                        });
+                    }
 
-            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function() {
-                submitCode();
-            });
+                    renderEditorTabs();
+                    renderProjectExplorer();
 
-            editor.addCommand(monaco.KeyCode.Space, function() {
-                if (isStudentExecuting) {
-                    abortStudentRobot("SPACE Key (inside Code Editor)");
-                } else {
-                    editor.trigger('keyboard', 'type', { text: ' ' });
-                }
-            });
+                    setTimeout(() => {
+                        if (editor) editor.layout();
+                    }, 80);
 
-            renderEditorTabs();
-            renderProjectExplorer();
+                    try {
+                        const confRes = await fetch('/api/config');
+                        const confData = await confRes.json();
+                        allRobotIps.ur = confData.ur_ip || confData.robot_ip || '10.0.10.60';
+                        allRobotIps.niryo = confData.niryo_ip || '10.0.130.49';
 
-            checkRobotStatus();
-            fetchExamples();
-            setInterval(checkRobotStatus, 3000);
-        });
+                        const savedModel = localStorage.getItem(STORAGE_ROBOT_KEY);
+                        if (savedModel && (savedModel === 'ur' || savedModel === 'niryo')) {
+                            currentRobotModel = savedModel;
+                        } else if (confData.robot_model && (confData.robot_model === 'ur' || confData.robot_model === 'niryo')) {
+                            currentRobotModel = confData.robot_model;
+                        }
+
+                        configuredIp = allRobotIps[currentRobotModel] || confData.robot_ip;
+                        updateStudentRobotUI(currentRobotModel);
+                        if (ur3Vis) {
+                            ur3Vis.setRobotModel(currentRobotModel);
+                        }
+                    } catch (e) {
+                        console.error("Config fetch error:", e);
+                    }
+
+                    checkRobotStatus();
+                    fetchExamples();
+                    setInterval(checkRobotStatus, 3000);
+                });
+            } catch (err) {
+                console.error("Monaco loader error:", err);
+                setTimeout(initStudentMonacoEditor, 200);
+            }
+        }
+        initStudentMonacoEditor();
 
         function updateTargetNotice() {
             const modelLabel = (currentRobotModel === 'niryo') ? 'Niryo Ned' : 'UR3 Arm';
@@ -2716,7 +2954,35 @@ print("Routine completed successfully!")
             }
         }
 
-        async function submitCode() {
+        function openCommitMessageModal(programName) {
+            const modal = document.getElementById("commitMessageModal");
+            const sub = document.getElementById("commitModalSubtitle");
+            const input = document.getElementById("commitMessageInput");
+            if (sub) sub.innerText = `A submission with the project name "${programName}" already exists. Enter a commit message to record what changed in this version:`;
+            if (input) {
+                input.value = "";
+                setTimeout(() => input.focus(), 100);
+            }
+            if (modal) modal.classList.remove("hidden");
+        }
+
+        function closeCommitMessageModal() {
+            const modal = document.getElementById("commitMessageModal");
+            if (modal) modal.classList.add("hidden");
+        }
+
+        function confirmCommitSubmission() {
+            const input = document.getElementById("commitMessageInput");
+            const msg = (input ? input.value : "").trim();
+            if (!msg) {
+                alert("Please enter a commit message describing your changes (e.g., 'Fixed joint limits', 'Adjusted gripper speed').");
+                return;
+            }
+            closeCommitMessageModal();
+            submitCode(msg);
+        }
+
+        async function submitCode(commitMsg = null) {
             if (!currentStudentUser) {
                 showAuthModal();
                 return;
@@ -2735,14 +3001,40 @@ print("Routine completed successfully!")
                 return;
             }
 
-            // Automatically switch to Simulation & Live Output View!
-            switchMainPortalView('sim');
+            // Check duplicate if commitMsg is not already provided
+            if (!commitMsg) {
+                try {
+                    const checkRes = await fetch(`/api/student/check-duplicate?student_name=${encodeURIComponent(currentStudentUser.username)}&program_name=${encodeURIComponent(programName)}`, {
+                        headers: { 'Authorization': `Bearer ${currentAuthToken}` }
+                    });
+                    if (checkRes.ok) {
+                        const checkData = await checkRes.json();
+                        if (checkData.is_duplicate) {
+                            openCommitMessageModal(programName);
+                            return;
+                        }
+                    }
+                } catch(e) {
+                    console.warn("Could not check duplicate status:", e);
+                }
+            }
+
+            const subModel = projectState.robot_model || currentRobotModel || 'ur';
+            studentActiveRunModel = (subModel === 'niryo') ? 'niryo' : 'ur';
+
+            // Automatically switch to Live Run Monitor View!
+            switchMainPortalView('run');
+            switchStudentRunModel(studentActiveRunModel);
 
             const navBadge = document.getElementById("navSimStatusBadge");
             if (navBadge) {
                 navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-blue-600 text-white animate-pulse";
                 navBadge.innerText = "QUEUED";
                 navBadge.classList.remove("hidden");
+            }
+            const runPulse = document.getElementById("navRunPulseDot");
+            if (runPulse) {
+                runPulse.className = "w-2 h-2 rounded-full bg-amber-400 animate-ping";
             }
 
             const btn = document.getElementById("btnSubmit");
@@ -2766,7 +3058,8 @@ print("Routine completed successfully!")
                         code: entryCode,
                         files: projectState.files,
                         entry_point: projectState.entry_point,
-                        robot_model: currentRobotModel
+                        robot_model: subModel,
+                        commit_message: commitMsg || ""
                     })
                 });
 
@@ -2777,20 +3070,40 @@ print("Routine completed successfully!")
                         navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-rose-900/80 text-rose-300";
                         navBadge.innerText = "BLOCKED";
                     }
+                    if (runPulse) runPulse.className = "w-2 h-2 rounded-full bg-rose-500";
                     return;
                 }
 
                 currentSubId = data.submission_id;
+                currentSubStatus = "pending";
                 document.getElementById("submissionStatus").innerText = `Execution #${currentSubId}: ${programName} (${currentStudentUser.username})`;
                 updateBadge("pending");
                 clearTerminal();
+                const runTerm = document.getElementById("studentRunTerminal");
+                if (runTerm) runTerm.innerText = "";
+
+                const runLabel = document.getElementById("studentRunActiveLabel");
+                if (runLabel) {
+                    runLabel.innerText = `QUEUED #${currentSubId}: ${programName} — Waiting for Instructor Run`;
+                    runLabel.className = "text-sm font-black text-amber-400 font-mono";
+                }
+                const runDot = document.getElementById("studentRunStatusDot");
+                if (runDot) runDot.className = "w-3.5 h-3.5 rounded-full bg-amber-400 animate-pulse shrink-0";
+                const runAuthor = document.getElementById("studentRunActiveAuthor");
+                if (runAuthor) runAuthor.innerText = `Author: ${currentStudentUser.username} (Project: ${programName})`;
+                const runStreamInfo = document.getElementById("studentRunStreamInfo");
+                if (runStreamInfo) runStreamInfo.innerText = `Log stream: #${currentSubId} connected`;
                 
                 const offlineHint = !isRobotReady ? " (NOTE: Robot is offline; program will execute once physical robot is ready)" : "";
-                appendStudentLog(`[INFO] Program "${programName}" submitted by ${currentStudentUser.username} as #${currentSubId}${offlineHint}. Awaiting instructor approval...\n`, false);
-                appendStudentLog(`[PROJECT] Multi-File Bundle (${Object.keys(projectState.files).length} files, Entry: ${projectState.entry_point}) packaged successfully.\n\n`, false);
+                const msg1 = `[INFO] Program "${programName}" submitted by ${currentStudentUser.username} as #${currentSubId}${offlineHint}. Awaiting instructor execution...\n`;
+                const msg2 = `[PROJECT] Multi-File Bundle (${Object.keys(projectState.files).length} files, Entry: ${projectState.entry_point}) packaged successfully.\n\n`;
+                appendStudentLog(msg1, false);
+                appendStudentLog(msg2, false);
+                appendStudentRunLog(msg1);
+                appendStudentRunLog(msg2);
                 connectLogStream(currentSubId);
 
-                // Animate routine in 3D visualizer immediately upon submission
+                // Animate routine in 3D visualizer (both Sim and Live Run visualizers)
                 fetch('/api/simulate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2798,14 +3111,22 @@ print("Routine completed successfully!")
                         code: entryCode,
                         files: projectState.files,
                         entry_point: projectState.entry_point,
-                        robot_model: currentRobotModel
+                        robot_model: subModel
                     })
                 }).then(r => r.json()).then(simData => {
-                    if (simData.success && simData.waypoints && simData.waypoints.length > 0 && ur3Vis) {
-                        if (simData.robot_model && simData.robot_model !== ur3Vis.currentModel) {
-                            ur3Vis.setRobotModel(simData.robot_model);
+                    if (simData.success && simData.waypoints && simData.waypoints.length > 0) {
+                        if (ur3Vis) {
+                            if (simData.robot_model && simData.robot_model !== ur3Vis.currentModel) {
+                                ur3Vis.setRobotModel(simData.robot_model);
+                            }
+                            ur3Vis.playTrajectory(simData.waypoints);
                         }
-                        ur3Vis.playTrajectory(simData.waypoints);
+                        if (studentRunVis) {
+                            if (simData.robot_model && simData.robot_model !== studentRunVis.currentModel) {
+                                studentRunVis.setRobotModel(simData.robot_model);
+                            }
+                            studentRunVis.playTrajectory(simData.waypoints);
+                        }
                     }
                 }).catch(err => console.warn("Background simulation animation error:", err));
 
@@ -2871,6 +3192,8 @@ print("Routine completed successfully!")
             }
         }
 
+        let currentSubStatus = null;
+
         function connectLogStream(subId) {
             if (logSocket) {
                 logSocket.close();
@@ -2881,31 +3204,67 @@ print("Routine completed successfully!")
             logSocket = new WebSocket(wsUrl);
 
             logSocket.onopen = () => {
-                appendStudentLog(`[WEBSOCKET] Connected to real-time log channel for execution #${subId}.\n`, false);
+                const msg = `[WEBSOCKET] Connected to real-time log channel for execution #${subId}.\n`;
+                appendStudentLog(msg, false);
+                appendStudentRunLog(msg);
             };
 
             logSocket.onmessage = (event) => {
                 appendStudentLog(event.data);
+                appendStudentRunLog(event.data);
+                const runLabel = document.getElementById("studentRunActiveLabel");
+                const runDot = document.getElementById("studentRunStatusDot");
+                const runPulse = document.getElementById("navRunPulseDot");
+
                 if (event.data.includes("Executing submission") || event.data.includes("[RUNNING]")) {
                     isStudentExecuting = true;
+                    currentSubStatus = "running";
                     updateBadge("running");
+                    if (runLabel) {
+                        runLabel.innerText = `RUNNING #${subId} — Physical Execution in Progress`;
+                        runLabel.className = "text-sm font-black text-emerald-400 font-mono";
+                    }
+                    if (runDot) runDot.className = "w-3.5 h-3.5 rounded-full bg-emerald-400 animate-ping shrink-0";
+                    if (runPulse) runPulse.className = "w-2 h-2 rounded-full bg-emerald-400 animate-ping";
                 }
                 if (event.data.includes("[COMPLETED]")) {
                     isStudentExecuting = false;
+                    currentSubStatus = "completed";
                     updateBadge("completed");
+                    if (runLabel) {
+                        runLabel.innerText = `COMPLETED #${subId} — Routine Finished`;
+                        runLabel.className = "text-sm font-black text-emerald-400 font-mono";
+                    }
+                    if (runDot) runDot.className = "w-3.5 h-3.5 rounded-full bg-emerald-500 shrink-0";
+                    if (runPulse) runPulse.className = "w-2 h-2 rounded-full bg-emerald-500";
                 }
                 if (event.data.includes("[FAILED]")) {
                     isStudentExecuting = false;
+                    currentSubStatus = "failed";
                     updateBadge("failed");
+                    if (runLabel) {
+                        runLabel.innerText = `FAILED #${subId} — Execution Error`;
+                        runLabel.className = "text-sm font-black text-rose-400 font-mono";
+                    }
+                    if (runDot) runDot.className = "w-3.5 h-3.5 rounded-full bg-rose-500 shrink-0";
+                    if (runPulse) runPulse.className = "w-2 h-2 rounded-full bg-rose-500";
                 }
                 if (event.data.includes("[ABORTED]")) {
                     isStudentExecuting = false;
+                    currentSubStatus = "aborted";
                     updateBadge("aborted");
+                    if (runLabel) {
+                        runLabel.innerText = `ABORTED #${subId} — Emergency Halted`;
+                        runLabel.className = "text-sm font-black text-rose-400 font-mono";
+                    }
+                    if (runDot) runDot.className = "w-3.5 h-3.5 rounded-full bg-rose-600 animate-pulse shrink-0";
+                    if (runPulse) runPulse.className = "w-2 h-2 rounded-full bg-rose-600";
                 }
             };
 
             logSocket.onclose = () => {
                 appendStudentLog(`\n[WEBSOCKET] Log stream closed.\n`);
+                appendStudentRunLog(`\n[WEBSOCKET] Log stream closed.\n`);
             };
         }
 
@@ -2916,7 +3275,13 @@ print("Routine completed successfully!")
         function toggleExamplesMenu(event) {
             event.stopPropagation();
             const dd = document.getElementById("examplesDropdown");
-            dd.classList.toggle("hidden");
+            if (dd) {
+                const willShow = dd.classList.contains("hidden");
+                dd.classList.toggle("hidden");
+                if (willShow) {
+                    fetchExamples();
+                }
+            }
         }
 
         window.addEventListener("click", () => {
@@ -2928,9 +3293,10 @@ print("Routine completed successfully!")
 
         async function fetchExamples(forceAlert = false) {
             try {
-                const res = await fetch(`/api/examples?model=${currentRobotModel}`);
+                const targetModel = (projectState && projectState.robot_model) || currentRobotModel || 'ur';
+                const res = await fetch(`/api/examples?model=${targetModel}`);
                 const data = await res.json();
-                renderExamplesList(data.examples || [], data.robot_model || currentRobotModel);
+                renderExamplesList(data.examples || [], data.robot_model || targetModel);
                 if (forceAlert) {
                     const modelName = (data.robot_model === 'niryo') ? 'Niryo Ned' : 'UR3';
                     appendStudentLog(`[INFO] Examples refreshed for ${modelName}.\n`);
@@ -2966,11 +3332,25 @@ print("Routine completed successfully!")
                 const ex = await res.json();
                 if (ex && ex.code) {
                     if (confirm(`Load example "${ex.title}" into editor? This replaces current editor code.`)) {
-                        if (ex.robot_model && ex.robot_model !== currentRobotModel) {
-                            selectStudentRobotModel(ex.robot_model, false);
+                        const targetModel = ex.robot_model || currentRobotModel || 'ur';
+                        projectState.robot_model = targetModel;
+                        selectStudentRobotModel(targetModel, false);
+                        lockStudentProjectRobot(targetModel);
+
+                        const targetFile = projectState.active_file || projectState.entry_point || "main.py";
+                        if (!projectState.files || typeof projectState.files !== 'object') {
+                            projectState.files = {};
                         }
-                        editor.setValue(ex.code);
+                        projectState.files[targetFile] = ex.code;
+                        projectState.active_file = targetFile;
+
+                        if (editor) {
+                            editor.setValue(ex.code);
+                            setTimeout(() => editor.layout(), 40);
+                        }
                         saveCodeLocally();
+                        renderEditorTabs();
+                        renderProjectExplorer();
                         appendStudentLog(`[INFO] Loaded example: ${ex.title}\n`);
                         const dd = document.getElementById("examplesDropdown");
                         if (dd) dd.classList.add("hidden");
@@ -2996,19 +3376,27 @@ print("Routine completed successfully!")
         // ==========================================
 
         function initStudentRunView() {
-            if (!studentRunVis) {
-                studentRunVis = new UR3Visualizer("studentRunCanvasContainer");
-            }
-            if (studentRunVis) {
-                studentRunVis.setRobotModel(studentActiveRunModel);
-                setTimeout(() => {
-                    if (studentRunVis.onWindowResize) studentRunVis.onWindowResize();
-                }, 80);
+            try {
+                if (!studentRunVis && typeof UR3Visualizer !== 'undefined') {
+                    studentRunVis = new UR3Visualizer("studentRunCanvasContainer");
+                }
+                if (studentRunVis) {
+                    studentRunVis.setRobotModel(studentActiveRunModel);
+                    setTimeout(() => {
+                        if (studentRunVis.onWindowResize) studentRunVis.onWindowResize();
+                    }, 80);
+                }
+            } catch (visErr) {
+                console.warn("Student run visualizer init warning:", visErr);
             }
             startStudentRunMonitoring(studentActiveRunModel);
         }
 
         function switchStudentRunModel(model) {
+            if (projectState && projectState.robot_model && projectState.robot_model !== model) {
+                alert(`This project is configured for ${projectState.robot_model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}. You cannot switch to another arm.`);
+                return;
+            }
             studentActiveRunModel = (model === 'niryo') ? 'niryo' : 'ur';
             const btnUR = document.getElementById("btnStudentRunUR");
             const btnNiryo = document.getElementById("btnStudentRunNiryo");
@@ -3122,6 +3510,21 @@ print("Routine completed successfully!")
         function updateStudentRunTelemetryUI(snap) {
             if (!snap) return;
 
+            const conn = Boolean(snap.connected);
+            const disBanner = document.getElementById("studentTelDisconnectedBanner");
+            if (disBanner) disBanner.classList.toggle("hidden", conn);
+
+            const pill = document.getElementById("studentTelConnectedPill");
+            if (pill) {
+                if (conn) {
+                    pill.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800";
+                    pill.innerText = "CONNECTED";
+                } else {
+                    pill.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
+                    pill.innerText = "OFFLINE";
+                }
+            }
+
             const engine = snap.engine || {};
             const isExec = engine.is_executing || snap.is_executing || false;
             const isHalt = engine.emergency_halted || snap.emergency_halted || false;
@@ -3136,16 +3539,82 @@ print("Routine completed successfully!")
                     label.className = "text-sm font-black text-rose-400 font-mono";
                 } else if (isExec) {
                     dot.className = "w-3.5 h-3.5 rounded-full bg-emerald-500 animate-pulse shrink-0";
-                    label.innerText = `RUNNING (Job #${engine.active_sub_id || 'Active'})`;
+                    label.innerText = `RUNNING (Job #${engine.active_sub_id || currentSubId || 'Active'})`;
                     label.className = "text-sm font-black text-emerald-400 font-mono";
-                } else {
+                } else if (currentSubId && currentSubStatus === 'pending') {
+                    dot.className = "w-3.5 h-3.5 rounded-full bg-amber-400 animate-pulse shrink-0";
+                    label.innerText = `QUEUED (#${currentSubId}: ${projectState.current_project || 'default'}) — Waiting for Instructor Run`;
+                    label.className = "text-sm font-black text-amber-400 font-mono";
+                } else if (conn) {
                     dot.className = "w-3.5 h-3.5 rounded-full bg-slate-600 shrink-0";
-                    label.innerText = "IDLE — Waiting for instructor execution";
+                    label.innerText = "IDLE — Hardware Online (Waiting for execution)";
                     label.className = "text-sm font-black text-white font-mono";
+                } else {
+                    dot.className = "w-3.5 h-3.5 rounded-full bg-slate-700 shrink-0";
+                    label.innerText = "DISCONNECTED — Arm Offline";
+                    label.className = "text-sm font-bold text-slate-400 font-mono";
                 }
             }
 
-            const spd = (typeof snap.speed === 'number') ? snap.speed : 0;
+            // IF NO ROBOT IS CONNECTED, NO TELEMETRY SHOULD BE SHOWN!
+            if (!conn) {
+                const spdEl = document.getElementById("studentTelSpeedNum");
+                if (spdEl) spdEl.innerText = "—";
+                const spdMmEl = document.getElementById("studentTelSpeedMm");
+                if (spdMmEl) spdMmEl.innerText = "—";
+                const spdBar = document.getElementById("studentTelSpeedBar");
+                if (spdBar) spdBar.style.width = "0%";
+
+                const maxSpd = document.getElementById("studentTelMaxSpeed");
+                if (maxSpd) maxSpd.innerText = "—";
+                const avgSpd = document.getElementById("studentTelAvgSpeed");
+                if (avgSpd) avgSpd.innerText = "—";
+                const pathLen = document.getElementById("studentTelPathLen");
+                if (pathLen) pathLen.innerText = "—";
+                const movTime = document.getElementById("studentTelMovingTime");
+                if (movTime) movTime.innerText = "—";
+
+                const px = document.getElementById("studentTelPosX");
+                const py = document.getElementById("studentTelPosY");
+                const pz = document.getElementById("studentTelPosZ");
+                if (px) px.innerText = "—";
+                if (py) py.innerText = "—";
+                if (pz) pz.innerText = "—";
+
+                const rx = document.getElementById("studentTelRotRx");
+                const ry = document.getElementById("studentTelRotRy");
+                const rz = document.getElementById("studentTelRotRz");
+                if (rx) rx.innerText = "—";
+                if (ry) ry.innerText = "—";
+                if (rz) rz.innerText = "—";
+
+                for (let i = 0; i < 6; i++) {
+                    const el = document.getElementById(`studentTelQ${i}`);
+                    if (el) el.innerText = "—";
+                }
+
+                const rMode = document.getElementById("studentTelRobotMode");
+                if (rMode) {
+                    rMode.innerText = "DISCONNECTED";
+                    rMode.className = "font-bold font-mono text-slate-500 uppercase text-[11px]";
+                }
+                const sMode = document.getElementById("studentTelSafetyMode");
+                if (sMode) {
+                    sMode.innerText = "OFFLINE";
+                    sMode.className = "font-bold font-mono text-slate-500 uppercase text-[11px]";
+                }
+                const pwr = document.getElementById("studentTelPower");
+                if (pwr) pwr.innerText = "—";
+                const pStop = document.getElementById("studentTelProtectiveStop");
+                if (pStop) {
+                    pStop.innerText = "—";
+                    pStop.className = "font-bold text-slate-600";
+                }
+                return;
+            }
+
+            // --- ROBOT CONNECTED: RENDER LIVE TELEMETRY ---
+            const spd = (typeof snap.speed === 'number') ? snap.speed : ((typeof snap.tcp_speed === 'number') ? snap.tcp_speed : 0);
             const spdEl = document.getElementById("studentTelSpeedNum");
             const spdMmEl = document.getElementById("studentTelSpeedMm");
             const spdBar = document.getElementById("studentTelSpeedBar");
@@ -3156,20 +3625,25 @@ print("Routine completed successfully!")
                 spdBar.style.width = `${pct}%`;
             }
 
-            if (document.getElementById("studentTelMaxSpeed") && typeof snap.max_speed === 'number') {
-                document.getElementById("studentTelMaxSpeed").innerText = `${snap.max_speed.toFixed(3)} m/s`;
+            const stats = snap.stats || {};
+            const maxSpd = (typeof stats.max_speed === 'number') ? stats.max_speed : snap.max_speed;
+            if (document.getElementById("studentTelMaxSpeed") && typeof maxSpd === 'number') {
+                document.getElementById("studentTelMaxSpeed").innerText = `${maxSpd.toFixed(3)} m/s`;
             }
-            if (document.getElementById("studentTelAvgSpeed") && typeof snap.avg_speed === 'number') {
-                document.getElementById("studentTelAvgSpeed").innerText = `${snap.avg_speed.toFixed(3)} m/s`;
+            const avgSpd = (typeof stats.avg_speed === 'number') ? stats.avg_speed : snap.avg_speed;
+            if (document.getElementById("studentTelAvgSpeed") && typeof avgSpd === 'number') {
+                document.getElementById("studentTelAvgSpeed").innerText = `${avgSpd.toFixed(3)} m/s`;
             }
-            if (document.getElementById("studentTelPathLen") && typeof snap.path_length_m === 'number') {
-                document.getElementById("studentTelPathLen").innerText = `${snap.path_length_m.toFixed(2)} m`;
+            const pathLen = (typeof stats.path_length === 'number') ? stats.path_length : snap.path_length_m;
+            if (document.getElementById("studentTelPathLen") && typeof pathLen === 'number') {
+                document.getElementById("studentTelPathLen").innerText = `${pathLen.toFixed(2)} m`;
             }
-            if (document.getElementById("studentTelMovingTime") && typeof snap.moving_time_s === 'number') {
-                document.getElementById("studentTelMovingTime").innerText = `${snap.moving_time_s.toFixed(1)} s`;
+            const movTime = (typeof stats.moving_time === 'number') ? stats.moving_time : snap.moving_time_s;
+            if (document.getElementById("studentTelMovingTime") && typeof movTime === 'number') {
+                document.getElementById("studentTelMovingTime").innerText = `${movTime.toFixed(1)} s`;
             }
 
-            const pose = snap.actual_tcp_pose || snap.tcp_pose;
+            const pose = snap.tcp_pose || snap.actual_tcp_pose;
             if (Array.isArray(pose) && pose.length >= 6) {
                 const px = document.getElementById("studentTelPosX");
                 const py = document.getElementById("studentTelPosY");
@@ -3187,45 +3661,47 @@ print("Routine completed successfully!")
                 if (rz) rz.innerText = `${(pose[5] * toDeg).toFixed(1)}°`;
             }
 
-            const q = snap.actual_q || snap.joints;
+            const q = snap.q || snap.actual_q || snap.joints;
             if (Array.isArray(q) && q.length >= 6) {
                 const toDeg = 180 / Math.PI;
-                const qDeg = q.map(val => Math.abs(val) > 7.0 ? val : val * toDeg);
+                const qRad = q.map(val => (typeof val === 'number' && Math.abs(val) > 6.5) ? (val * Math.PI / 180) : Number(val) || 0);
+                const qDeg = qRad.map(val => val * toDeg);
                 for (let i = 0; i < 6; i++) {
                     const el = document.getElementById(`studentTelQ${i}`);
                     if (el) el.innerText = `${qDeg[i].toFixed(1)}°`;
                 }
 
-                if (studentRunVis && studentRunVis.setTargetAngles) {
-                    studentRunVis.setTargetAngles(qDeg, 0.1);
-                }
-            }
-
-            const conn = snap.connected;
-            const pill = document.getElementById("studentTelConnectedPill");
-            if (pill) {
-                if (conn) {
-                    pill.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800";
-                    pill.innerText = "CONNECTED";
-                } else {
-                    pill.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
-                    pill.innerText = "OFFLINE";
+                if (studentRunVis) {
+                    studentRunVis.setJointAngles(qRad);
                 }
             }
 
             const rMode = document.getElementById("studentTelRobotMode");
-            if (rMode && snap.robot_mode_str) rMode.innerText = snap.robot_mode_str;
+            if (rMode) {
+                const modeText = snap.robot_mode_str || snap.robot_mode_text || "RUNNING";
+                rMode.innerText = modeText.toUpperCase();
+                rMode.className = "font-bold font-mono text-emerald-400 uppercase text-[11px]";
+            }
 
             const sMode = document.getElementById("studentTelSafetyMode");
-            if (sMode && snap.safety_mode_str) sMode.innerText = snap.safety_mode_str;
+            if (sMode) {
+                const safetyText = snap.safety_mode_str || snap.safety_text || "NORMAL";
+                sMode.innerText = safetyText.toUpperCase();
+                sMode.className = "font-bold font-mono text-sky-300 uppercase text-[11px]";
+            }
 
             const pwr = document.getElementById("studentTelPower");
-            if (pwr && snap.power_str) pwr.innerText = snap.power_str;
+            if (pwr) {
+                const v = snap.voltage || snap.robot_voltage || 48.0;
+                const a = snap.current || snap.robot_current || 1.1;
+                pwr.innerText = `${Number(v).toFixed(1)}V • ${Number(a).toFixed(1)}A`;
+            }
 
             const pStop = document.getElementById("studentTelProtectiveStop");
             if (pStop) {
-                pStop.innerText = snap.protective_stop ? "TRIGGERED" : "NO";
-                pStop.className = snap.protective_stop ? "font-bold text-rose-400" : "font-bold text-slate-500";
+                const isProt = Boolean(snap.protective_stop || snap.is_protective_stopped);
+                pStop.innerText = isProt ? "TRIGGERED" : "NO";
+                pStop.className = isProt ? "font-bold text-rose-400" : "font-bold text-slate-500";
             }
         }
 
