@@ -37,7 +37,7 @@
     </style>
 </head>
 
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col selection:bg-indigo-600 selection:text-white">
+<body class="bg-slate-950 text-slate-100 h-screen overflow-hidden flex flex-col selection:bg-indigo-600 selection:text-white">
 
     <!-- Emergency Stop Overlay / Toast Alert -->
     <div id="emergencyToast"
@@ -61,7 +61,7 @@
     </div>
 
     <!-- Top Navigation / Dual-Robot Supervisor Bar -->
-    <header id="adminHeader" class="hidden bg-slate-900 border-b border-slate-800 px-6 py-3 flex flex-wrap items-center justify-between gap-4 shadow-2xl sticky top-0 z-40">
+    <header id="adminHeader" class="hidden bg-slate-900 border-b border-slate-800 px-6 py-3 flex flex-wrap items-center justify-between gap-4 shadow-2xl flex-shrink-0 z-40">
         <!-- Brand & Admin Identity -->
         <div class="flex items-center space-x-3">
             <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-600 flex items-center justify-center font-black text-white shadow-lg text-sm tracking-wider">
@@ -251,8 +251,12 @@
 
                 <!-- Full-Screen Technical Table -->
                 <div class="flex-1 bg-slate-900 border border-slate-800 rounded-xl shadow-xl overflow-hidden flex flex-col min-h-0">
-                    <div class="flex-1 overflow-y-auto">
-                        <table class="w-full text-left text-xs">
+                    <div class="flex-1 overflow-auto min-h-0">
+                        <table class="w-full min-w-[980px] table-fixed text-left text-xs">
+                            <colgroup>
+                                <col style="width:64px"><col><col style="width:130px"><col style="width:140px">
+                                <col style="width:70px"><col style="width:90px"><col style="width:110px"><col style="width:250px">
+                            </colgroup>
                             <thead class="bg-slate-850/95 text-slate-300 uppercase tracking-wider font-bold text-[11px] sticky top-0 z-10 backdrop-blur border-b border-slate-800">
                                 <tr>
                                     <th class="p-3.5 w-16 text-center">#ID</th>
@@ -463,7 +467,7 @@
             </section>
 
             <!-- ===================== VIEW 3: 3D TRAJECTORY SIMULATOR ===================== -->
-            <section id="adminViewSim" class="hidden flex-1 p-3 sm:p-5 min-h-0 flex flex-col space-y-4" aria-label="3D Simulation">
+            <section id="adminViewSim" class="hidden flex-1 p-3 sm:p-5 min-h-0 flex flex-col space-y-4 overflow-y-auto" aria-label="3D Simulation">
                 <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 shadow-lg flex-shrink-0">
                     <div class="flex items-center space-x-2 min-w-0">
                         <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Simulation Source:</span>
@@ -481,8 +485,8 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-0">
-                    <div class="xl:col-span-8 bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden flex flex-col min-h-[460px]">
+                <div class="grid grid-cols-1 xl:grid-cols-12 xl:grid-rows-1 gap-4 flex-1 min-h-0 overflow-y-auto xl:overflow-visible">
+                    <div class="xl:col-span-8 bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden flex flex-col min-h-[380px] xl:min-h-0">
                         <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
                             <div class="flex items-center space-x-2">
                                 <span id="visModelDot" class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
@@ -494,7 +498,7 @@
                                 <button onclick="if(adminUr3Vis) adminUr3Vis.resetCamera()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Reset</button>
                             </div>
                         </div>
-                        <div id="adminUr3CanvasContainer" class="flex-1 relative bg-[#181e29] min-h-[460px] w-full">
+                        <div id="adminUr3CanvasContainer" class="flex-1 relative bg-[#181e29] min-h-0 w-full overflow-hidden">
                             <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
                                 Joints: <span class="ur3AngleReadout text-sky-300">0° | -90° | 90° | -90° | -90° | 0°</span>
                             </div>
@@ -514,7 +518,7 @@
             </section>
 
             <!-- ===================== VIEW 4: DEDICATED RUN PAGE (TELEMETRY, ANALYTICS, TERMINAL & DEBUG) ===================== -->
-            <section id="adminViewRun" class="hidden flex-1 p-3 sm:p-5 min-h-0 flex flex-col space-y-4 overflow-y-auto" aria-label="Execution and Real-Time Telemetry">
+            <section id="adminViewRun" class="hidden flex-1 p-3 sm:p-5 min-h-0 flex flex-col space-y-4 overflow-y-auto overscroll-contain" aria-label="Execution and Real-Time Telemetry">
                 <!-- Top Run Status & Emergency Control Banner -->
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xl flex-shrink-0">
                     <div class="flex items-center space-x-3.5">
@@ -706,9 +710,9 @@
                 </div>
 
                 <!-- Dual Console Section: Live Script Terminal & Robot Controller Debug -->
-                <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-[380px]">
+                <div class="grid grid-cols-1 xl:grid-cols-12 xl:grid-rows-1 gap-4 xl:h-[460px] flex-shrink-0">
                     <!-- Left: Program Execution Output Terminal -->
-                    <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[350px]">
+                    <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-0 h-[360px] xl:h-auto">
                         <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
                             <div class="flex items-center space-x-2">
                                 <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Script Terminal</span>
@@ -732,13 +736,13 @@
                             </div>
                         </div>
                         <div id="adminTerminal"
-                            class="flex-1 p-3 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
+                            class="flex-1 min-h-0 p-3 bg-black font-mono text-xs text-emerald-400 overflow-y-auto break-words whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
 [Supervisor] System ready. Run a program from Code Studio or select an item from the Projects queue.
                         </div>
                     </div>
 
                     <!-- Center: 3D Digital Twin Visualizer (Real-Time Robot Pose Mirror) -->
-                    <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[350px]">
+                    <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-0 h-[360px] xl:h-auto">
                         <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
                             <div class="flex items-center space-x-2">
                                 <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -750,7 +754,7 @@
                                 <button onclick="if(adminRunVis) adminRunVis.resetCamera()" class="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-[10px] text-slate-300 rounded transition">Reset</button>
                             </div>
                         </div>
-                        <div id="adminRunCanvasContainer" class="flex-1 relative bg-[#181e29] min-h-[280px]">
+                        <div id="adminRunCanvasContainer" class="flex-1 relative bg-[#181e29] min-h-0 overflow-hidden">
                             <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
                                 Live: <span class="ur3AngleReadout text-sky-300">0° | -90° | 90° | -90° | -90° | 0°</span>
                             </div>
@@ -758,7 +762,7 @@
                     </div>
 
                     <!-- Right: Low-Level Robot Debug Console & Dashboard Hub -->
-                    <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[350px]">
+                    <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-0 h-[360px] xl:h-auto">
                         <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
                             <div class="flex items-center space-x-2">
                                 <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Robot Controller Debug Stream</span>
@@ -768,7 +772,7 @@
                         </div>
                         <!-- Debug Log Stream -->
                         <div id="robotDebugConsole"
-                            class="flex-1 p-3 bg-slate-950 font-mono text-xs text-sky-300 overflow-y-auto whitespace-pre-wrap selection:bg-sky-900 selection:text-white">
+                            class="flex-1 min-h-0 p-3 bg-slate-950 font-mono text-xs text-sky-300 overflow-y-auto break-words whitespace-pre-wrap selection:bg-sky-900 selection:text-white">
 [Controller] Connected to Robot Hardware Debug Watchdog.
                         </div>
                         <!-- Dashboard Query Prompt -->
@@ -1105,6 +1109,8 @@
         let selectedSubId = null;
         let activeLogSocket = null;
         let telemetrySocket = null;
+        let telemetryStreamModel = null;
+        let lastTelemetryQ = null;
         let telemetryPollInterval = null;
         let submissionsList = [];
 
@@ -1402,14 +1408,14 @@ print("Gripper test finished.")
                         });
 
                         // Spacebar emergency stop guard inside editor when robot is running
+                        // SPACE inside the editor: abort while a robot runs, otherwise type normally.
                         studioEditor.addCommand(monaco.KeyCode.Space, function () {
-                            const isExecutingAny = isExecutingUR || isExecutingNiryo;
-                            if (isExecutingAny) {
+                            if (isExecutingUR || isExecutingNiryo) {
                                 abortRobot("SPACE Key (inside editor during execution)");
                             } else {
                                 studioEditor.trigger('keyboard', 'type', { text: ' ' });
                             }
-                        });
+                        }, '!suggestWidgetVisible && !editorHasSelection');
                         if (window.ResizeObserver) {
                             const ro = new ResizeObserver(() => {
                                 if (studioEditor) studioEditor.layout();
@@ -1438,6 +1444,7 @@ print("Gripper test finished.")
 
         function switchAdminTab(tab) {
             currentAdminTab = tab;
+            if (tab !== 'run' && typeof stopRunTelemetryMonitoring === 'function') stopRunTelemetryMonitoring();
             const viewProjects = document.getElementById("adminViewProjects");
             const viewCode = document.getElementById("adminViewCode");
             const viewSim = document.getElementById("adminViewSim");
@@ -2240,11 +2247,19 @@ print("Gripper test finished.")
         }
 
         function appendSimLog(text) {
-            const term = document.getElementById("simTerminal");
-            if (term) {
-                term.innerText += text;
-                term.scrollTop = term.scrollHeight;
-            }
+            appendCapped("simTerminal", text);
+        }
+
+        // Append text to a log pane (keeps only the last ~200 KB and sticks to the bottom
+        // only if the user hasn't scrolled up). Scrolls the pane itself, never the page.
+        function appendCapped(id, text, maxChars = 200000) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            let cur = el.textContent + text;
+            if (cur.length > maxChars) cur = cur.slice(cur.length - maxChars);
+            el.textContent = cur;
+            if (atBottom) el.scrollTop = el.scrollHeight;
         }
 
         // ==========================================
@@ -2597,10 +2612,10 @@ print("Gripper test finished.")
 
                         html += `
                             <tr onclick="openSubmissionInStudio(${sub.id})" class="cursor-pointer bg-slate-950/70 hover:bg-slate-800/80 border-b border-slate-800/40 transition group ${isSelected ? 'bg-slate-800/90 border-l-4 border-indigo-500' : ''} ${isThisRunning ? 'bg-blue-950/40 ring-1 ring-blue-500/40' : ''}">
-                                <td class="p-2.5 pl-7 text-left font-mono whitespace-nowrap">
+                                <td class="p-2.5 pl-3 text-left font-mono whitespace-nowrap overflow-hidden">
                                     <span class="text-slate-600 mr-1">└─</span><span class="text-indigo-400 group-hover:text-indigo-300 font-bold text-xs">#${sub.id}</span>
                                 </td>
-                                <td class="p-2.5 pl-8">
+                                <td class="p-2.5 pl-4">
                                     <div class="border-l-2 border-indigo-500/40 pl-3.5 ml-2">
                                         <div class="flex items-center space-x-2">
                                             <span class="text-xs font-semibold text-slate-300">Commit / Iteration ${iterNum}</span>
@@ -3499,6 +3514,7 @@ print("Gripper test finished.")
                 terminalLogs.push({ text: fullLine, isPrint: !!isPrint });
             });
 
+            if (terminalLogs.length > 5000) terminalLogs.splice(0, terminalLogs.length - 5000);
             updatePrintCountBadge();
             renderTerminal();
         }
@@ -3666,43 +3682,48 @@ print("Gripper test finished.")
             }, 2500);
         }
 
-        // Global Spacebar Emergency Key Handler
+        // Global Spacebar Emergency Key Handler.
+        // SPACE always triggers the E-stop (and never scrolls / clicks a focused button),
+        // except while the user is typing in a text field or the code editor with no program running.
         function handleGlobalSpacebarEmergency(e) {
-            const isSpace = (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.keyCode === 32);
-            if (!isSpace) return;
+            if (!(e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar')) return;
+            if (e.repeat) { e.preventDefault(); return; }
+            if (!currentAdminToken || document.getElementById('adminAppContainer')?.classList.contains('hidden')) return;
 
-            const activeEl = document.activeElement;
-            if (activeEl) {
-                const tag = activeEl.tagName ? activeEl.tagName.toLowerCase() : '';
-                if (tag === 'input' || tag === 'textarea' || activeEl.isContentEditable) {
-                    return;
-                }
-            }
-
-            const isEditingAny = (currentRightTab === 'inspect' && isInspectorEditing) || (currentRightTab === 'studio');
             const isExecutingAny = isExecutingUR || isExecutingNiryo;
-
-            if (typeof viewer !== 'undefined' && viewer && isEditingAny && !isExecutingAny) {
-                if (typeof viewer.hasTextFocus === 'function' && viewer.hasTextFocus()) {
-                    return;
-                }
-            }
+            const el = document.activeElement;
+            const tag = el && el.tagName ? el.tagName.toLowerCase() : '';
+            const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || (el && el.isContentEditable);
+            // Monaco keeps focus in a hidden <textarea>; let it type unless a robot is running.
+            if (isTyping && !isExecutingAny) return;
 
             e.preventDefault();
             e.stopPropagation();
-            if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+            if (el && tag === 'button') el.blur();
             abortRobot("SPACE Key");
         }
 
         window.addEventListener('keydown', handleGlobalSpacebarEmergency, { capture: true, passive: false });
+        // Also swallow keyup so a focused button is never "clicked" by the released space bar.
+        window.addEventListener('keyup', (e) => {
+            if ((e.code === 'Space' || e.key === ' ') && document.activeElement?.tagName === 'BUTTON') e.preventDefault();
+        }, { capture: true });
 
         // ==========================================
         // --- WebSockets ---
         // ==========================================
 
+        // Keep the header robot cards fresh (the server caches reachability for a few seconds)
+        setInterval(() => {
+            if (!document.hidden && currentAdminToken) checkRobotPing();
+        }, 5000);
+
+        let adminSocketRef = null;
         function connectAdminSocket() {
+            if (adminSocketRef && adminSocketRef.readyState <= 1) return;  // never open duplicate sockets
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const ws = new WebSocket(`${protocol}//${window.location.host}/ws/admin`);
+            adminSocketRef = ws;
             ws.onmessage = (e) => {
                 fetchSubmissions();
                 try {
@@ -3738,72 +3759,90 @@ print("Gripper test finished.")
         // --- Run Page Telemetry & Controller Debug Console ---
         // ==========================================
 
-        function startRunTelemetryMonitoring(model = 'ur') {
-            activeRunModel = model;
-            if (telemetrySocket) {
-                try { telemetrySocket.close(); } catch (_) { }
-                telemetrySocket = null;
-            }
-            if (telemetryPollInterval) {
-                clearInterval(telemetryPollInterval);
-                telemetryPollInterval = null;
-            }
+        let telemetryGeneration = 0;      // bumps on every (re)start so stale sockets/timers are ignored
+        let telemetryReconnectTimer = null;
 
-            // Preload recent debug history and telemetry frame
+        function stopRunTelemetryMonitoring() {
+            telemetryGeneration++;
+            if (telemetryReconnectTimer) { clearTimeout(telemetryReconnectTimer); telemetryReconnectTimer = null; }
+            if (telemetryPollInterval) { clearInterval(telemetryPollInterval); telemetryPollInterval = null; }
+            if (telemetrySocket) {
+                const old = telemetrySocket;
+                telemetrySocket = null;
+                old.onmessage = old.onerror = old.onclose = null;
+                try { old.close(); } catch (_) { }
+            }
+        }
+
+        function formatDebugEntry(d) {
+            const t = d.ts ? new Date(d.ts * 1000).toLocaleTimeString([], { hour12: false }) : '';
+            const lvl = d.level && d.level !== 'info' ? ` ${d.level.toUpperCase()}` : '';
+            const src = d.source ? `${d.source}` : 'robot';
+            return `[${t}] [${src}${lvl}] ${d.text ?? d.message ?? ''}\n`;
+        }
+
+        function startRunTelemetryMonitoring(model = 'ur') {
+            // Already streaming this model: nothing to do (prevents duplicate sockets & log replays)
+            if (telemetrySocket && telemetrySocket.readyState <= 1 && activeRunModel === model && telemetryStreamModel === model) return;
+
+            stopRunTelemetryMonitoring();
+            const gen = telemetryGeneration;
+            activeRunModel = model;
+            telemetryStreamModel = model;
+            lastTelemetryQ = null;
+
+            const dbg = document.getElementById("robotDebugConsole");
+            if (dbg) dbg.innerText = "";
+
+            // Preload recent controller debug history once per (re)start
             (async () => {
                 try {
-                    const res = await fetch(`/api/telemetry/${model}/history?limit=100`, {
+                    const res = await fetch(`/api/telemetry/${model}/history?limit=10`, {
                         headers: { 'Authorization': `Bearer ${currentAdminToken}` }
                     });
-                    if (res.ok) {
-                        const hist = await res.json();
-                        if (hist.debug && Array.isArray(hist.debug) && hist.debug.length > 0) {
-                            hist.debug.forEach(d => {
-                                const timeTag = d.time ? `[${d.time}] ` : '';
-                                const srcTag = d.source ? `[${d.source.toUpperCase()}] ` : '';
-                                appendDebugConsole(`${timeTag}${srcTag}${d.message}\n`);
-                            });
-                        }
-                    }
+                    if (!res.ok || gen !== telemetryGeneration) return;
+                    const hist = await res.json();
+                    (hist.debug || []).slice(-60).forEach(d => appendDebugConsole(formatDebugEntry(d)));
                 } catch (_) { }
             })();
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws/telemetry/${model}?token=${currentAdminToken}`;
+            const wsUrl = `${protocol}//${window.location.host}/ws/telemetry/${model}?token=${encodeURIComponent(currentAdminToken)}`;
+
+            const scheduleReconnect = () => {
+                if (gen !== telemetryGeneration) return;
+                startTelemetryHttpPolling(model, gen);   // keep data flowing while we retry
+                telemetryReconnectTimer = setTimeout(() => {
+                    if (gen !== telemetryGeneration) return;
+                    startRunTelemetryMonitoring(model);
+                }, 3000);
+            };
 
             try {
-                telemetrySocket = new WebSocket(wsUrl);
-                telemetrySocket.onmessage = (e) => {
-                    try {
-                        const data = JSON.parse(e.data);
-                        updateRunTelemetryUI(data);
-                    } catch (_) { }
+                const ws = new WebSocket(wsUrl);
+                telemetrySocket = ws;
+                ws.onmessage = (e) => {
+                    if (gen !== telemetryGeneration) return;
+                    try { updateRunTelemetryUI(JSON.parse(e.data)); } catch (_) { }
                 };
-                telemetrySocket.onerror = () => {
-                    startTelemetryHttpPolling(model);
-                };
-                telemetrySocket.onclose = () => {
-                    startTelemetryHttpPolling(model);
-                };
+                ws.onclose = scheduleReconnect;
+                ws.onerror = () => { try { ws.close(); } catch (_) { } };
             } catch (_) {
-                startTelemetryHttpPolling(model);
+                scheduleReconnect();
             }
         }
 
-        function startTelemetryHttpPolling(model) {
+        function startTelemetryHttpPolling(model, gen) {
             if (telemetryPollInterval) return;
             telemetryPollInterval = setInterval(async () => {
-                if (currentAdminTab !== 'run') return;
+                if (gen !== telemetryGeneration || currentAdminTab !== 'run') return;
                 try {
                     const res = await fetch(`/api/telemetry/${model}`, {
                         headers: { 'Authorization': `Bearer ${currentAdminToken}` }
                     });
-                    if (res.ok) {
-                        const data = await res.json();
-                        updateRunTelemetryUI(data);
-                    }
+                    if (res.ok && gen === telemetryGeneration) updateRunTelemetryUI(await res.json());
                 } catch (_) { }
-            }, 600);
+            }, 700);
         }
 
         function switchRunModel(model) {
@@ -3820,8 +3859,12 @@ print("Gripper test finished.")
             startRunTelemetryMonitoring(model);
         }
 
+        // Leave the Run tab => stop streaming (saves RTDE reads & bandwidth)
+
         function updateRunTelemetryUI(data) {
             if (!data) return;
+            // Never mix frames from the other arm (happens briefly while switching models)
+            if (data.model && data.model !== activeRunModel) return;
 
             const isConn = Boolean(data.connected);
             const discBanner = document.getElementById("adminTelDisconnectedBanner");
@@ -3955,40 +3998,43 @@ print("Gripper test finished.")
             const targetModelLabel = document.getElementById("telTargetModelLabel");
             if (targetModelLabel) targetModelLabel.innerText = activeRunModel.toUpperCase();
 
-            const pose = data.actual_tcp_pose || data.tcp_pose || [0, 0, 0, 0, 0, 0];
+            const hasPose = Array.isArray(data.tcp_pose) && data.tcp_pose.length >= 6;
+            const pose = hasPose ? data.tcp_pose : [NaN, NaN, NaN, NaN, NaN, NaN];
+            const fmt = (v, f) => Number.isFinite(v) ? f(v) : "—";
             const posX = document.getElementById("telPosX");
-            if (posX) posX.innerText = (pose[0] * 1000).toFixed(1);
+            if (posX) posX.innerText = fmt(pose[0], v => (v * 1000).toFixed(1));
             const posY = document.getElementById("telPosY");
-            if (posY) posY.innerText = (pose[1] * 1000).toFixed(1);
+            if (posY) posY.innerText = fmt(pose[1], v => (v * 1000).toFixed(1));
             const posZ = document.getElementById("telPosZ");
-            if (posZ) posZ.innerText = (pose[2] * 1000).toFixed(1);
+            if (posZ) posZ.innerText = fmt(pose[2], v => (v * 1000).toFixed(1));
 
             const rotRx = document.getElementById("telRotRx");
-            if (rotRx) rotRx.innerText = `${(pose[3] * 180 / Math.PI).toFixed(1)}°`;
+            if (rotRx) rotRx.innerText = fmt(pose[3], v => `${(v * 180 / Math.PI).toFixed(1)}°`);
             const rotRy = document.getElementById("telRotRy");
-            if (rotRy) rotRy.innerText = `${(pose[4] * 180 / Math.PI).toFixed(1)}°`;
+            if (rotRy) rotRy.innerText = fmt(pose[4], v => `${(v * 180 / Math.PI).toFixed(1)}°`);
             const rotRz = document.getElementById("telRotRz");
-            if (rotRz) rotRz.innerText = `${(pose[5] * 180 / Math.PI).toFixed(1)}°`;
+            if (rotRz) rotRz.innerText = fmt(pose[5], v => `${(v * 180 / Math.PI).toFixed(1)}°`);
 
             const speedScale = document.getElementById("telSpeedScale");
-            if (speedScale) speedScale.innerText = `${Math.round((data.speed_slider_mask || 1.0) * 100)}%`;
+            if (speedScale) speedScale.innerText = (typeof data.speed_scaling === 'number' ? `${Math.round(data.speed_scaling * 100)}%` : "—");
 
             // 6-DOF Joint Angles & Velocities
-            const rawQ = data.actual_q || data.q || data.joints || [0, 0, 0, 0, 0, 0];
-            const qd = data.actual_qd || data.qd || [0, 0, 0, 0, 0, 0];
+            const hasQ = Array.isArray(data.q) && data.q.length >= 6 && data.q.every(Number.isFinite);
+            const qd = Array.isArray(data.qd) ? data.qd : [];
             const toDeg = 180 / Math.PI;
-            const qRad = rawQ.map(val => (typeof val === 'number' && Math.abs(val) > 6.5) ? (val * Math.PI / 180) : Number(val) || 0);
-            const qDeg = qRad.map(val => val * toDeg);
-
             for (let i = 0; i < 6; i++) {
                 const elQ = document.getElementById(`telQ${i}`);
-                if (elQ) elQ.innerText = `${(qDeg[i]).toFixed(1)}°`;
+                if (elQ) elQ.innerText = hasQ ? `${(data.q[i] * toDeg).toFixed(1)}°` : "—";
                 const elQd = document.getElementById(`telQd${i}`);
-                if (elQd) elQd.innerText = `${((qd[i] || 0)).toFixed(2)} rad/s`;
+                if (elQd) elQd.innerText = Number.isFinite(qd[i]) ? `${qd[i].toFixed(2)} rad/s` : "—";
             }
-
-            if (adminRunVis) {
-                adminRunVis.setJointAngles(qRad);
+            // Only move the 3D twin when we have a fresh, valid reading and it really changed
+            if (adminRunVis && hasQ && !data.stale) {
+                const changed = !lastTelemetryQ || data.q.some((v, i) => Math.abs(v - lastTelemetryQ[i]) > 1e-4);
+                if (changed) {
+                    adminRunVis.setJointAngles(data.q);
+                    lastTelemetryQ = data.q.slice();
+                }
             }
 
             // Diagnostics & Hardware Health
@@ -4005,32 +4051,24 @@ print("Gripper test finished.")
                 safetyEl.className = "font-bold text-sky-400 uppercase text-xs";
             }
             const tempsEl = document.getElementById("telJointTemp");
-            if (tempsEl && data.joint_temperatures && data.joint_temperatures.length >= 3) {
-                tempsEl.innerText = `${Math.round(data.joint_temperatures[0])}° | ${Math.round(data.joint_temperatures[1])}° | ${Math.round(data.joint_temperatures[2])}°`;
-            } else if (tempsEl) {
-                tempsEl.innerText = "NORMAL";
+            if (tempsEl) {
+                const temps = data.joint_temp || [];
+                tempsEl.innerText = temps.length ? temps.map(t => `${Math.round(t)}°`).join(" | ") : "—";
             }
             const powerEl = document.getElementById("telPower");
             if (powerEl) {
-                const v = (data.voltage || 48.0).toFixed(1);
-                const a = (data.current || 1.1).toFixed(1);
-                powerEl.innerText = `${v}V • ${a}A`;
+                const v = Number(data.robot_voltage), a = Number(data.robot_current);
+                powerEl.innerText = (Number.isFinite(v) && Number.isFinite(a)) ? `${v.toFixed(1)}V • ${a.toFixed(1)}A` : "—";
             }
             const protEl = document.getElementById("telProtectiveStop");
             if (protEl) {
-                protEl.innerText = data.is_protective_stopped ? "YES (HALTED)" : "NO";
-                protEl.className = data.is_protective_stopped ? "font-bold text-rose-400 animate-pulse" : "font-bold text-slate-500";
+                protEl.innerText = data.protective_stop ? "YES (HALTED)" : "NO";
+                protEl.className = data.protective_stop ? "font-bold text-rose-400 animate-pulse" : "font-bold text-slate-500";
             }
 
             // Low-level debug message from controller watchdog
-            if (data.debug && Array.isArray(data.debug) && data.debug.length > 0) {
-                data.debug.forEach(d => {
-                    const timeTag = d.time ? `[${d.time}] ` : '';
-                    const srcTag = d.source ? `[${d.source.toUpperCase()}] ` : '';
-                    appendDebugConsole(`${timeTag}${srcTag}${d.message}\n`);
-                });
-            } else if (data.debug_message) {
-                appendDebugConsole(`${data.debug_message}\n`);
+            if (Array.isArray(data.debug) && data.debug.length > 0) {
+                data.debug.forEach(d => appendDebugConsole(formatDebugEntry(d)));
             }
         }
 
@@ -4076,11 +4114,7 @@ print("Gripper test finished.")
         }
 
         function appendDebugConsole(text) {
-            const el = document.getElementById("robotDebugConsole");
-            if (el) {
-                el.innerText += text;
-                el.scrollTop = el.scrollHeight;
-            }
+            appendCapped("robotDebugConsole", text);
         }
 
         function clearDebugConsole() {

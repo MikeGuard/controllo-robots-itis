@@ -25,6 +25,7 @@ import config
 HISTORY_LEN = 1200          # ~4 minutes at 5 Hz
 DEBUG_LEN = 600
 SAMPLE_MIN_INTERVAL = 0.15  # seconds between hardware reads (shared by all subscribers)
+LINK_GRACE_SEC = 4.0        # a single failed read must not flip the UI to "offline"
 
 UR_SAFETY_MODES = {
     1: "NORMAL", 2: "REDUCED", 3: "PROTECTIVE STOP", 4: "RECOVERY", 5: "SAFEGUARD STOP",
@@ -88,6 +89,8 @@ class _BaseSampler:
         self.moving_time = 0.0
         self.started_at = time.time()
         self._state_cache: Dict[str, Any] = {}
+        self._last_ok: Optional[Dict[str, Any]] = None   # last good hardware reading
+        self._last_ok_ts = 0.0
 
     # ----- debug log -----
     def log(self, level: str, text: str, source: str = "supervisor"):
@@ -184,21 +187,29 @@ class _BaseSampler:
                 self.connected = True
                 self.log("info", f"Connected to {self.model.upper()} telemetry at {self._ip()}")
             self.error = ""
-            snap = {**base, "connected": True, "error": "", **data}
+            snap = {**base, "connected": True, "stale": bool(data.get("stale")), "error": "", **data}
+            if not data.get("stale"):
+                self._last_ok = dict(snap)
+                self._last_ok_ts = now
         except Exception as e:  # noqa: BLE001 - any SDK failure => offline snapshot
-            if self.connected:
-                self.log("warn", f"Telemetry link lost: {e}")
-            self.connected = False
             self.error = str(e)
             self.close()
-            self.next_retry = time.time() + 2.5
-            snap = {**base, "connected": False, "error": self.error}
+            self.next_retry = time.time() + 1.0
+            if self._last_ok and (now - self._last_ok_ts) < LINK_GRACE_SEC:
+                # Transient glitch: keep showing the last valid reading, flagged as stale.
+                snap = {**self._last_ok, "ts": now, "stale": True, "error": self.error}
+            else:
+                if self.connected:
+                    self.log("warn", f"Telemetry link lost: {e}")
+                self.connected = False
+                self._last_ok = None
+                snap = {**base, "connected": False, "stale": False, "error": self.error}
 
         snap["stats"] = self.stats()
         self.last_sample = snap
         self.last_sample_ts = now
 
-        if snap.get("connected"):
+        if snap.get("connected") and not snap.get("stale"):
             pose = snap.get("tcp_pose") or []
             with self.lock:
                 self.history.append({
@@ -282,6 +293,8 @@ class URSampler(_BaseSampler):
             raise ConnectionError("RTDE receive interface disconnected")
         now = time.time()
         q = self._g("getActualQ", [])
+        if not q or len(q) < 6:
+            raise ConnectionError("RTDE returned no joint data")
         qd = self._g("getActualQd", [])
         pose = self._g("getActualTCPPose", [])
         tcp_speed_vec = self._g("getActualTCPSpeed", [])
@@ -456,13 +469,17 @@ class NiryoSampler(_BaseSampler):
         self.robot = None
         self._robot_ip = None
 
-    def _connect(self):
+    @staticmethod
+    def _script_running() -> bool:
         try:
             from execution_engine import engine
-            if engine.is_model_executing("niryo"):
-                raise ConnectionError("Script currently executing on Niryo arm (exclusive socket lock)")
+            return bool(engine.is_model_executing("niryo"))
         except Exception:
-            pass
+            return False
+
+    def _connect(self):
+        if self._script_running():
+            raise ConnectionError("Script currently executing on Niryo arm (exclusive socket lock)")
 
         ip = self._ip()
         if self.robot is not None and self._robot_ip == ip:
@@ -507,32 +524,18 @@ class NiryoSampler(_BaseSampler):
         return data
 
     def _read(self) -> Dict[str, Any]:
-        try:
-            from execution_engine import engine
-            if engine.is_model_executing("niryo"):
-                if self._last_ok:
-                    res = dict(self._last_ok)
-                    res["robot_mode_text"] = "RUNNING (SCRIPT)"
-                    res["robot_mode_str"] = "RUNNING (SCRIPT)"
-                    return res
-                return {
-                    "connected": True,
-                    "robot_mode_text": "RUNNING (SCRIPT)",
-                    "robot_mode_str": "RUNNING (SCRIPT)",
-                    "safety_text": "NORMAL",
-                    "safety_mode_str": "NORMAL",
-                    "q": [0.0] * 6,
-                    "actual_q": [0.0] * 6,
-                    "joints": [0.0] * 6,
-                    "qd": [0.0] * 6,
-                    "actual_qd": [0.0] * 6,
-                    "tcp_pose": [0.0] * 6,
-                    "actual_tcp_pose": [0.0] * 6,
-                    "speed": 0.0,
-                    "tcp_speed": 0.0
-                }
-        except Exception:
-            pass
+        # While a script runs it owns the Niryo socket exclusively: never open a second
+        # connection. Report the last known pose (flagged stale) instead of zeros.
+        if self._script_running():
+            res = dict(self._last_ok or {})
+            for k in ("model", "ip", "ts", "connected", "stats", "error", "stale"):
+                res.pop(k, None)
+            res.update({
+                "stale": True,
+                "robot_mode_text": "RUNNING (SCRIPT)", "robot_mode_str": "RUNNING (SCRIPT)",
+                "safety_text": "NORMAL", "safety_mode_str": "NORMAL",
+            })
+            return res
 
         self._connect()
         now = time.time()

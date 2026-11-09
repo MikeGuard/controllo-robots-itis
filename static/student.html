@@ -18,98 +18,66 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen lg:h-screen lg:overflow-hidden flex flex-col">
+<body class="bg-slate-950 text-slate-100 h-screen overflow-hidden flex flex-col">
 
-    <!-- Header -->
-    <header class="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
-        <div class="flex items-center space-x-3">
-            <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white shadow-lg">UR</div>
-            <div>
-                <h1 class="text-base font-bold tracking-tight">Robotics Execution Portal</h1>
-                <p class="text-xs text-slate-400">Student Robotic Arm Sandbox &amp; Simulation</p>
-            </div>
+    <!-- Single compact top bar: brand | views | robot status | actions | user -->
+    <header class="bg-slate-900 border-b border-slate-800 px-3 sm:px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 shadow-md flex-shrink-0 z-30">
+        <div class="flex items-center space-x-2.5">
+            <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white shadow-lg text-sm">UR</div>
+            <h1 class="text-sm font-bold tracking-tight hidden xl:block">Robotics Portal</h1>
         </div>
 
-        <!-- Target Robot Badge (Locked to Current Project) -->
-        <div class="flex items-center space-x-2 bg-slate-950/90 border border-slate-700/80 px-3 py-1.5 rounded-xl shadow-inner">
-            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400 hidden sm:inline">Target Robot:</span>
-            <span id="headerRobotBadge" class="px-2.5 py-0.5 rounded text-xs font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center space-x-1.5">
-                <span id="headerRobotDot" class="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.8)]"></span>
+        <!-- Views -->
+        <nav class="flex items-center space-x-1" aria-label="Views">
+            <button id="tabNavCode" onclick="switchMainPortalView('code')"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 bg-blue-600 text-white shadow-lg shadow-blue-600/30">
+                <span>💻 Code</span>
+                <span id="navFileCountBadge" class="hidden px-1.5 rounded-full text-[10px] bg-blue-800 text-blue-200">1 file</span>
+            </button>
+            <button id="tabNavSim" onclick="switchMainPortalView('sim')"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
+                <span>🎮 Simulation</span>
+                <span id="navSimStatusBadge" class="px-1.5 rounded-full text-[10px] bg-slate-800 text-slate-400">IDLE</span>
+            </button>
+            <button id="tabNavRun" onclick="switchMainPortalView('run')"
+                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
+                <span>🚀 Live</span>
+                <span id="navRunPulseDot" class="w-2 h-2 rounded-full bg-slate-600"></span>
+            </button>
+        </nav>
+
+        <!-- Robot target + live status, merged into one pill -->
+        <div class="flex items-center gap-2">
+            <span id="headerRobotBadge" class="px-2.5 py-1 rounded-lg text-xs font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center space-x-1.5" title="Robot this project is written for">
+                <span id="headerRobotDot" class="w-2 h-2 rounded-full bg-sky-400"></span>
                 <span id="headerRobotLabel">🦾 UR3 Arm</span>
             </span>
+            <div id="connectionStatus" class="flex items-center space-x-2 text-xs text-rose-400 bg-rose-950/60 border border-rose-800 px-2.5 py-1 rounded-full transition-all">
+                <span id="pingDot" class="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span id="pingText">Checking...</span>
+            </div>
         </div>
 
-        <div class="flex items-center flex-wrap gap-3">
-            <!-- Documentation & Examples Link -->
-            <a id="docsLink" href="https://sdurobotics.gitlab.io/ur_rtde" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition" title="Robot Library Documentation">
-                <span>📚 Docs</span>
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
-                </svg>
-            </a>
+        <div class="flex-1"></div>
 
-            <!-- Live Robot Readiness Badge (Pings Chosen Robot) -->
-            <div id="connectionStatus" class="flex items-center space-x-2 text-xs text-rose-400 bg-rose-950/60 border border-rose-800 px-3 py-1.5 rounded-full transition-all">
-                <span id="pingDot" class="w-2 h-2 rounded-full bg-rose-500"></span>
-                <span id="pingText">Checking Robot Ping...</span>
-            </div>
+        <!-- Main actions -->
+        <div class="flex items-center gap-2">
+            <button id="btnSyntax" onclick="checkSyntax()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700">🔍 <span class="hidden lg:inline">Check</span></button>
+            <button id="btnSimulate" onclick="simulateCode()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition">🎮 Simulate</button>
+            <button id="btnSubmit" onclick="submitCode()" class="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/30 transition">🚀 Send</button>
+        </div>
 
-
-            <!-- Manager Console Shortcut Link -->
-            <a id="headerManagerLink" href="/admin" class="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-amber-300 hover:text-amber-200 border border-amber-500/30 rounded-lg text-xs font-semibold transition shadow-sm" title="Go to Robot Manager / Instructor Console">
-                <span>🛠️ Manager Console</span>
-            </a>
-
-            <!-- User Badge / Role / Logout -->
-            <div id="userHeaderBadge" class="flex items-center space-x-2 bg-slate-850 border border-slate-700 px-3 py-1.5 rounded-lg text-xs shadow-inner">
-                <span class="text-slate-400">User:</span>
+        <!-- Secondary links + user -->
+        <div class="flex items-center gap-2">
+            <a id="docsLink" href="https://sdurobotics.gitlab.io/ur_rtde" target="_blank" rel="noopener noreferrer" class="px-2 py-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition" title="Robot library documentation">📚</a>
+            <a id="headerManagerLink" href="/admin" class="px-2 py-1.5 text-amber-300/80 hover:text-amber-200 hover:bg-slate-800 rounded-lg text-xs transition" title="Robot Manager / Instructor Console">🛠️</a>
+            <div id="userHeaderBadge" class="flex items-center space-x-1.5 bg-slate-850 border border-slate-700 px-2.5 py-1 rounded-lg text-xs">
                 <span id="loggedInStudentName" class="font-bold text-sky-400">Not Logged In</span>
-                <span id="userRoleHeaderBadge" class="hidden px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">ADMIN</span>
-                <button onclick="logoutStudent()" title="Log out / Switch User" class="text-[11px] text-slate-400 hover:text-rose-400 hover:underline ml-1 font-medium transition">
-                    (Log Out)
-                </button>
+                <span id="userRoleHeaderBadge" class="hidden px-1.5 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">ADMIN</span>
+                <button onclick="logoutStudent()" title="Log out / Switch User" class="text-slate-400 hover:text-rose-400 transition">⏻</button>
             </div>
         </div>
     </header>
-
-    <!-- Portal View Switcher Navigation Bar -->
-    <div class="px-4 sm:px-6 py-2 bg-slate-900/95 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30 backdrop-blur">
-        <div class="flex items-center space-x-2">
-            <!-- Tab 1: Code Studio -->
-            <button id="tabNavCode" onclick="switchMainPortalView('code')"
-                class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-blue-600 text-white shadow-lg shadow-blue-600/30">
-                <span>💻</span>
-                <span>Code Studio</span>
-                <span id="navFileCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-800 text-blue-200">1 file</span>
-            </button>
-            <!-- Tab 2: Simulation & Live Output -->
-            <button id="tabNavSim" onclick="switchMainPortalView('sim')"
-                class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
-                <span>🎮</span>
-                <span>Simulation &amp; Output</span>
-                <span id="navSimStatusBadge" class="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-400">IDLE</span>
-            </button>
-            <!-- Tab 3: Live Run Monitor (View-Only) -->
-            <button id="tabNavRun" onclick="switchMainPortalView('run')"
-                class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
-                <span>🚀</span>
-                <span>Live Run Monitor</span>
-                <span id="navRunPulseDot" class="w-2 h-2 rounded-full bg-slate-600"></span>
-            </button>
-        </div>
-
-        <div class="flex items-center space-x-2 sm:space-x-2.5">
-            <button id="btnSyntax" onclick="checkSyntax()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700 flex items-center space-x-1.5">
-                <span>🔍 Check Syntax</span>
-            </button>
-            <button id="btnSimulate" onclick="simulateCode()" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition flex items-center space-x-1.5">
-                <span>🎮 Simulate in 3D</span>
-            </button>
-            <button id="btnSubmit" onclick="submitCode()" class="px-4 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5">
-                <span>🚀 Send for Execution</span>
-            </button>
-        </div>
-    </div>
 
     <!-- Main Content Container -->
     <main class="flex-1 flex flex-col min-h-0 bg-slate-950">
@@ -122,7 +90,7 @@
             <div class="flex-1 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-2xl overflow-hidden min-h-0">
                 
                 <!-- Project Folder Header & Model Indicator -->
-                <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5 flex-shrink-0">
+                <div class="px-3 py-1.5 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 flex-shrink-0">
                     <div class="flex items-center space-x-3 flex-1 min-w-[280px]">
                         <div class="flex items-center space-x-2">
                             <label for="studentProjectSelect" class="text-xs font-bold text-slate-400 whitespace-nowrap flex items-center space-x-1.5">
@@ -144,13 +112,26 @@
                         </div>
                     </div>
                     
-                    <div class="flex items-center space-x-2.5">
-                        <button onclick="exportProjectZip()" title="Download current project as .zip" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold rounded-lg border border-slate-700 transition flex items-center space-x-1 shadow">
-                            <span>📦</span>
-                            <span class="hidden sm:inline">Download .zip</span>
+                    <div class="flex items-center gap-2">
+                        <button id="btnSave" onclick="saveCodeLocally()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700" title="Save (Ctrl+S)">💾 Save</button>
+                        <button id="btnMyProjects" onclick="openMyProjectsModal()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg transition border border-slate-700">
+                            📂 Projects <span id="myProjectsCountBadge" class="hidden ml-1 px-1.5 rounded-full text-[10px] font-bold bg-sky-600 text-white">0</span>
                         </button>
-                        <span id="robotSelectedBadge" class="px-2.5 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3 ARM</span>
-                        <button onclick="resetEditorToDefault()" class="text-[11px] text-blue-400 hover:text-blue-300 hover:underline">Reset Code</button>
+                        <div class="relative inline-block text-left">
+                            <button id="btnExamples" onclick="toggleExamplesMenu(event)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700">📚 Examples ▾</button>
+                            <div id="examplesDropdown" class="hidden absolute right-0 top-full mt-2 w-80 max-w-sm bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-96">
+                                <div class="px-3 py-2 bg-slate-850 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                                    <span id="examplesModalTitle">Lab Examples</span>
+                                    <button onclick="fetchExamples(true)" class="text-blue-400 hover:underline text-[10px]">Refresh</button>
+                                </div>
+                                <div id="examplesListContainer" class="overflow-y-auto divide-y divide-slate-800 p-1">
+                                    <div class="p-3 text-xs text-slate-500 text-center">Loading examples...</div>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="exportProjectZip()" title="Download project as .zip" class="px-2 py-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition">📦</button>
+                        <button onclick="resetEditorToDefault()" title="Reset code to the default template" class="px-2 py-1 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg text-xs transition">↺</button>
+                        <span id="robotSelectedBadge" class="hidden"></span>
                     </div>
                 </div>
 
@@ -178,7 +159,7 @@
                     </div>
 
                     <div class="flex items-center space-x-2 flex-shrink-0 pl-2">
-                        <span id="activeFileIndicator" class="font-mono text-[11px] text-slate-400 hidden md:inline">main.py (Python)</span>
+                        <span id="activeFileIndicator" class="font-mono text-[11px] text-slate-500 hidden lg:inline">main.py (Python)</span>
                     </div>
                 </div>
 
@@ -186,7 +167,7 @@
                 <div class="flex flex-1 min-h-0 relative overflow-hidden bg-slate-950">
                     
                     <!-- Collapsible Project File Explorer Sidebar -->
-                    <div id="projectExplorerSidebar" class="w-60 flex-shrink-0 bg-slate-950 border-r border-slate-800 flex flex-col transition-all duration-150 select-none">
+                    <div id="projectExplorerSidebar" class="w-52 flex-shrink-0 bg-slate-950 border-r border-slate-800 flex flex-col transition-all duration-150 select-none">
                         <!-- Explorer Header -->
                         <div class="px-3 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
                             <span class="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 font-mono">Project Files</span>
@@ -201,7 +182,7 @@
                         </div>
 
                         <!-- Folder Label -->
-                        <div class="px-3 py-1.5 bg-slate-900/50 text-[11px] font-semibold text-slate-300 flex items-center space-x-1.5 border-b border-slate-800/60">
+                        <div class="hidden">
                             <span>📂</span>
                             <span id="sidebarProjectFolderName" class="truncate font-mono">robot_project/</span>
                         </div>
@@ -229,44 +210,6 @@
                 <div id="robotOfflineNotice" class="hidden px-4 py-2 bg-amber-950/80 border-t border-amber-800 text-xs text-amber-300 flex items-center space-x-2 font-medium">
                     <span>⚠️</span>
                     <span><strong>Robot Currently Offline:</strong> You can write code, test syntax, and run 3D simulations. Physical execution will wait until the arm is online.</span>
-                </div>
-
-                <!-- Bottom Action Bar -->
-                <div class="p-3 sm:px-4 sm:py-3 bg-slate-850 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                    <div class="flex items-center space-x-2">
-                        <!-- Save Project Button -->
-                        <button id="btnSave" onclick="saveCodeLocally()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow">
-                            <span>💾 Save Project</span>
-                        </button>
-                        
-                        <!-- My Saved Projects Button -->
-                        <button id="btnMyProjects" onclick="openMyProjectsModal()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs sm:text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow border border-sky-500/30">
-                            <span>📂 My Projects</span>
-                            <span id="myProjectsCountBadge" class="hidden px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-sky-600 text-white">0</span>
-                        </button>
-
-                        <!-- Examples Dropdown Button -->
-                        <div class="relative inline-block text-left">
-                            <button id="btnExamples" onclick="toggleExamplesMenu(event)" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-semibold rounded-lg transition flex items-center space-x-1.5 shadow border border-slate-700">
-                                <span>📚 Examples ▾</span>
-                            </button>
-                            <div id="examplesDropdown" class="hidden absolute left-0 bottom-full mb-2 w-80 max-w-sm bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-96">
-                                <div class="px-3 py-2 bg-slate-850 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-                                    <span id="examplesModalTitle">Lab Examples</span>
-                                    <button onclick="fetchExamples(true)" class="text-blue-400 hover:underline text-[10px]">Refresh</button>
-                                </div>
-                                <div id="examplesListContainer" class="overflow-y-auto divide-y divide-slate-800 p-1">
-                                    <div class="p-3 text-xs text-slate-500 text-center">Loading examples...</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex items-center space-x-3 text-slate-500 text-xs font-mono">
-                        <span id="studioBottomStatus">📁 Workspace Ready</span>
-                        <span>•</span>
-                        <span class="text-slate-400">Ctrl+S to save</span>
-                    </div>
                 </div>
 
             </div>
@@ -399,8 +342,10 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800 uppercase">HARDWARE OFFLINE</span>
             </div>
 
-            <!-- 4 Telemetry Cards Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 flex-shrink-0">
+            <!-- Detailed telemetry (collapsed by default to keep the page simple) -->
+            <details class="flex-shrink-0 group">
+            <summary class="cursor-pointer select-none text-xs font-semibold text-slate-400 hover:text-slate-200 px-1 py-1">📊 Telemetry details (speed, pose, joints, diagnostics)</summary>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-2">
                 <!-- Card 1: Speed & Dynamics -->
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-lg flex flex-col justify-between">
                     <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-2">
@@ -521,10 +466,12 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 </div>
             </div>
 
+            </details>
+
             <!-- Lower Row: Live Terminal & 3D Live Digital Twin -->
-            <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 flex-1 min-h-[360px]">
+            <div class="grid grid-cols-1 xl:grid-cols-12 xl:grid-rows-1 gap-4 flex-1 min-h-[360px]">
                 <!-- Live Output Stream Terminal -->
-                <div class="xl:col-span-6 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[320px]">
+                <div class="xl:col-span-6 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[320px] xl:min-h-0">
                     <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
                         <div class="flex items-center space-x-2">
                             <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Robot Execution Log</span>
@@ -532,13 +479,13 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                         </div>
                         <button onclick="clearStudentRunTerminal()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
                     </div>
-                    <div id="studentRunTerminal" class="flex-1 p-3.5 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
+                    <div id="studentRunTerminal" class="flex-1 min-h-0 p-3.5 bg-black font-mono text-xs text-emerald-400 overflow-y-auto break-words whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
 [Execution Monitor] Connected. When an instructor launches a queued routine, live output will stream here.
                     </div>
                 </div>
 
                 <!-- 3D Digital Twin Visualizer -->
-                <div class="xl:col-span-6 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[320px]">
+                <div class="xl:col-span-6 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[320px] xl:min-h-0">
                     <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
                         <div class="flex items-center space-x-2">
                             <span id="studentRunVisDot" class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
@@ -550,7 +497,7 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                             <button onclick="if(studentRunVis) studentRunVis.resetCamera()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded transition">Reset</button>
                         </div>
                     </div>
-                    <div id="studentRunCanvasContainer" class="flex-1 relative bg-[#111622] min-h-[280px]">
+                    <div id="studentRunCanvasContainer" class="flex-1 relative bg-[#111622] min-h-0 overflow-hidden">
                         <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
                             Live Angles: <span class="ur3AngleReadout text-sky-300">0° | -90° | 90° | -90° | -90° | 0°</span>
                         </div>

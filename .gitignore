@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+# runtime state (contains user accounts / local robot IPs)
+*.db
+runtime_config.json
+# stray temp scripts
+tmp*.py
