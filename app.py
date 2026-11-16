@@ -24,7 +24,7 @@ import json
 import database
 import config
 from execution_engine import engine
-from safety import validate_python_code
+from safety import validate_python_code, project_module_names
 from simulator import simulate_script, run_simulation_isolated
 from telemetry import hub as telemetry_hub
 import workspace
@@ -927,7 +927,7 @@ async def reset_emergency_stop(model: Optional[str] = None, authorization: Optio
 @app.post("/api/check-syntax")
 async def check_syntax(payload: SyntaxCheckRequest):
     files = payload.files or {}
-    project_modules = {os.path.splitext(f)[0] for f in files.keys() if f.endswith(".py")}
+    project_modules = project_module_names(files)
 
     valid = True
     errors = []
@@ -953,7 +953,7 @@ async def simulate_code(payload: SyntaxCheckRequest):
     for smooth 3D browser visualization. Supports multi-file project simulation.
     """
     files = payload.files or {}
-    project_modules = {os.path.splitext(f)[0] for f in files.keys() if f.endswith(".py")}
+    project_modules = project_module_names(files)
     entry_point = (payload.entry_point or "main.py").strip()
 
     valid = True
@@ -1021,7 +1021,7 @@ async def submit_code(payload: SubmissionRequest):
         )
 
     files = payload.files or {}
-    project_modules = {os.path.splitext(f)[0] for f in files.keys() if f.endswith(".py")}
+    project_modules = project_module_names(files)
     entry_point = (payload.entry_point or "main.py").strip()
 
     valid = True
@@ -1312,6 +1312,8 @@ async def approve_submission(
     ws_owner = sub.get("student_name") if ws_project else None
     if ws_owner and ws_owner.startswith("Admin ("):
         ws_owner = None
+    if (sub.get("branch") or "main") != "main":
+        ws_owner = None      # generated files from a branch run must never land in the student's working copy
 
     await launch_submission_execution(
         sub_id,
@@ -1337,7 +1339,7 @@ async def admin_send_code(payload: AdminSendCodeRequest, authorization: Optional
     prog_name = (payload.program_name or "Admin Routine").strip()
 
     files = payload.files or {}
-    project_modules = {os.path.splitext(f)[0] for f in files.keys() if f.endswith(".py")}
+    project_modules = project_module_names(files)
 
     valid, errors = validate_python_code(payload.code, project_modules=project_modules)
     if files:
@@ -1429,7 +1431,7 @@ async def update_submission_endpoint(sub_id: int, payload: UpdateSubmissionReque
         raise HTTPException(status_code=404, detail="Submission not found")
 
     files = payload.files or {}
-    project_modules = {os.path.splitext(f)[0] for f in files.keys() if f.endswith(".py")}
+    project_modules = project_module_names(files)
 
     if payload.code is not None:
         valid, errors = validate_python_code(payload.code, project_modules=project_modules)
@@ -1545,6 +1547,257 @@ async def clear_queue(authorization: Optional[str] = Header(default=None)):
     return {"status": "cleared", "message": "All pending submissions marked rejected."}
 
 
+
+# --- Repositories (projects as folders, iterations as commits, branches) ---
+
+class CommitRequest(BaseModel):
+    branch: str = "main"
+    parent_id: Optional[int] = None
+    files: Dict[str, str]
+    entry_point: Optional[str] = "main.py"
+    message: Optional[str] = ""
+    robot_model: Optional[str] = None
+
+
+class BranchRequest(BaseModel):
+    name: str
+    from_commit_id: Optional[int] = None
+
+
+class RepoCreateRequest(BaseModel):
+    project: str
+    owner: Optional[str] = None
+    robot_model: Optional[str] = "ur"
+    files: Optional[Dict[str, str]] = None
+    entry_point: Optional[str] = "main.py"
+
+
+class RepoRenameRequest(BaseModel):
+    new_name: str
+
+
+_BRANCH_RE = __import__("re").compile(r"^[A-Za-z0-9][A-Za-z0-9._\-/]{0,47}$")
+
+
+def _clean_repo_part(value: str, what: str) -> str:
+    try:
+        return workspace.clean_project_name(value)
+    except workspace.WorkspaceError:
+        raise HTTPException(status_code=400, detail=f"Invalid {what} name.")
+
+
+async def _owner_is_admin(owner: str) -> bool:
+    """Admin-owned repos have no student to sync with. Legacy 'Admin (x)' owners count as admin."""
+    if owner.lower().startswith("admin"):
+        return True
+    user = await database.get_user_by_username(owner)
+    return bool(user and user.get("role") in ("admin", "superadmin"))
+
+
+def _validate_commit_files(files: Dict[str, str], entry_point: str):
+    if not files:
+        raise HTTPException(status_code=400, detail="A commit needs at least one file.")
+    if len(files) > workspace.MAX_FILES_PER_PROJECT:
+        raise HTTPException(status_code=400, detail=f"Too many files (max {workspace.MAX_FILES_PER_PROJECT}).")
+    cleaned: Dict[str, str] = {}
+    for fname, content in files.items():
+        try:
+            cname = workspace.clean_filename(fname)
+        except workspace.WorkspaceError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        content = content or ""
+        if len(content.encode("utf-8")) > workspace.MAX_FILE_BYTES:
+            raise HTTPException(status_code=400, detail=f"File '{cname}' is too large.")
+        cleaned[cname] = content
+    entry = (entry_point or "main.py").strip()
+    if entry not in cleaned:
+        entry = "main.py" if "main.py" in cleaned else next(iter(cleaned))
+    modules = project_module_names(cleaned)
+    errors: List[str] = []
+    for fname, content in cleaned.items():
+        if fname.endswith(".py"):
+            ok, errs = validate_python_code(content, project_modules=modules)
+            if not ok:
+                errors += [f"[{fname}] {e}" for e in errs]
+    if errors:
+        raise HTTPException(status_code=422, detail="Safety or syntax check failed: " + "; ".join(errors[:5]))
+    return cleaned, entry
+
+
+def _working_copy_info(owner: str, project: str) -> Optional[Dict[str, Any]]:
+    try:
+        if not workspace.project_exists(owner, project):
+            return None
+        data = workspace.load_project(owner, project)
+    except workspace.WorkspaceError:
+        return None
+    return {"files_count": len(data["files"]), "entry_point": data["entry_point"], "robot_model": data.get("robot_model") or "ur"}
+
+
+@app.get("/api/repos")
+async def list_repos(authorization: Optional[str] = Header(default=None)):
+    """Every project (folder) with its branches and head commit: commit-backed ones plus workspace-only folders."""
+    verify_any_admin(authorization)
+    repos = {(r["owner"].lower(), r["project"].lower()): r for r in await database.list_repo_rows()}
+    for wp in workspace.list_all_users_projects():
+        key = (wp["owner"].lower(), wp["name"].lower())
+        if key not in repos:
+            repos[key] = {"owner": wp["owner"], "project": wp["name"], "commits": 0, "branches": ["main"], "head": None,
+                          "robot_model": wp.get("robot_model") or "ur", "last_activity": wp.get("updated_at")}
+        repos[key]["has_working_copy"] = True
+    return {"repos": sorted(repos.values(), key=lambda r: (r["last_activity"] or ""), reverse=True)}
+
+
+@app.post("/api/repos")
+async def create_repo(payload: RepoCreateRequest, authorization: Optional[str] = Header(default=None)):
+    session = verify_any_admin(authorization)
+    owner = (payload.owner or session["username"]).strip()
+    project = _clean_repo_part(payload.project, "project")
+    if await database.list_commits(owner, project, limit=1):
+        raise HTTPException(status_code=409, detail="A project with this name already exists.")
+    model = payload.robot_model if payload.robot_model in ("ur", "niryo") else "ur"
+    files = payload.files or {"main.py": ""}
+    cleaned, entry = _validate_commit_files(files, payload.entry_point or "main.py")
+    cid = await database.create_submission(
+        student_name=owner, task_id=project, code=cleaned[entry], robot_model=model, files=cleaned, entry_point=entry,
+        project_name=project, commit_message="Initial commit", branch="main", parent_id=None, author=session["username"])
+    await broadcast_to_admins({"type": "new_submission", "id": cid})
+    return {"owner": owner, "project": project, "commit_id": cid}
+
+
+@app.get("/api/repos/{owner}/{project}")
+async def get_repo(owner: str, project: str, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
+    branches = await database.list_branches(owner, project)
+    commits = await database.list_commits(owner, project, "main", limit=1)
+    wc = _working_copy_info(owner, project)
+    if not commits and not wc and len(branches) == 1:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return {"owner": owner, "project": project, "default_branch": "main", "branches": branches, "working_copy": wc,
+            "robot_model": (commits[0]["robot_model"] if commits else (wc or {}).get("robot_model", "ur")),
+            "is_admin_owned": await _owner_is_admin(owner)}
+
+
+@app.get("/api/repos/{owner}/{project}/commits")
+async def get_repo_commits(owner: str, project: str, branch: Optional[str] = "main", authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
+    return {"branch": branch, "commits": await database.list_commits(owner, project, branch)}
+
+
+@app.get("/api/repos/{owner}/{project}/commits/{commit_id}")
+async def get_repo_commit(owner: str, project: str, commit_id: int, authorization: Optional[str] = Header(default=None)):
+    """One commit with ALL its files."""
+    verify_any_admin(authorization)
+    sub = await database.get_commit_in_repo(owner, project, commit_id)
+    if not sub:
+        raise HTTPException(status_code=404, detail="Commit not found in this project.")
+    files = sub.get("files") if isinstance(sub.get("files"), dict) and sub["files"] else {sub.get("entry_point") or "main.py": sub.get("code") or ""}
+    return {**database.commit_summary(sub), "files": files, "logs": sub.get("logs") or ""}
+
+
+@app.get("/api/repos/{owner}/{project}/working-copy")
+async def get_repo_working_copy(owner: str, project: str, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
+    wc = _working_copy_info(owner, project)
+    if not wc:
+        raise HTTPException(status_code=404, detail="No working copy.")
+    data = workspace.load_project(owner, project)
+    return {"files": data["files"], "entry_point": data["entry_point"], "robot_model": data.get("robot_model") or "ur"}
+
+
+@app.post("/api/repos/{owner}/{project}/commits")
+async def create_repo_commit(owner: str, project: str, payload: CommitRequest, authorization: Optional[str] = Header(default=None)):
+    session = verify_any_admin(authorization)
+    branch = (payload.branch or "main").strip()
+    branches = {b["name"].lower(): b for b in await database.list_branches(owner, project)}
+    if branch.lower() not in branches:
+        raise HTTPException(status_code=404, detail=f"Branch '{branch}' does not exist.")
+    branch = branches[branch.lower()]["name"]
+    cleaned, entry = _validate_commit_files(payload.files, payload.entry_point or "main.py")
+
+    head = branches[branch.lower()]["head_id"]
+    parent = payload.parent_id if payload.parent_id is not None else head
+    if parent is not None and not await database.get_commit_in_repo(owner, project, parent):
+        raise HTTPException(status_code=400, detail="Parent commit does not belong to this project.")
+    existing = await database.list_commits(owner, project, limit=1)
+    model = payload.robot_model if payload.robot_model in ("ur", "niryo") else (existing[0]["robot_model"] if existing else "ur")
+    cid = await database.create_submission(
+        student_name=owner, task_id=project, code=cleaned[entry], robot_model=model, files=cleaned, entry_point=entry,
+        project_name=project, commit_message=(payload.message or "").strip(), branch=branch, parent_id=parent,
+        author=session["username"])
+
+    synced = False
+    if branch == "main":
+        # Same live-sync the instructor had before: a commit on main refreshes the student's working copy.
+        try:
+            if workspace.project_exists(owner, project) or not await _owner_is_admin(owner):
+                workspace.save_project(owner, project, cleaned, entry, model)
+                synced = not await _owner_is_admin(owner)
+        except workspace.WorkspaceError:
+            pass
+        if synced:
+            await broadcast_to_student(owner, {"type": "code_synced", "code": cleaned[entry], "files": cleaned, "project_name": project,
+                                               "project": project, "task_id": project, "entry_point": entry, "robot_model": model,
+                                               "message": "Instructor updated code in Code Studio."})
+    await broadcast_to_admins({"type": "new_submission", "id": cid})
+    return {"commit_id": cid, "branch": branch, "parent_id": parent, "synced_to_student": synced}
+
+
+@app.post("/api/repos/{owner}/{project}/branches")
+async def create_repo_branch(owner: str, project: str, payload: BranchRequest, authorization: Optional[str] = Header(default=None)):
+    session = verify_any_admin(authorization)
+    name = payload.name.strip()
+    if not _BRANCH_RE.match(name):
+        raise HTTPException(status_code=400, detail="Branch names use letters, digits, '-', '_', '.', '/' (max 48).")
+    base = payload.from_commit_id
+    if base is None:
+        commits = await database.list_commits(owner, project, "main", limit=1)
+        base = commits[0]["id"] if commits else None
+    if base is not None and not await database.get_commit_in_repo(owner, project, base):
+        raise HTTPException(status_code=400, detail="That commit does not belong to this project.")
+    if name.lower() in {b["name"].lower() for b in await database.list_branches(owner, project)}:
+        raise HTTPException(status_code=409, detail=f"Branch '{name}' already exists.")
+    await database.create_branch(owner, project, name, base, session["username"])
+    return {"branch": name, "base_id": base}
+
+
+@app.delete("/api/repos/{owner}/{project}/branches/{name:path}")
+async def delete_repo_branch(owner: str, project: str, name: str, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
+    if name.lower() == "main":
+        raise HTTPException(status_code=400, detail="The main branch cannot be deleted.")
+    n = await database.delete_branch(owner, project, name)
+    return {"deleted_commits": n}
+
+
+@app.post("/api/repos/{owner}/{project}/rename")
+async def rename_repo_endpoint(owner: str, project: str, payload: RepoRenameRequest, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
+    if not await _owner_is_admin(owner):
+        raise HTTPException(status_code=403, detail="Student projects cannot be renamed here; it would break the student's link.")
+    new = _clean_repo_part(payload.new_name, "project")
+    if await database.list_commits(owner, new, limit=1):
+        raise HTTPException(status_code=409, detail="A project with that name already exists.")
+    await database.rename_repo(owner, project, new)
+    if workspace.project_exists(owner, project):
+        try:
+            workspace.rename_project(owner, project, new)
+        except workspace.WorkspaceError:
+            pass
+    return {"project": new}
+
+
+@app.delete("/api/repos/{owner}/{project}")
+async def delete_repo_endpoint(owner: str, project: str, authorization: Optional[str] = Header(default=None)):
+    verify_any_admin(authorization)
+    if not await _owner_is_admin(owner):
+        raise HTTPException(status_code=403, detail="Only admin-owned projects can be deleted. Delete a branch instead.")
+    n = await database.delete_repo(owner, project)
+    if workspace.project_exists(owner, project):
+        workspace.delete_project(owner, project)
+    return {"deleted_commits": n}
+
+
 # --- Examples Endpoints ---
 
 @app.get("/api/examples")
@@ -1588,7 +1841,7 @@ async def create_example_endpoint(payload: CreateExampleRequest, authorization: 
     if files:
         if entry not in files:
             entry = "main.py" if "main.py" in files else next(iter(files))
-        modules = {os.path.splitext(f)[0] for f in files if f.endswith(".py")}
+        modules = project_module_names(files)
         errors = []
         for fname, content in files.items():
             if fname.endswith(".py"):
@@ -1687,7 +1940,7 @@ async def update_example_endpoint(example_id: int, payload: CreateExampleRequest
     if files:
         if entry not in files:
             entry = "main.py" if "main.py" in files else next(iter(files))
-        modules = {os.path.splitext(f)[0] for f in files if f.endswith(".py")}
+        modules = project_module_names(files)
         errors = []
         for fname, content in files.items():
             if fname.endswith(".py"):

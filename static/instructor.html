@@ -10,6 +10,7 @@
     <script src="/static/design.js"></script>
     <script src="/static/js/store.js"></script>
     <script src="/static/js/estop.js"></script>
+    <script src="/static/js/repo.js"></script>
     <link rel="stylesheet" href="/static/design.css">
     <!-- Monaco Editor CDN -->
     <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
@@ -229,65 +230,75 @@
                 </div>
                 <div class="flex-1 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-2xl overflow-hidden min-h-0">
 
-                    <!-- Top Project & Execution Toolbar (Matches Student Code Studio) -->
-                    <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5 flex-shrink-0">
-                        <div class="flex items-center flex-wrap gap-2 flex-1 min-w-[300px]">
-                            <button onclick="switchAdminTab('projects')" title="Back to Projects &amp; Queue Table"
-                                class="btn btn-sm">
-                                <span>←</span><span>Queue</span>
+                    <!-- Repository bar: project / branch / commit selectors, then actions on the selected version -->
+                    <div class="studio-bar">
+                        <button onclick="switchAdminTab('projects')" title="Back to Projects &amp; Queue" class="btn btn-sm">&larr; Queue</button>
+
+                        <div class="relative">
+                            <button id="repoPickerBtn" class="btn btn-sm menu-btn" aria-haspopup="listbox" aria-expanded="false" onclick="RepoUI.toggle('repoPicker', event)" title="Choose project">
+                                <span class="menu-label">Project</span><strong id="repoPickerLabel">Select a project</strong><span aria-hidden="true">&#9662;</span>
                             </button>
-
-                            <div class="flex items-center space-x-1.5">
-                                <label for="studioProjectSelect" class="text-xs font-bold text-slate-400 whitespace-nowrap flex items-center space-x-1">
-<span>Project:</span>
-                                </label>
-                                <select id="studioProjectSelect" onchange="studioSwitchProject(this.value)"
-                                    class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono font-bold max-w-[260px]"></select>
-                                <button onclick="studioNewProject()" title="Create New Admin Project"
-                                    class="btn btn-sm btn-primary">
-<span class="hidden sm:inline">New</span>
-                                </button>
-                                <button onclick="studioRenameProject()" title="Rename Project"
-                                    class="p-1 px-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">Rename</button>
-                                <button onclick="studioDeleteProject()" title="Delete Project Folder"
-                                    class="p-1 px-1.5 text-slate-400 hover:text-rose-400 rounded hover:bg-slate-800 transition text-xs">Delete</button>
+                            <div id="repoPickerPanel" class="popover hidden" role="listbox" style="width:380px">
+                                <div class="popover-head"><input id="repoSearch" type="search" class="input" placeholder="Search projects or students" oninput="RepoUI.renderPicker()" style="width:100%"></div>
+                                <div id="repoPickerList" class="popover-list"></div>
+                                <div class="popover-foot"><button class="btn btn-sm btn-primary" onclick="RepoUI.newProject()">New project</button></div>
                             </div>
-
-                            <!-- Sync Mode / Branch Status Pill -->
-                            <div id="studioSyncModeBadge" class="px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center space-x-1.5 bg-emerald-950/70 text-emerald-300 border border-emerald-700/60">
-                                <span id="studioSyncModeDot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                                <span id="studioLoadedSubBadge">Admin Workspace</span>
-                                <span class="text-slate-500">•</span>
-                                <span id="studioLoadedAuthorBadge" class="font-mono text-[11px] text-emerald-200">Isolated</span>
-                            </div>
-
-                            <input id="creatorProgName" type="hidden" value="Admin Routine">
                         </div>
 
-                        <!-- Right Controls: Platform Selector + Check + Simulate + Run -->
-                        <div class="flex items-center flex-wrap gap-2">
-                            <div class="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1">
-                                <label for="creatorModelSelect" class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Platform:</label>
-                                <select id="creatorModelSelect" onchange="onStudioModelChange()"
-                                    class="bg-transparent text-xs text-white focus:outline-none font-bold cursor-pointer">
-                                    <option value="ur" class="bg-slate-900 text-white">UR3 Arm</option>
-                                    <option value="niryo" class="bg-slate-900 text-white">Niryo Ned</option>
-                                </select>
+                        <div class="relative">
+                            <button id="branchBtn" class="btn btn-sm menu-btn" aria-haspopup="listbox" aria-expanded="false" onclick="RepoUI.toggle('branch', event)" title="Switch branch">
+                                <span class="menu-label">Branch</span><strong id="branchLabel">main</strong><span aria-hidden="true">&#9662;</span>
+                            </button>
+                            <div id="branchPanel" class="popover hidden" role="listbox" style="width:300px">
+                                <div id="branchList" class="popover-list"></div>
+                                <div class="popover-foot"><button class="btn btn-sm" onclick="RepoUI.newBranch()">New branch from this commit</button></div>
                             </div>
-                            <span id="studioLoadedModelBadge" class="hidden">UR3</span>
+                        </div>
 
-                            <button id="btnStudioCheck" onclick="checkCreatorSyntax()"
-                                class="btn btn-sm">
-                                <span>Check Syntax</span>
+                        <div class="relative">
+                            <button id="commitBtn" class="btn btn-sm menu-btn" aria-haspopup="listbox" aria-expanded="false" onclick="RepoUI.toggle('commit', event)" title="Switch commit">
+                                <span class="menu-label">Commit</span><strong id="commitLabel">&mdash;</strong><span aria-hidden="true">&#9662;</span>
                             </button>
-                            <button id="btnSimulateCreator" onclick="simulateCreatorCode()"
-                                class="btn btn-sm btn-primary">
-                                <span>Simulate</span>
-                            </button>
-                            <button id="btnExecuteStudioProject" onclick="executeCurrentStudioProject()"
-                                class="btn btn-sm btn-primary">
-                                <span>Run on robot</span>
-                            </button>
+                            <div id="commitPanel" class="popover hidden" role="listbox" style="width:460px">
+                                <div id="commitList" class="popover-list"></div>
+                            </div>
+                        </div>
+
+                        <span id="studioCommitStatus"></span>
+                        <span id="studioDirtyBadge" class="badge hidden" data-status="pending">Uncommitted changes</span>
+
+                        <!-- Retained ids used by the rest of the page -->
+                        <span id="studioSyncModeBadge" class="hidden"></span><span id="studioSyncModeDot" class="hidden"></span>
+                        <span id="studioLoadedSubBadge" class="hidden"></span><span id="studioLoadedAuthorBadge" class="hidden"></span>
+                        <span id="studioLoadedModelBadge" class="hidden">UR3</span>
+                        <input id="creatorProgName" type="hidden" value="Admin Routine">
+
+                        <div class="studio-bar-actions">
+                            <label for="creatorModelSelect" class="menu-label">Robot</label>
+                            <select id="creatorModelSelect" onchange="onStudioModelChange()" class="select" style="width:112px">
+                                <option value="ur">UR3 Arm</option>
+                                <option value="niryo">Niryo Ned</option>
+                            </select>
+                            <button id="btnStudioCheck" onclick="checkCreatorSyntax()" class="btn btn-sm">Check syntax</button>
+                            <button id="btnCommitStudio" onclick="RepoUI.openCommit()" class="btn btn-sm" title="Commit the changes in the editor (Ctrl+S)">Commit&hellip;</button>
+                            <button id="btnSimulateCreator" onclick="simulateCreatorCode()" class="btn btn-sm btn-primary" title="Simulate what is in the editor">Simulate</button>
+                            <button id="btnExecuteStudioProject" onclick="executeCurrentStudioProject()" class="btn btn-sm btn-primary" title="Run the selected commit on the robot">Run on robot</button>
+                        </div>
+                    </div>
+
+                    <!-- What Edit / Run / Simulate act on -->
+                    <div id="studioContextLine" class="studio-context" role="status"></div>
+
+                    <!-- Commit message dialog (inline, same component as the other popovers) -->
+                    <div id="commitDialog" class="popover hidden" style="position:fixed;top:120px;left:50%;transform:translateX(-50%);width:440px;max-width:92vw;z-index:90">
+                        <div class="popover-head" style="font-weight:600">Commit to <span id="commitDialogTarget"></span></div>
+                        <div style="padding:10px 12px">
+                            <textarea id="commitMessage" rows="3" class="input" style="width:100%;height:auto;padding:8px 10px" placeholder="Commit note (what changed and why)"></textarea>
+                            <div id="commitDialogNote" class="cell-sub" style="margin-top:8px;white-space:normal"></div>
+                        </div>
+                        <div class="popover-foot" style="gap:8px">
+                            <button class="btn btn-sm btn-ghost" onclick="RepoUI.closeCommit()">Cancel</button>
+                            <button id="commitDialogOk" class="btn btn-sm btn-primary" onclick="RepoUI.confirmCommit()">Commit</button>
                         </div>
                     </div>
 
@@ -343,15 +354,9 @@
                     <!-- Bottom Action Bar (Save, Branch, Save as Example, Examples & Templates, Export .zip) -->
                     <div class="p-3 sm:px-4 sm:py-2.5 bg-slate-850 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
                         <div class="flex items-center flex-wrap gap-2">
-                            <button onclick="studioSaveNow(true)"
-                                class="btn btn-sm">
-<span id="btnStudioSaveLabel">Save Project</span>
-                            </button>
-
-                            <button onclick="studioBranchCurrentProject()" title="Create an isolated admin branch of this project so your edits do NOT affect the student's project"
-                                class="btn btn-sm btn-primary">
-                                <span>Create branch</span>
-                            </button>
+                            <span id="btnStudioSaveLabel" class="hidden"></span>
+                            <button onclick="RepoUI.renameProject()" class="btn btn-sm" title="Rename this project (admin-owned only)">Rename project</button>
+                            <button onclick="RepoUI.deleteProject()" class="btn btn-sm btn-ghost btn-quiet-danger" title="Delete this project (admin-owned) or this branch">Delete&hellip;</button>
 
                             <button onclick="openSaveAsExampleModal()" title="Save current code or branch as a shared example for students"
                                 class="btn btn-sm btn-primary">
@@ -400,7 +405,7 @@
                         <div class="flex items-center space-x-3 text-slate-500 text-xs font-mono">
                             <span id="studioBottomStatus">Workspace Ready</span>
                             <span>•</span>
-                            <span class="text-slate-400">Ctrl+S to save</span>
+                            <span class="text-slate-400">Ctrl+S to commit</span>
                         </div>
                     </div>
 
@@ -1357,10 +1362,11 @@ print("Gripper test finished.")
                             if (adminProjectState.active_file) {
                                 adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
                             }
+                            RepoUI.markEdited();
                         });
 
                         studioEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () {
-                            studioSaveNow(true);
+                            RepoUI.openCommit();
                         });
 
                         if (window.ResizeObserver) {
@@ -1472,436 +1478,42 @@ print("Gripper test finished.")
         // --- Admin Code Studio (Multi-File Workspace, Student Sync & Branching) ---
         // ==========================================
 
-        function updateStudioContextUI() {
-            const isStudent = !!adminProjectState.is_student_project;
-            const owner = adminProjectState.owner || currentAdminUser || "admin";
-            const projName = adminProjectState.current_project || "admin_default";
-            const model = adminProjectState.robot_model || "ur";
+        function updateStudioContextUI() { RepoUI.renderHeader(); }
 
-            const syncBadge = document.getElementById("studioSyncModeBadge");
-            const syncDot = document.getElementById("studioSyncModeDot");
-            const subBadge = document.getElementById("studioLoadedSubBadge");
-            const authorBadge = document.getElementById("studioLoadedAuthorBadge");
-            const saveLabel = document.getElementById("btnStudioSaveLabel");
-            const bottomStatus = document.getElementById("studioBottomStatus");
-            const fName = document.getElementById("studioFolderName");
-            const modelSel = document.getElementById("creatorModelSelect");
-            const nameInput = document.getElementById("creatorProgName");
-
-            if (nameInput) nameInput.value = projName;
-            if (fName) fName.innerText = isStudent ? `${owner}/${projName}/` : `${projName}/`;
-
-            if (modelSel) {
-                modelSel.disabled = false; // Admin can ALWAYS change platform!
-                modelSel.value = (model === 'niryo') ? 'niryo' : 'ur';
-                modelSel.title = `Default platform for "${projName}" is ${model === 'niryo' ? 'Niryo Ned' : 'UR3 Arm'}. As admin, you can switch platforms anytime.`;
-            }
-
-            if (isStudent) {
-                if (syncBadge) {
-                    syncBadge.className = "px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center space-x-1.5 bg-sky-950/80 text-sky-300 border border-sky-500/40 shadow-sm";
-                }
-                if (syncDot) syncDot.className = "w-2 h-2 rounded-full bg-sky-400 animate-pulse";
-                if (subBadge) subBadge.innerText = selectedSubId ? `Student #${selectedSubId}: ${projName}` : `Student Project: ${projName}`;
-                if (authorBadge) {
-                    authorBadge.innerText = `${owner} (Edits Sync to Student)`;
-                    authorBadge.className = "font-mono text-[11px] text-sky-200";
-                }
-                if (saveLabel) saveLabel.innerText = "Save & Sync to Student";
-                if (bottomStatus) bottomStatus.innerText = `Live Student Sync (${owner}/${projName}) — Create a Branch to edit without affecting student`;
-            } else {
-                if (syncBadge) {
-                    syncBadge.className = "px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center space-x-1.5 bg-purple-950/70 text-purple-300 border border-purple-500/40 shadow-sm";
-                }
-                if (syncDot) syncDot.className = "w-2 h-2 rounded-full bg-purple-400";
-                if (subBadge) subBadge.innerText = `Branch: ${projName}`;
-                if (authorBadge) {
-                    authorBadge.innerText = `Admin (${owner}) • Isolated Copy`;
-                    authorBadge.className = "font-mono text-[11px] text-purple-200";
-                }
-                if (saveLabel) saveLabel.innerText = "Save Branch";
-                if (bottomStatus) bottomStatus.innerText = `Branch ${projName}. Student projects unaffected.`;
-            }
-
-            // Highlight matching option in #studioProjectSelect if present
-            const sel = document.getElementById("studioProjectSelect");
-            if (sel) {
-                const expectedVal = `${isStudent ? 'student' : 'admin'}:${owner}:${projName}`;
-                const hasOpt = Array.from(sel.options).some(o => o.value === expectedVal);
-                if (hasOpt) sel.value = expectedVal;
-            }
-        }
-
+        // Loads the project list; opens the most recently active project if none is open yet.
         async function studioLoadProjects(skipAutoSwitch = false) {
-            if (!currentAdminToken) return;
-            try {
-                const res = await fetch('/api/workspace/projects?all_users=true', {
-                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                // `all_projects` carries every user's folders WITH their owner; `projects` is only the
-                // signed-in admin's own list and has no per-item owner (that produced "student:undefined:...").
-                const projects = (data.all_projects && data.all_projects.length)
-                    ? data.all_projects
-                    : (data.projects || []).map(p => ({ ...p, owner: p.owner || data.owner }));
-                allWorkspaceProjectsCache = projects;
-
-                const adminUserLower = (currentAdminUser || "admin").toLowerCase();
-                const adminProjects = projects.filter(p => (p.owner || '').toLowerCase() === adminUserLower || (p.owner || '').toLowerCase() === 'admin' || (p.owner || '').toLowerCase() === 'mike');
-                const studentProjects = projects.filter(p => !adminProjects.includes(p));
-
-                const sel = document.getElementById("studioProjectSelect");
-                if (sel) {
-                    let html = '';
-                    if (studentProjects.length > 0) {
-                        html += `<optgroup label="Student Projects (Edits Sync to Student)">` +
-                            studentProjects.map(p => {
-                                const val = `student:${p.owner}:${p.name}`;
-                                const mTag = (p.robot_model || 'ur').toUpperCase();
-                                return `<option value="${escapeHtml(val)}">${escapeHtml(p.owner)} / ${escapeHtml(p.name)} [${mTag}]</option>`;
-                            }).join("") +
-                            `</optgroup>`;
-                    }
-                    if (adminProjects.length > 0) {
-                        html += `<optgroup label="Admin branches &amp; projects">` +
-                            adminProjects.map(p => {
-                                const val = `admin:${p.owner || currentAdminUser}:${p.name}`;
-                                const mTag = (p.robot_model || 'ur').toUpperCase();
-                                return `<option value="${escapeHtml(val)}">${escapeHtml(p.name)} [${mTag}]</option>`;
-                            }).join("") +
-                            `</optgroup>`;
-                    }
-                    if (!html) {
-                        html = `<option value="admin:${escapeHtml(currentAdminUser || 'admin')}:admin_default">admin_default [UR]</option>`;
-                    }
-                    sel.innerHTML = html;
-                }
-
-                if (!skipAutoSwitch) {
-                    const hasFilesLoaded = adminProjectState.files && Object.keys(adminProjectState.files).length > 0 && selectedSubId;
-                    if (!hasFilesLoaded && sel && sel.options.length > 0) {
-                        const targetVal = sel.value || sel.options[0].value;
-                        await studioSwitchProject(targetVal, false);
-                    } else {
-                        updateStudioContextUI();
-                    }
-                } else {
-                    updateStudioContextUI();
-                }
-            } catch (e) {
-                console.error("studioLoadProjects error:", e);
+            await RepoUI.loadRepos();
+            if (!skipAutoSwitch && !RepoUI.isOpen() && RepoUI.state.repos.length) {
+                const mine = RepoUI.state.repos.find(r => r.owner.toLowerCase() === (currentAdminUser || '').toLowerCase()) || RepoUI.state.repos[0];
+                await RepoUI.open(mine.owner, mine.project, { force: true });
+            } else {
+                RepoUI.renderHeader();
             }
         }
 
-        let _studioSwitchSeq = 0;
-        async function studioSwitchProject(encodedVal, saveCurrent = true) {
+        // Kept for older callers: "student:alice:proj" / "admin:mike:proj".
+        async function studioSwitchProject(encodedVal) {
             if (!encodedVal) return;
-            const seq = ++_studioSwitchSeq;                       // newest request wins; older responses are dropped
-            const sel = document.getElementById("studioProjectSelect");
-            const prevVal = sel ? sel.dataset.loaded || "" : "";  // the project whose code is actually in the editor
-            const revert = (msg) => {
-                if (sel && prevVal) sel.value = prevVal;          // select must always name the code on screen
-                notify(msg);
-            };
-            if (saveCurrent && studioEditor && adminProjectState.active_file && Object.keys(adminProjectState.files || {}).length > 0) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-                if (!(await studioSaveNow(false))) { revert("Could not save the current project, so it stays open."); return; }
-            }
-            if (seq !== _studioSwitchSeq) return;
-
-            let mode = "admin";
-            let owner = currentAdminUser || "admin";
-            let name = encodedVal;
-
-            if (encodedVal.includes(":")) {
-                const parts = encodedVal.split(":");
-                mode = parts[0];
-                owner = parts[1] || owner;
-                name = parts.slice(2).join(":");
-            }
-
-            try {
-                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(name)}?owner=${encodeURIComponent(owner)}`, {
-                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
-                });
-                if (seq !== _studioSwitchSeq) return;
-                if (!res.ok) {
-                    const detail = (await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`;
-                    revert(`Could not open "${name}": ${detail}`);
-                    return;
-                }
-                const data = await res.json();
-                if (seq !== _studioSwitchSeq) return;
-
-                const isStudent = (mode === "student") || (owner.toLowerCase() !== (currentAdminUser || "admin").toLowerCase() && owner.toLowerCase() !== "mike" && owner.toLowerCase() !== "admin");
-                adminProjectState.current_project = name;
-                adminProjectState.owner = owner;
-                adminProjectState.is_student_project = isStudent;
-
-                // Link to latest submission for this student project if available
-                if (isStudent) {
-                    const matchSub = submissionsList.find(s =>
-                        (s.student_name || '').toLowerCase() === owner.toLowerCase() &&
-                        ((s.project_name || '') === name || (s.task_id || '') === name)
-                    );
-                    selectedSubId = matchSub ? matchSub.id : null;
-                    adminProjectState.submission_id = selectedSubId;
-                } else {
-                    selectedSubId = null;
-                    adminProjectState.submission_id = null;
-                }
-
-                const loadedFiles = (data.files && Object.keys(data.files).length > 0)
-                    ? data.files
-                    : { "main.py": CREATOR_TEMPLATES.default(urIp) };
-                adminProjectState.files = loadedFiles;
-                adminProjectState.entry_point = (data.entry_point && data.entry_point in loadedFiles)
-                    ? data.entry_point
-                    : (("main.py" in loadedFiles) ? "main.py" : Object.keys(loadedFiles)[0]);
-                adminProjectState.active_file = adminProjectState.entry_point;
-
-                const allCode = Object.values(adminProjectState.files).join(" ");
-                const projModel = data.robot_model || ((allCode.includes('pyniryo') || allCode.includes('NiryoRobot')) ? 'niryo' : 'ur');
-                adminProjectState.robot_model = projModel;
-
-                if (studioEditor) {
-                    studioEditor.updateOptions({ readOnly: false });
-                    studioEditor.setValue(adminProjectState.files[adminProjectState.active_file] || "");
-                    setTimeout(() => { if (studioEditor) studioEditor.layout(); }, 50);
-                }
-                if (sel) sel.dataset.loaded = encodedVal;
-                studioRenderFileTabs();
-                studioRenderExplorer();
-                updateStudioContextUI();
-            } catch (e) {
-                console.error("studioSwitchProject error:", e);
-                revert("Could not open the project: " + e.message);
-            }
+            const parts = encodedVal.split(":");
+            if (parts.length >= 3) return RepoUI.open(parts[1], parts.slice(2).join(":"));
+            return RepoUI.open(currentAdminUser || "admin", encodedVal);
         }
 
-        async function studioBranchCurrentProject() {
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
-            const baseName = (adminProjectState.current_project || "project").replace(/_branch$/i, "");
-            const suggested = `${baseName}_branch`;
-            const branchNameInput = prompt(
-                "Create an isolated Admin Branch:\nEdits to this branch will NOT affect the student's project, and you can save it as a shared Example.",
-                suggested
-            );
-            if (!branchNameInput || !branchNameInput.trim()) return;
-            const cleanBranch = branchNameInput.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
-            const targetModel = document.getElementById("creatorModelSelect")?.value || adminProjectState.robot_model || "ur";
-            const adminOwner = currentAdminUser || "admin";
+        async function studioBranchCurrentProject() { return RepoUI.newBranch(); }
 
-            try {
-                // Save directly into the admin's own workspace
-                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(cleanBranch)}?owner=${encodeURIComponent(adminOwner)}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentAdminToken}`
-                    },
-                    body: JSON.stringify({
-                        files: { ...adminProjectState.files },
-                        entry_point: adminProjectState.entry_point || "main.py",
-                        robot_model: targetModel
-                    })
-                });
-                if (!res.ok) {
-                    const err = await res.json();
-                    notify("Could not create branch: " + (err.detail || "Error"));
-                    return;
-                }
+        async function studioNewProject() { return RepoUI.newProject(); }
 
-                // Switch active context to the new isolated admin branch
-                selectedSubId = null;
-                adminProjectState.submission_id = null;
-                adminProjectState.current_project = cleanBranch;
-                adminProjectState.owner = adminOwner;
-                adminProjectState.is_student_project = false;
-                adminProjectState.robot_model = targetModel;
+        async function studioRenameProject() { return RepoUI.renameProject(); }
 
-                await studioLoadProjects(true);
-                updateStudioContextUI();
-                studioRenderFileTabs();
-                studioRenderExplorer();
-                showActionToast(`Branch "${cleanBranch}" created.`);
-            } catch (e) {
-                notify("Error creating branch: " + e.message);
-            }
-        }
+        async function studioDeleteProject() { return RepoUI.deleteProject(); }
 
-        async function studioNewProject() {
-            const name = prompt("Enter a folder name for the new admin project/branch:");
-            if (!name || !name.trim()) return;
-            const clean = name.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
-            const targetModel = document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : "ur";
-            const adminOwner = currentAdminUser || "admin";
-            try {
-                const res = await fetch('/api/workspace/projects', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentAdminToken}`
-                    },
-                    body: JSON.stringify({ name: clean, template: targetModel, robot_model: targetModel })
-                });
-                if (!res.ok) {
-                    const err = await res.json();
-                    notify("Could not create project folder: " + (err.detail || "Error"));
-                    return;
-                }
-                await studioLoadProjects(true);
-                await studioSwitchProject(`admin:${adminOwner}:${clean}`, false);
-                showActionToast(`Created admin project "${clean}".`);
-            } catch (e) {
-                notify("Error creating project: " + e.message);
-            }
-        }
-
-        async function studioRenameProject() {
-            const current = adminProjectState.current_project;
-            if (!current || current === 'default' || current === 'admin_default') {
-                notify("Cannot rename the default project folder.");
-                return;
-            }
-            if (adminProjectState.is_student_project) {
-                notify("To rename without breaking the student's workspace link, click 'Create branch' first.");
-                return;
-            }
-            const newName = prompt(`Rename admin project "${current}" to:`, current);
-            if (!newName || !newName.trim() || newName.trim() === current) return;
-            const clean = newName.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
-            try {
-                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(current)}/rename`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentAdminToken}`
-                    },
-                    body: JSON.stringify({ new_name: clean })
-                });
-                if (!res.ok) {
-                    const err = await res.json();
-                    notify("Rename failed: " + (err.detail || "Error"));
-                    return;
-                }
-                adminProjectState.current_project = clean;
-                await studioLoadProjects(true);
-                updateStudioContextUI();
-                showActionToast(`Renamed project to "${clean}".`);
-            } catch (e) {
-                notify("Error renaming project: " + e.message);
-            }
-        }
-
-        async function studioDeleteProject() {
-            const current = adminProjectState.current_project;
-            if (!current || current === 'admin_default' || current === 'default') {
-                notify("Cannot delete the default project folder.");
-                return;
-            }
-            const owner = adminProjectState.owner || currentAdminUser || "admin";
-            if (!confirm(`Permanently delete project folder "${owner}/${current}"?`)) return;
-            try {
-                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(current)}?owner=${encodeURIComponent(owner)}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${currentAdminToken}` }
-                });
-                if (res.ok) {
-                    showActionToast(`Deleted project folder "${current}".`);
-                    selectedSubId = null;
-                    adminProjectState.files = {};
-                    await studioLoadProjects(false);
-                }
-            } catch (e) {
-                notify("Error deleting project: " + e.message);
-            }
-        }
-
-        async function studioPut(url, body) {
-            const res = await fetch(url, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentAdminToken}` },
-                body: JSON.stringify(body)
-            });
-            if (!res.ok) {
-                let detail = `HTTP ${res.status}`;
-                try { detail = (await res.json()).detail || detail; } catch (_) {}
-                throw new Error(detail);
-            }
-            return res.json().catch(() => ({}));
-        }
-
-        // Serialised so an older, slower save can never overwrite a newer one.
-        let _studioSaveChain = Promise.resolve(true);
-        function studioSaveNow(showToast = true) {
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
-            // Snapshot at call time.
-            const snap = {
-                files: { ...adminProjectState.files },
-                entry: adminProjectState.entry_point,
-                projName: adminProjectState.current_project || "admin_default",
-                targetModel: document.getElementById("creatorModelSelect")?.value || adminProjectState.robot_model || "ur",
-                isStudent: !!adminProjectState.is_student_project,
-                subId: selectedSubId,
-                studentOwner: adminProjectState.owner || "student",
-            };
-            adminProjectState.robot_model = snap.targetModel;
-            const owner = snap.isStudent ? snap.studentOwner : (currentAdminUser || "admin");
-
-            const run = async () => {
-                const errors = [];
-                // 1. Student submission record (so the table and history match what was saved)
-                if (snap.isStudent && snap.subId) {
-                    try {
-                        await studioPut(`/api/submissions/${snap.subId}`, {
-                            code: snap.files[snap.entry] || "",
-                            files: snap.files,
-                            entry_point: snap.entry,
-                            robot_model: snap.targetModel
-                        });
-                        const subItem = submissionsList.find(x => x.id === snap.subId);
-                        if (subItem) {
-                            subItem.code = snap.files[snap.entry] || "";
-                            subItem.files = { ...snap.files };
-                            subItem.entry_point = snap.entry;
-                            subItem.robot_model = snap.targetModel;
-                        }
-                    } catch (e) { errors.push(`submission: ${e.message}`); }
-                }
-                // 2. The workspace folder (always attempted, even if step 1 failed)
-                try {
-                    const saved = await studioPut(
-                        `/api/workspace/projects/${encodeURIComponent(snap.projName)}?owner=${encodeURIComponent(owner)}`,
-                        { files: snap.files, entry_point: snap.entry, robot_model: snap.targetModel });
-                    // Server may normalise names; surface any file it renamed instead of silently diverging.
-                    const sent = Object.keys(snap.files), got = Object.keys(saved.files || snap.files);
-                    const missing = sent.filter(f => !got.includes(f));
-                    if (missing.length) errors.push(`server renamed: ${missing.join(", ")}`);
-                } catch (e) { errors.push(`workspace: ${e.message}`); }
-
-                const toast = document.getElementById("studioSaveToast");
-                if (errors.length) {
-                    const msg = "Save failed - " + errors.join("; ");
-                    if (toast) { toast.innerText = msg; toast.style.opacity = '1'; setTimeout(() => { toast.style.opacity = '0'; }, 6000); }
-                    notify(msg);
-                    return false;
-                }
-                if (showToast) {
-                    const msg = snap.isStudent ? `Saved & synced to ${owner}` : "Saved branch";
-                    if (toast) { toast.innerText = msg; toast.style.opacity = '1'; setTimeout(() => { toast.style.opacity = '0'; }, 2000); }
-                    showActionToast(snap.isStudent ? `Saved & synced changes to student "${owner}"` : `Saved admin branch "${snap.projName}"`);
-                }
-                return true;
-            };
-            const result = _studioSaveChain.then(run, run);
-            _studioSaveChain = result.catch(() => false);
-            return result;
+        // Edits live in the editor until committed. This only captures the editor into the project state and
+        // refreshes the "uncommitted changes" indicator; committing is explicit (Ctrl+S / Commit).
+        function studioSaveNow(showToast = false) {
+            RepoUI.capture();
+            RepoUI.markEdited();
+            if (showToast) RepoUI.openCommit();
+            return true;
         }
 
         function studioRenderFileTabs() {
@@ -1930,35 +1542,7 @@ print("Gripper test finished.")
             }).join("");
         }
 
-        function studioRenderExplorer() {
-            const list = document.getElementById("studioFilesList");
-            if (!list) return;
-            const files = Object.keys(adminProjectState.files || {});
-            list.innerHTML = files.map(fname => {
-                const isActive = (fname === adminProjectState.active_file);
-                const isEntry = (fname === adminProjectState.entry_point);
-                return `
-                    <div class="group flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-mono cursor-pointer transition ${
-                        isActive
-                            ? 'bg-blue-600/20 text-sky-300 border border-blue-500/30 font-bold'
-                            : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200 border border-transparent'
-                    }" onclick="studioSwitchFile('${escapeHtml(fname)}')">
-                        <div class="flex items-center space-x-2 min-w-0">
-                            <span class="truncate">${escapeHtml(fname)}</span>
-                            ${isEntry ? '<span class="text-[11px] px-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-sans">Entry</span>' : ''}
-                        </div>
-                        <div class="hidden group-hover:flex group-focus-within:flex items-center space-x-1 flex-shrink-0 pl-2">
-                            ${(!isEntry && fname.endsWith('.py')) ? `<button onclick="event.stopPropagation(); studioSetEntryPoint('${escapeHtml(fname)}')" title="Set as Entry Point" class="p-0.5 text-[11px] text-slate-400 hover:text-emerald-400">Set entry</button>` : ''}
-                            <button onclick="event.stopPropagation(); studioRenameFile('${escapeHtml(fname)}')" title="Rename File" class="p-0.5 text-[11px] text-slate-400 hover:text-sky-400">Rename</button>
-                            ${files.length > 1 ? `<button onclick="event.stopPropagation(); studioDeleteFile('${escapeHtml(fname)}')" title="Delete File" class="p-0.5 text-[11px] text-slate-400 hover:text-rose-400">Delete</button>` : ''}
-                        </div>
-                    </div>
-                `;
-            }).join("");
-
-            const stats = document.getElementById("studioFooterStats");
-            if (stats) stats.innerText = `${files.length} file${files.length > 1 ? 's' : ''} • Entry: ${adminProjectState.entry_point}`;
-        }
+        function studioRenderExplorer() { RepoUI.renderTree(); }
 
         function studioSwitchFile(fname) {
             if (!adminProjectState.files || !(fname in adminProjectState.files)) return;
@@ -1989,11 +1573,12 @@ print("Gripper test finished.")
         }
 
         function studioNewFile() {
-            const name = prompt("Enter new file name (e.g., helpers.py, waypoints.py, config.json, notes.txt):");
+            const name = prompt("New file name. Use folder/name.py to create it inside a folder:");
             if (!name || !name.trim()) return;
-            let clean = name.trim();
-            if (!clean.includes(".")) clean += ".py";
-            clean = clean.replace(/[^a-zA-Z0-9_.-]/g, "");
+            let clean = name.trim().replace(/\\/g, "/").replace(/^\/+/, "");
+            if (!clean.split("/").pop().includes(".")) clean += ".py";
+            clean = clean.split("/").map(seg => seg.replace(/[^a-zA-Z0-9_.-]/g, "")).filter(Boolean).join("/");
+            if (!clean || clean.split("/").some(seg => seg.startsWith("."))) { notify("Invalid file name."); return; }
             if (clean in adminProjectState.files) {
                 notify(`File "${clean}" already exists.`);
                 return;
@@ -2007,8 +1592,9 @@ print("Gripper test finished.")
         function studioRenameFile(oldName) {
             const newNameInput = prompt(`Rename file "${oldName}" to:`, oldName);
             if (!newNameInput || !newNameInput.trim() || newNameInput.trim() === oldName) return;
-            let clean = newNameInput.trim().replace(/[^a-zA-Z0-9_.-]/g, "");
-            if (!clean.includes(".")) {
+            let clean = newNameInput.trim().replace(/\\/g, "/").replace(/^\/+/, "").split("/").map(seg => seg.replace(/[^a-zA-Z0-9_.-]/g, "")).filter(Boolean).join("/");
+            if (!clean || clean.split("/").some(seg => seg.startsWith("."))) { notify("Invalid file name."); return; }
+            if (!clean.split("/").pop().includes(".")) {
                 const oldExt = oldName.includes(".") ? "." + oldName.split(".").pop() : ".py";
                 clean += oldExt;
             }
@@ -2126,11 +1712,11 @@ print("Gripper test finished.")
             switchAdminTab('sim');
 
             const simLabel = document.getElementById("simSourceLabel");
-            if (simLabel) simLabel.innerText = `Studio Project (${adminProjectState.current_project})`;
+            if (simLabel) simLabel.innerText = `${adminProjectState.owner}/${adminProjectState.current_project} @ ${RepoUI.state.branch}${typeof RepoUI.state.commitId === "number" ? " #" + RepoUI.state.commitId : ""}${RepoUI.isDirty() ? " + uncommitted edits" : ""}`;
 
             const simBadge = document.getElementById("adminTabSimBadge");
             if (simBadge) {
-                simBadge.className = "px-2 py-0.5 rounded-full text-[11px] bg-indigo-600 text-white animate-pulse";
+                simBadge.className = "badge"; simBadge.dataset.status = "running";
                 simBadge.innerText = "SIMULATING";
             }
 
@@ -2155,14 +1741,14 @@ print("Gripper test finished.")
                     appendSimLog(`[SIMULATOR ERROR] ${data.error || "Simulation failed"}
 `);
                     if (simBadge) {
-                        simBadge.className = "px-2 py-0.5 rounded-full text-[11px] bg-rose-900/80 text-rose-300";
+                        simBadge.className = "badge"; simBadge.dataset.status = "failed";
                         simBadge.innerText = "ERROR";
                     }
                     return;
                 }
 
                 if (simBadge) {
-                    simBadge.className = "px-2 py-0.5 rounded-full text-[11px] bg-emerald-900/80 text-emerald-300";
+                    simBadge.className = "badge"; simBadge.dataset.status = "completed";
                     simBadge.innerText = "READY";
                 }
 
@@ -2321,8 +1907,9 @@ print("Gripper test finished.")
                 submissionsList = data.submissions || [];
 
                 // Update counters
-                const totalCount = submissionsList.length;
-                const pendingCount = submissionsList.filter(s => s.status === 'pending').length;
+                const mainSubs = submissionsList.filter(s => (s.branch || 'main') === 'main');
+                const totalCount = mainSubs.length;
+                const pendingCount = mainSubs.filter(s => s.status === 'pending').length;
 
                 const statTotal = document.getElementById("statTotalSubs");
                 if (statTotal) statTotal.innerText = totalCount;
@@ -2359,7 +1946,8 @@ print("Gripper test finished.")
         function filterSubmissionsTable() {
             const query = (document.getElementById("queueSearchInput")?.value || "").toLowerCase().trim();
 
-            let filtered = submissionsList.slice();
+            // The queue lists iterations of each project's main branch; branch commits live in Code Studio.
+            let filtered = submissionsList.filter(s => (s.branch || 'main') === 'main');
 
             // Filter model
             if (submissionsModelFilter !== 'all') {
@@ -2436,9 +2024,9 @@ print("Gripper test finished.")
             const groups = new Map();
             subs.forEach(sub => {
                 const model = sub.robot_model || ((sub.code && sub.code.includes('pyniryo')) ? 'niryo' : 'ur');
-                const prog = sub.task_id || sub.project_name || 'Untitled routine';
+                const prog = (sub.project_name || '').trim() || sub.task_id || 'Untitled routine';
                 const student = sub.student_name || 'Unknown';
-                const key = `${student}___${prog}___${model}`;
+                const key = `${student}___${prog}`;
                 if (!groups.has(key)) groups.set(key, { key, prog, student, model, subs: [] });
                 groups.get(key).subs.push(sub);
             });
@@ -2447,6 +2035,7 @@ print("Gripper test finished.")
             for (const g of groups.values()) {
                 g.subs.sort((a, b) => b.id - a.id);
                 const latest = g.subs[0];
+                g.model = latest.robot_model || g.model;
                 const collapsed = collapsedProjectGroups.has(g.key);
                 const n = g.subs.length;
                 const status = groupStatus(g.subs);
@@ -2481,10 +2070,10 @@ print("Gripper test finished.")
                     const running = sub.status === 'running';
                     html += `<tr class="iter-row ${selectedSubId === sub.id ? 'is-selected' : ''} ${running ? 'row-live' : ''}" onclick="openSubmissionInStudio(${sub.id})">
                         <td>
-                            <span style="color:var(--text)">#${sub.id}</span> &nbsp;Iteration ${iter}${idx === 0 ? ' &middot; latest' : ''}
+                            <span style="color:var(--text)">#${sub.id}</span> &nbsp;Iteration ${iter}${idx === 0 ? ' &middot; latest' : ''}${sub.author && sub.author !== sub.student_name ? ` &middot; by ${escapeHtml(sub.author)}` : ''}
                             <span class="cell-sub">${msg ? escapeHtml(msg) : 'No commit note'}</span>
                         </td>
-                        <td>${escapeHtml(g.student)}</td>
+                        <td>${escapeHtml(sub.author || g.student)}</td>
                         <td>${formatDateTimeSent(sub.submitted_at)}</td>
                         <td class="num" title="${escapeHtml(f.list)}">${f.count.replace(' files', '').replace(' file', '')} &middot; ${calculateLOC(sub)}</td>
                         <td>${getStatusBadge(sub.status)}</td>
@@ -2495,164 +2084,23 @@ print("Gripper test finished.")
             tbody.innerHTML = html;
         }
 
-        function openSubmissionInStudio(id) {
-            selectedSubId = id;
+        // A queue row is a commit: open it at its own project, branch and commit.
+        async function openSubmissionInStudio(id) {
             const sub = submissionsList.find(s => s.id === id);
             if (!sub) return;
-
-            let files = sub.files;
-            if (typeof files === 'string' && files.trim()) {
-                try { files = JSON.parse(files); } catch (_) { files = null; }
-            }
-            if (!files || typeof files !== 'object' || Object.keys(files).length === 0) {
-                files = { "main.py": sub.code || "" };
-            }
-
-            const allCode = (sub.code || "") + " " + Object.values(files).join(" ");
-            const subModel = sub.robot_model || ((allCode.includes('pyniryo') || allCode.includes('NiryoRobot')) ? 'niryo' : 'ur');
-            const studentOwner = sub.student_name || "student";
-            const isAdminSub = studentOwner.toLowerCase().startsWith("admin") || sub.task_id === "Admin";
-
-            adminProjectState.current_project = sub.project_name || sub.task_id || `submission_${sub.id}`;
-            adminProjectState.owner = isAdminSub ? (currentAdminUser || "admin") : studentOwner;
-            adminProjectState.is_student_project = !isAdminSub;
-            adminProjectState.submission_id = sub.id;
-            adminProjectState.files = { ...files };
-            adminProjectState.entry_point = sub.entry_point || (("main.py" in files) ? "main.py" : Object.keys(files)[0]);
-            adminProjectState.active_file = adminProjectState.entry_point;
-            adminProjectState.robot_model = subModel;
-
-            studioRenderFileTabs();
-            studioRenderExplorer();
-            updateStudioContextUI();
-
-            // Switch to Code Studio tab
+            const project = (sub.project_name || '').trim() || sub.task_id;
             switchAdminTab('code');
-
-            const fileContent = adminProjectState.files[adminProjectState.active_file] || "";
-            setTimeout(() => {
-                if (studioEditor) {
-                    studioEditor.updateOptions({ readOnly: false });
-                    studioEditor.setValue(fileContent);
-                    studioEditor.layout();
-                }
-            }, 60);
-
-            showActionToast(
-                adminProjectState.is_student_project
-                    ? `Opened student project "${adminProjectState.owner}/${adminProjectState.current_project}" (Edits sync to student)`
-                    : `Opened #${sub.id} in Code Studio`
-            );
+            const ok = await RepoUI.open(sub.student_name, project, { branch: sub.branch || 'main', commitId: id });
+            if (ok) showActionToast(`Opened #${id} (${sub.student_name}/${project})`);
         }
 
         function newStudioBlankProject() {
-            selectedSubId = null;
-            const targetModel = document.getElementById("creatorModelSelect")?.value || "ur";
-            const targetIp = (targetModel === 'niryo') ? niryoIp : urIp;
-            const templateCode = targetModel === 'niryo' ? CREATOR_TEMPLATES.niryo_default(targetIp) : CREATOR_TEMPLATES.default(targetIp);
-
-            adminProjectState.current_project = "admin_routine";
-            adminProjectState.owner = currentAdminUser || "admin";
-            adminProjectState.is_student_project = false;
-            adminProjectState.submission_id = null;
-            adminProjectState.robot_model = targetModel;
-            adminProjectState.files = { "main.py": templateCode };
-            adminProjectState.entry_point = "main.py";
-            adminProjectState.active_file = "main.py";
-
-            if (studioEditor) {
-                studioEditor.setValue(templateCode);
-            }
-            studioRenderFileTabs();
-            studioRenderExplorer();
-            updateStudioContextUI();
             switchAdminTab('code');
+            RepoUI.newProject();
         }
 
-        async function executeCurrentStudioProject() {
-            if (!hasAdminPermission("can_execute")) {
-                notify("Missing permission: can_execute.");
-                return;
-            }
-
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
-
-            const targetModel = document.getElementById("creatorModelSelect")?.value || adminProjectState.robot_model || "ur";
-            adminProjectState.robot_model = targetModel;
-            const entryCode = adminProjectState.files[adminProjectState.entry_point] || (studioEditor ? studioEditor.getValue() : "");
-            const progName = adminProjectState.current_project || "Admin Routine";
-            const authorName = adminProjectState.owner || currentAdminUser || "Admin";
-
-            await studioSaveNow(false);
-
-            if (selectedSubId) {
-                // Immediately navigate to Run page so admin sees telemetry & logs right away
-                launchRunPageForSubmission(selectedSubId, progName, targetModel, authorName);
-
-                try {
-                    const res = await fetch(`/api/submissions/${selectedSubId}/approve`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${currentAdminToken}`
-                        },
-                        body: JSON.stringify({ robot_model: targetModel })
-                    });
-                    if (!res.ok) {
-                        const err = await res.json();
-                        const detail = err.detail || "Could not launch on physical robot";
-                        appendLog(`\n[DISPATCH] ${detail}\n`, false);
-                        showActionToast(`${detail}`);
-                        return;
-                    }
-                    showActionToast(`Launched #${selectedSubId} on ${targetModel === 'niryo' ? 'Niryo Ned' : 'UR3 Arm'}!`);
-                    fetchSubmissions();
-                } catch (e) {
-                    appendLog(`\n[DISPATCH ERROR] ${e.message}\n`, false);
-                }
-            } else {
-                // Direct custom admin routine / branch
-                if (!hasAdminPermission("can_direct_send")) {
-                    notify("Missing permission: can_direct_send.");
-                    return;
-                }
-                // Navigate immediately to Run page
-                switchAdminTab('run');
-                switchRunModel(targetModel);
-
-                try {
-                    const res = await fetch('/api/admin/send-code', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${currentAdminToken}`
-                        },
-                        body: JSON.stringify({
-                            code: entryCode,
-                            program_name: progName,
-                            execute_now: true,
-                            project_name: adminProjectState.current_project,
-                            files: adminProjectState.files,
-                            entry_point: adminProjectState.entry_point,
-                            robot_model: targetModel
-                        })
-                    });
-                    const data = await res.json();
-                    if (!res.ok) {
-                        const detail = data.detail || "Failed to dispatch";
-                        appendLog(`\n[DISPATCH] ${detail}\n`, false);
-                        showActionToast(`${detail}`);
-                        return;
-                    }
-                    showActionToast(`Program #${data.submission_id} launched on ${targetModel === 'niryo' ? 'Niryo Ned' : 'UR3'}`);
-                    launchRunPageForSubmission(data.submission_id, progName, targetModel, currentAdminUser);
-                } catch (e) {
-                    appendLog(`\n[DISPATCH ERROR] ${e.message}\n`, false);
-                }
-            }
-        }
+        // Run always executes the commit selected in the repository bar (see RepoUI.runSelected).
+        async function executeCurrentStudioProject() { return RepoUI.runSelected(); }
 
         async function quickRunSubmission(id, event, chosenModel = null) {
             if (event) event.stopPropagation();
@@ -2999,12 +2447,13 @@ print("Gripper test finished.")
                 onStudioModelChange();
                 const targetIp = (targetModel === "niryo") ? niryoIp : urIp;
                 const code = CREATOR_TEMPLATES[key](targetIp);
-                if (studioEditor) {
-                    studioEditor.setValue(code);
-                }
-                if (adminProjectState.active_file) {
-                    adminProjectState.files[adminProjectState.active_file] = code;
-                }
+                // Templates replace the ENTRY file, never whichever helper file happens to be open.
+                const entry = adminProjectState.entry_point || "main.py";
+                if (!confirm(`Replace the contents of ${entry} with this template? (Other files are not touched. Nothing is lost until you commit.)`)) return;
+                RepoUI.capture();
+                adminProjectState.files[entry] = code;
+                studioSwitchFile(entry);
+                if (studioEditor) studioEditor.setValue(code);
                 studioSaveNow(false);
                 showActionToast("Loaded template into Code Studio");
             }
@@ -3143,7 +2592,7 @@ print("Gripper test finished.")
             if (m && currentAdminTab === 'run' && activeRunModel !== m && !st.robots[activeRunModel]?.executing) switchRunModel(m);
             // Rows may have changed state: refetch the queue only when run/halt state really changed.
             const sig = o => JSON.stringify(['ur', 'niryo'].map(k => [o.robots[k].executing, o.robots[k].submission_id, o.robots[k].emergency_halted]));
-            if (prev && prev.loaded && sig(prev) !== sig(st)) fetchSubmissions();
+            if (prev && prev.loaded && sig(prev) !== sig(st)) { fetchSubmissions(); RepoUI.refreshSoon(); }
         });
 
         async function checkRobotPing() { return RobotStore.refresh(); }
@@ -3479,6 +2928,7 @@ print("Gripper test finished.")
             ws.onmessage = (e) => {
                 RobotStore.refresh();
                 fetchSubmissions();
+                RepoUI.refreshSoon();
                 try {
                     const data = JSON.parse(e.data);
                     if (data.type === 'aborted') {
@@ -4816,29 +4266,29 @@ print("Gripper test finished.")
             const dd = document.getElementById("creatorTemplatesDropdown");
             if (dd) dd.classList.add("hidden");
 
-            const cleanTitle = (ex.title || `example_${ex.id}`).replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
-            selectedSubId = null;
-            adminProjectState.submission_id = null;
-            adminProjectState.current_project = cleanTitle;
-            adminProjectState.owner = currentAdminUser || "admin";
-            adminProjectState.is_student_project = false;
-            adminProjectState.robot_model = ex.robot_model || "ur";
-            adminProjectState.files = { ...(ex.files || { "main.py": ex.code || "" }) };
-            adminProjectState.entry_point = (ex.entry_point in adminProjectState.files) ? ex.entry_point : Object.keys(adminProjectState.files)[0];
-            adminProjectState.active_file = adminProjectState.entry_point;
-
-            if (studioEditor) {
-                studioEditor.updateOptions({ readOnly: false });
-                studioEditor.setValue(adminProjectState.files[adminProjectState.active_file] || "");
-                setTimeout(() => studioEditor.layout(), 50);
-            }
-            studioRenderFileTabs();
-            studioRenderExplorer();
-            updateStudioContextUI();
+            const base = (ex.title || `example_${ex.id}`).replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+            const files = { ...(ex.files || { "main.py": ex.code || "" }) };
+            const entry = (ex.entry_point in files) ? ex.entry_point : Object.keys(files)[0];
             switchAdminTab('code');
-            await studioSaveNow(false);
-            await studioLoadProjects(true);
-            showActionToast(`Loaded example "${ex.title}" into isolated Studio branch.`);
+            if (!(await studioConfirmDiscard())) return;
+            // Find a free project name, then create it as a new project whose first commit is the example.
+            const existing = new Set((RepoUI.state.repos || []).filter(r => r.owner === (currentAdminUser || 'admin')).map(r => r.project.toLowerCase()));
+            let name = base, i = 2; while (existing.has(name.toLowerCase())) name = `${base}_${i++}`;
+            try {
+                const res = await fetch('/api/repos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentAdminToken}` },
+                    body: JSON.stringify({ project: name, robot_model: ex.robot_model || 'ur', files, entry_point: entry })
+                });
+                if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+                await RepoUI.loadRepos();
+                await RepoUI.open(currentAdminUser || 'admin', name, { force: true });
+                showActionToast(`Loaded example "${ex.title}" as project "${name}" (${Object.keys(files).length} file(s)).`);
+            } catch (e) { notify("Could not load example: " + e.message); }
+        }
+
+        function studioConfirmDiscard() {
+            return Promise.resolve(!RepoUI.isDirty() || confirm("You have uncommitted changes in the editor. Discard them?"));
         }
 
         async function deleteAdminExample(id) {

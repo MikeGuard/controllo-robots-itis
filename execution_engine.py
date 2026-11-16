@@ -61,6 +61,15 @@ def _send_niryo_emergency_halt(ip: str):
         print(f"[EMERGENCY STOP] Niryo halt notice ({ip}): {e}")
 
 
+def _safe_relpath(name: str) -> Optional[str]:
+    """Normalised relative path inside the run directory, or None if it would escape it."""
+    raw = (name or "").strip().replace("\\", "/")
+    segs = [x for x in raw.split("/") if x not in ("", ".")]
+    if not segs or ".." in segs or raw.startswith("/") or any(x.startswith("~") for x in segs):
+        return None
+    return "/".join(segs)
+
+
 class EmergencyHaltedError(RuntimeError):
     """Raised when a run is requested while the E-stop latch is set."""
 
@@ -254,18 +263,21 @@ class ExecutionEngine:
             entry_file_name = (entry_point or "main.py").strip()
 
             if files and isinstance(files, dict) and len(files) > 0:
+                entry_file_name = _safe_relpath(entry_file_name) or "main.py"
                 for fname, fcontent in files.items():
-                    clean_name = os.path.basename(fname.strip())
+                    clean_name = _safe_relpath(fname)       # nested folders kept; '..' / absolute paths dropped
                     if clean_name:
-                        dst_path = os.path.join(run_dir, clean_name)
+                        dst_path = os.path.join(run_dir, *clean_name.split("/"))
+                        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
                         if clean_name == entry_file_name:
                             with open(dst_path, "w", encoding="utf-8") as f:
                                 f.write(runtime_prelude + (fcontent or code_str))
                         else:
                             with open(dst_path, "w", encoding="utf-8") as f:
                                 f.write(fcontent or "")
-                temp_path = os.path.join(run_dir, entry_file_name)
+                temp_path = os.path.join(run_dir, *entry_file_name.split("/"))
                 if not os.path.exists(temp_path):
+                    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
                     with open(temp_path, "w", encoding="utf-8") as f:
                         f.write(runtime_prelude + code_str)
             else:

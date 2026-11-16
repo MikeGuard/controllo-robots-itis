@@ -110,3 +110,20 @@ def validate_python_code(code_str: str, project_modules: Optional[Set[str]] = No
         return False, visitor.errors
 
     return True, []
+
+
+def project_module_names(files) -> Set[str]:
+    """
+    Importable names a project's own .py files provide, including nested packages:
+    'helper.py' -> helper ; 'lib/util.py' -> lib, lib.util   (so `import lib.util` is allowed).
+    """
+    names: Set[str] = set()
+    for path in (files or {}):
+        if not path.endswith(".py"):
+            continue
+        parts = path[:-3].split("/")
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        for i in range(1, len(parts) + 1):
+            names.add(".".join(parts[:i]))
+    return names

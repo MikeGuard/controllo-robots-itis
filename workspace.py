@@ -45,15 +45,28 @@ def clean_project_name(name: str) -> str:
     return _clean_segment(name, "project")
 
 
+MAX_PATH_DEPTH = 5
+
+
 def clean_filename(name: str) -> str:
-    name = os.path.basename((name or "").strip().replace("\\", "/"))
-    name = _NAME_RE.sub("_", name).strip()
-    if not name or name.startswith("."):
+    """
+    Validates a project file path. Nested folders are allowed ("lib/util.py"); absolute paths, '..'
+    segments, hidden names and disallowed extensions are not. Returns the normalised relative path.
+    """
+    raw = (name or "").strip().replace("\\", "/")
+    segs = [x for x in raw.split("/") if x not in ("", ".")]
+    if not segs or len(segs) > MAX_PATH_DEPTH or raw.startswith("/") or ".." in segs:
         raise WorkspaceError(f"Invalid file name '{name}'.")
-    ext = os.path.splitext(name)[1].lower()
+    cleaned = []
+    for seg in segs:
+        seg = _NAME_RE.sub("_", seg).strip()
+        if not seg or seg.startswith(".") or len(seg) > 64:
+            raise WorkspaceError(f"Invalid file name '{name}'.")
+        cleaned.append(seg)
+    ext = os.path.splitext(cleaned[-1])[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise WorkspaceError(f"File type '{ext or 'none'}' not allowed. Use: {', '.join(sorted(ALLOWED_EXTENSIONS))}")
-    return name
+    return "/".join(cleaned)
 
 
 def _user_dir(username: str) -> str:
@@ -77,15 +90,23 @@ def _write_meta(pdir: str, meta: Dict) -> None:
         json.dump(meta, f)
 
 
+def _iter_project_files(pdir: str):
+    """Yields (relative posix path, absolute path) for every visible file, nested folders included."""
+    for root, dirs, names in os.walk(pdir):
+        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        for n in sorted(names):
+            if n.startswith("."):
+                continue
+            ap = os.path.join(root, n)
+            yield os.path.relpath(ap, pdir).replace(os.sep, "/"), ap
+
+
 def _list_files(pdir: str) -> Dict[str, str]:
     files: Dict[str, str] = {}
-    for name in sorted(os.listdir(pdir)):
-        path = os.path.join(pdir, name)
-        if name.startswith(".") or not os.path.isfile(path):
-            continue
+    for rel, path in _iter_project_files(pdir):
         try:
             with open(path, "r", encoding="utf-8") as f:
-                files[name] = f.read()
+                files[rel] = f.read()
         except Exception:
             continue
     return files
@@ -101,7 +122,7 @@ def list_projects(username: str) -> List[Dict]:
         if not os.path.isdir(pdir):
             continue
         meta = _read_meta(pdir)
-        count = len([n for n in os.listdir(pdir) if not n.startswith(".") and os.path.isfile(os.path.join(pdir, n))])
+        count = sum(1 for _ in _iter_project_files(pdir))
         robot_model = meta.get("robot_model")
         if not robot_model:
             # Fallback inspection: check main.py
@@ -190,17 +211,18 @@ def save_project(username: str, project: str, files: Dict[str, str],
     # Write first (atomically, via temp file + rename), delete stale files last, so a failure
     # part-way through can never leave a project with fewer files than it started with.
     for cname, content in cleaned.items():
-        target = os.path.join(pdir, cname)
+        target = os.path.join(pdir, *cname.split("/"))
+        os.makedirs(os.path.dirname(target), exist_ok=True)
         tmp = target + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             f.write(content)
         os.replace(tmp, target)
-    for existing in os.listdir(pdir):
-        epath = os.path.join(pdir, existing)
-        if existing.startswith(".") or existing.endswith(".tmp") or not os.path.isfile(epath):
-            continue
-        if existing not in cleaned:
-            os.remove(epath)
+    for rel, path in list(_iter_project_files(pdir)):
+        if rel not in cleaned and not rel.endswith(".tmp"):
+            os.remove(path)
+    for root, dirs, names in os.walk(pdir, topdown=False):      # prune folders left empty
+        if root != pdir and not os.listdir(root):
+            os.rmdir(root)
 
     meta = _read_meta(pdir)
     ep = (entry_point or meta.get("entry_point") or "main.py").strip()
@@ -302,7 +324,7 @@ def merge_files(username: str, project: str, new_files: Dict[str, str]) -> Dict[
     if not os.path.isdir(pdir):
         return {}
     saved: Dict[str, str] = {}
-    current_count = len([n for n in os.listdir(pdir) if not n.startswith(".")])
+    current_count = sum(1 for _ in _iter_project_files(pdir))
     for fname, content in new_files.items():
         try:
             cname = clean_filename(fname)
@@ -311,11 +333,13 @@ def merge_files(username: str, project: str, new_files: Dict[str, str]) -> Dict[
         content = content or ""
         if len(content.encode("utf-8")) > MAX_FILE_BYTES:
             continue
-        if not os.path.exists(os.path.join(pdir, cname)):
+        target = os.path.join(pdir, *cname.split("/"))
+        if not os.path.exists(target):
             if current_count >= MAX_FILES_PER_PROJECT:
                 continue
             current_count += 1
-        with open(os.path.join(pdir, cname), "w", encoding="utf-8") as f:
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
             f.write(content)
         saved[cname] = content
     return saved

@@ -381,6 +381,26 @@ async def init_db():
                 await db.execute("ALTER TABLE submissions ADD COLUMN project_name TEXT DEFAULT NULL")
             if "commit_message" not in sub_cols:
                 await db.execute("ALTER TABLE submissions ADD COLUMN commit_message TEXT DEFAULT ''")
+            # Repository model (additive; every existing row is a commit on branch 'main')
+            if "branch" not in sub_cols:
+                await db.execute("ALTER TABLE submissions ADD COLUMN branch TEXT NOT NULL DEFAULT 'main'")
+            if "parent_id" not in sub_cols:
+                await db.execute("ALTER TABLE submissions ADD COLUMN parent_id INTEGER DEFAULT NULL")
+            if "author" not in sub_cols:
+                await db.execute("ALTER TABLE submissions ADD COLUMN author TEXT DEFAULT NULL")
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS branches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner TEXT NOT NULL COLLATE NOCASE,
+                project TEXT NOT NULL COLLATE NOCASE,
+                name TEXT NOT NULL COLLATE NOCASE,
+                base_id INTEGER,
+                created_by TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(owner, project, name)
+            )
+        """)
 
         # Examples table with robot_model support
         await db.execute("""
@@ -732,7 +752,10 @@ async def create_submission(
     files: Optional[Union[str, Dict[str, Any]]] = None,
     entry_point: Optional[str] = "main.py",
     project_name: Optional[str] = None,
-    commit_message: str = ""
+    commit_message: str = "",
+    branch: str = "main",
+    parent_id: Optional[int] = None,
+    author: Optional[str] = None
 ) -> int:
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     norm_model = (robot_model or "ur").strip().lower()
@@ -748,10 +771,11 @@ async def create_submission(
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             """
-            INSERT INTO submissions (student_name, task_id, code, status, logs, submitted_at, robot_model, files, entry_point, project_name, commit_message)
-            VALUES (?, ?, ?, 'pending', '', ?, ?, ?, ?, ?, ?)
+            INSERT INTO submissions (student_name, task_id, code, status, logs, submitted_at, robot_model, files, entry_point, project_name, commit_message, branch, parent_id, author)
+            VALUES (?, ?, ?, 'pending', '', ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (student_name, task_id, code, now, norm_model, files_str, entry_file, project_name, commit_message or "")
+            (student_name, task_id, code, now, norm_model, files_str, entry_file, project_name, commit_message or "",
+             (branch or "main").strip() or "main", parent_id, author)
         )
         await db.commit()
         return cursor.lastrowid
@@ -1055,3 +1079,151 @@ async def reconcile_stale_runs(active_ids) -> List[int]:
                 (now, note, sid))
         await db.commit()
     return stale
+
+
+
+# --- Repositories: a project is (owner, project); iterations are commits; branches are named lines of commits ---
+
+_PROJECT_EXPR = "LOWER(COALESCE(NULLIF(project_name, ''), task_id))"
+
+
+def commit_summary(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Light commit record for lists: everything except file contents and logs."""
+    files = row.get("files")
+    if isinstance(files, str):
+        try:
+            files = json.loads(files)
+        except Exception:
+            files = None
+    if not isinstance(files, dict) or not files:
+        files = {row.get("entry_point") or "main.py": row.get("code") or ""}
+    loc = sum(len([l for l in (c or "").split("\n") if l.strip()]) for c in files.values())
+    return {
+        "id": row["id"],
+        "parent_id": row.get("parent_id"),
+        "branch": row.get("branch") or "main",
+        "author": row.get("author") or row.get("student_name"),
+        "owner": row.get("student_name"),
+        "message": (row.get("commit_message") or "").strip(),
+        "status": row.get("status"),
+        "submitted_at": row.get("submitted_at"),
+        "executed_at": row.get("executed_at"),
+        "completed_at": row.get("completed_at"),
+        "files_count": len(files),
+        "loc": loc,
+        "entry_point": row.get("entry_point") or "main.py",
+        "robot_model": row.get("robot_model") or "ur",
+    }
+
+
+async def list_repo_rows() -> List[Dict[str, Any]]:
+    """One row per (owner, project) that has at least one commit, with head info on branch 'main'."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"SELECT *, {_PROJECT_EXPR} AS pkey FROM submissions ORDER BY id ASC"
+        ) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+    repos: Dict[tuple, Dict[str, Any]] = {}
+    for r in rows:
+        owner = r["student_name"]
+        project = (r.get("project_name") or "").strip() or r["task_id"]
+        key = (owner.lower(), project.lower())
+        repo = repos.setdefault(key, {"owner": owner, "project": project, "commits": 0, "branches": {"main"}, "head": None,
+                                      "robot_model": "ur", "last_activity": None})
+        repo["commits"] += 1
+        b = (r.get("branch") or "main")
+        repo["branches"].add(b)
+        repo["last_activity"] = r["submitted_at"]
+        repo["robot_model"] = r.get("robot_model") or repo["robot_model"]
+        if b == "main":
+            repo["head"] = commit_summary(r)
+    for repo in repos.values():
+        repo["branches"] = sorted(repo["branches"], key=lambda x: (x != "main", x.lower()))
+    return list(repos.values())
+
+
+async def list_commits(owner: str, project: str, branch: Optional[str] = None, limit: int = 500) -> List[Dict[str, Any]]:
+    q = f"SELECT * FROM submissions WHERE LOWER(student_name) = LOWER(?) AND {_PROJECT_EXPR} = LOWER(?)"
+    params: List[Any] = [owner, project]
+    if branch:
+        q += " AND LOWER(COALESCE(branch, 'main')) = LOWER(?)"
+        params.append(branch)
+    q += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(q, params) as cur:
+            return [commit_summary(dict(r)) for r in await cur.fetchall()]
+
+
+async def get_commit_in_repo(owner: str, project: str, commit_id: int) -> Optional[Dict[str, Any]]:
+    """Full commit (files, logs) but only if it really belongs to this repo."""
+    sub = await get_submission(commit_id)
+    if not sub:
+        return None
+    sub_project = (sub.get("project_name") or "").strip() or sub["task_id"]
+    if sub["student_name"].lower() != owner.lower() or sub_project.lower() != project.lower():
+        return None
+    return sub
+
+
+async def list_branches(owner: str, project: str) -> List[Dict[str, Any]]:
+    """'main' always exists; others come from the branches table or from commits that name them."""
+    commits = await list_commits(owner, project)
+    out: Dict[str, Dict[str, Any]] = {"main": {"name": "main", "base_id": None, "created_by": None, "commits": 0, "head_id": None}}
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM branches WHERE LOWER(owner)=LOWER(?) AND LOWER(project)=LOWER(?) ORDER BY id", (owner, project)) as cur:
+            for r in await cur.fetchall():
+                out[r["name"].lower()] = {"name": r["name"], "base_id": r["base_id"], "created_by": r["created_by"], "commits": 0, "head_id": None}
+    for c in commits:                                   # newest first
+        b = out.setdefault(c["branch"].lower(), {"name": c["branch"], "base_id": None, "created_by": None, "commits": 0, "head_id": None})
+        b["commits"] += 1
+        if b["head_id"] is None:
+            b["head_id"] = c["id"]
+    for b in out.values():
+        if b["head_id"] is None and b["base_id"]:
+            b["head_id"] = b["base_id"]                 # fresh branch: points at the commit it forked from
+    return sorted(out.values(), key=lambda b: (b["name"].lower() != "main", b["name"].lower()))
+
+
+async def create_branch(owner: str, project: str, name: str, base_id: Optional[int], created_by: str) -> bool:
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute("INSERT INTO branches (owner, project, name, base_id, created_by, created_at) VALUES (?,?,?,?,?,?)",
+                             (owner, project, name, base_id, created_by, now))
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+
+async def delete_branch(owner: str, project: str, name: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            f"DELETE FROM submissions WHERE LOWER(student_name)=LOWER(?) AND {_PROJECT_EXPR}=LOWER(?) AND LOWER(branch)=LOWER(?)",
+            (owner, project, name))
+        await db.execute("DELETE FROM branches WHERE LOWER(owner)=LOWER(?) AND LOWER(project)=LOWER(?) AND LOWER(name)=LOWER(?)",
+                         (owner, project, name))
+        await db.commit()
+        return cur.rowcount
+
+
+async def delete_repo(owner: str, project: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(f"DELETE FROM submissions WHERE LOWER(student_name)=LOWER(?) AND {_PROJECT_EXPR}=LOWER(?)", (owner, project))
+        await db.execute("DELETE FROM branches WHERE LOWER(owner)=LOWER(?) AND LOWER(project)=LOWER(?)", (owner, project))
+        await db.commit()
+        return cur.rowcount
+
+
+async def rename_repo(owner: str, project: str, new_project: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            f"UPDATE submissions SET project_name = ?, task_id = ? WHERE LOWER(student_name)=LOWER(?) AND {_PROJECT_EXPR}=LOWER(?)",
+            (new_project, new_project, owner, project))
+        await db.execute("UPDATE branches SET project = ? WHERE LOWER(owner)=LOWER(?) AND LOWER(project)=LOWER(?)", (new_project, owner, project))
+        await db.commit()
+        return cur.rowcount
