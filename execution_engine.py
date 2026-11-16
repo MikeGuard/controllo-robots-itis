@@ -61,6 +61,10 @@ def _send_niryo_emergency_halt(ip: str):
         print(f"[EMERGENCY STOP] Niryo halt notice ({ip}): {e}")
 
 
+class EmergencyHaltedError(RuntimeError):
+    """Raised when a run is requested while the E-stop latch is set."""
+
+
 class RobotSlot:
     """Tracks state and process for an individual robot arm."""
     def __init__(self, model_name: str):
@@ -140,6 +144,20 @@ class ExecutionEngine:
     def current_submission_id(self) -> Optional[int]:
         return self.active_submission_id()
 
+    def snapshot(self) -> Dict[str, Dict[str, Any]]:
+        """Authoritative per-robot run state (the single source the API and UI derive from)."""
+        return {
+            m: {
+                "executing": s.is_executing,
+                "submission_id": s.submission_id,
+                "emergency_halted": s.is_emergency_halted,
+                "halt_reason": s.emergency_halt_reason,
+            } for m, s in self.slots.items()
+        }
+
+    def active_submission_ids(self) -> set:
+        return {s.submission_id for s in self.slots.values() if s.submission_id}
+
     def reset_emergency(self, robot_model: Optional[str] = None):
         if robot_model:
             slot = self.get_slot(robot_model)
@@ -171,6 +189,9 @@ class ExecutionEngine:
         slot = self.get_slot(model)
 
         async with slot.lock:
+            if slot.is_emergency_halted:
+                arm_label = "Niryo Ned" if model == "niryo" else "UR3 Arm"
+                raise EmergencyHaltedError(f"Emergency stop is active on {arm_label}. An admin must reset it before running.")
             if slot.is_executing:
                 arm_label = "Niryo Ned" if model == "niryo" else "UR3 Arm"
                 raise RuntimeError(f"Another script is currently executing on {arm_label}.")
@@ -178,76 +199,90 @@ class ExecutionEngine:
             slot.is_aborted = False
             slot.submission_id = submission_id
 
-        await update_status(submission_id, "running")
+        run_dir = None
+        temp_path = None
+        try:
+            await update_status(submission_id, "running")
 
-        work_dir = os.path.dirname(os.path.abspath(__file__))
-        target_ip = getattr(config, "NIRYO_IP", "10.0.10.61") if model == "niryo" else getattr(config, "UR_IP", "10.0.10.60")
+            work_dir = os.path.dirname(os.path.abspath(__file__))
+            target_ip = getattr(config, "NIRYO_IP", "10.0.10.61") if model == "niryo" else getattr(config, "UR_IP", "10.0.10.60")
 
-        # Build runtime prelude with safety bindings and model-specific constants
-        runtime_prelude = (
-            f"# --- Multi-Robot Execution Prelude ({model.upper()}) ---\n"
-            f"import builtins, os, sys\n"
-            f"ROBOT_MODEL = '{model}'\n"
-            f"ROBOT_IP = '{target_ip}'\n"
-            f"UR_IP = '{getattr(config, 'UR_IP', '10.0.10.60')}'\n"
-            f"NIRYO_IP = '{getattr(config, 'NIRYO_IP', '10.0.10.61')}'\n"
-            f"os.environ['ROBOT_MODEL'] = '{model}'\n"
-            f"os.environ['ROBOT_IP'] = '{target_ip}'\n"
-            f"os.environ['UR_ROBOT_IP'] = '{getattr(config, 'UR_IP', '10.0.10.60')}'\n"
-            f"os.environ['NIRYO_ROBOT_IP'] = '{getattr(config, 'NIRYO_IP', '10.0.10.61')}'\n"
-            "try:\n"
-            "    import ur_rtde\n"
-            "    if 'rtde_control' not in sys.modules:\n"
-            "        import ur_rtde.rtde_control; sys.modules['rtde_control'] = ur_rtde.rtde_control\n"
-            "    if 'rtde_receive' not in sys.modules:\n"
-            "        import ur_rtde.rtde_receive; sys.modules['rtde_receive'] = ur_rtde.rtde_receive\n"
-            "    if 'rtde_io' not in sys.modules:\n"
-            "        import ur_rtde.rtde_io; sys.modules['rtde_io'] = ur_rtde.rtde_io\n"
-            "except Exception:\n"
-            "    pass\n"
-            "def printf(*args, **kwargs):\n"
-            "    kwargs.setdefault('flush', True)\n"
-            "    if len(args) > 1 and isinstance(args[0], str) and ('%' in args[0]):\n"
-            "        try:\n"
-            "            print(args[0] % args[1:], **kwargs)\n"
-            "            return\n"
-            "        except Exception:\n"
-            "            pass\n"
-            "    print(*args, **kwargs)\n"
-            "builtins.printf = printf\n"
-            "try:\n"
-            "    import importlib.util as _ilu\n"
-            f"    _spec = _ilu.spec_from_file_location('_sandbox_io', {os.path.join(work_dir, 'sandbox_io.py')!r})\n"
-            "    _sbx = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_sbx)\n"
-            "    _sbx.install(os.getcwd())\n"
-            "except Exception as _e:\n"
-            "    print('[Supervisor] File sandbox unavailable:', _e)\n"
-            "# --- End Prelude ---\n\n"
-        )
+            # Build runtime prelude with safety bindings and model-specific constants
+            runtime_prelude = (
+                f"# --- Multi-Robot Execution Prelude ({model.upper()}) ---\n"
+                f"import builtins, os, sys\n"
+                f"ROBOT_MODEL = '{model}'\n"
+                f"ROBOT_IP = '{target_ip}'\n"
+                f"UR_IP = '{getattr(config, 'UR_IP', '10.0.10.60')}'\n"
+                f"NIRYO_IP = '{getattr(config, 'NIRYO_IP', '10.0.10.61')}'\n"
+                f"os.environ['ROBOT_MODEL'] = '{model}'\n"
+                f"os.environ['ROBOT_IP'] = '{target_ip}'\n"
+                f"os.environ['UR_ROBOT_IP'] = '{getattr(config, 'UR_IP', '10.0.10.60')}'\n"
+                f"os.environ['NIRYO_ROBOT_IP'] = '{getattr(config, 'NIRYO_IP', '10.0.10.61')}'\n"
+                "try:\n"
+                "    import ur_rtde\n"
+                "    if 'rtde_control' not in sys.modules:\n"
+                "        import ur_rtde.rtde_control; sys.modules['rtde_control'] = ur_rtde.rtde_control\n"
+                "    if 'rtde_receive' not in sys.modules:\n"
+                "        import ur_rtde.rtde_receive; sys.modules['rtde_receive'] = ur_rtde.rtde_receive\n"
+                "    if 'rtde_io' not in sys.modules:\n"
+                "        import ur_rtde.rtde_io; sys.modules['rtde_io'] = ur_rtde.rtde_io\n"
+                "except Exception:\n"
+                "    pass\n"
+                "def printf(*args, **kwargs):\n"
+                "    kwargs.setdefault('flush', True)\n"
+                "    if len(args) > 1 and isinstance(args[0], str) and ('%' in args[0]):\n"
+                "        try:\n"
+                "            print(args[0] % args[1:], **kwargs)\n"
+                "            return\n"
+                "        except Exception:\n"
+                "            pass\n"
+                "    print(*args, **kwargs)\n"
+                "builtins.printf = printf\n"
+                "try:\n"
+                "    import importlib.util as _ilu\n"
+                f"    _spec = _ilu.spec_from_file_location('_sandbox_io', {os.path.join(work_dir, 'sandbox_io.py')!r})\n"
+                "    _sbx = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_sbx)\n"
+                "    _sbx.install(os.getcwd())\n"
+                "except Exception as _e:\n"
+                "    print('[Supervisor] File sandbox unavailable:', _e)\n"
+                "# --- End Prelude ---\n\n"
+            )
 
-        # Create isolated execution directory in OS temp to prevent uvicorn dev-reload from triggering
-        run_dir = tempfile.mkdtemp(prefix=f"robot_run_{submission_id}_{model}_")
-        entry_file_name = (entry_point or "main.py").strip()
+            # Create isolated execution directory in OS temp to prevent uvicorn dev-reload from triggering
+            run_dir = tempfile.mkdtemp(prefix=f"robot_run_{submission_id}_{model}_")
+            entry_file_name = (entry_point or "main.py").strip()
 
-        if files and isinstance(files, dict) and len(files) > 0:
-            for fname, fcontent in files.items():
-                clean_name = os.path.basename(fname.strip())
-                if clean_name:
-                    dst_path = os.path.join(run_dir, clean_name)
-                    if clean_name == entry_file_name:
-                        with open(dst_path, "w", encoding="utf-8") as f:
-                            f.write(runtime_prelude + (fcontent or code_str))
-                    else:
-                        with open(dst_path, "w", encoding="utf-8") as f:
-                            f.write(fcontent or "")
-            temp_path = os.path.join(run_dir, entry_file_name)
-            if not os.path.exists(temp_path):
+            if files and isinstance(files, dict) and len(files) > 0:
+                for fname, fcontent in files.items():
+                    clean_name = os.path.basename(fname.strip())
+                    if clean_name:
+                        dst_path = os.path.join(run_dir, clean_name)
+                        if clean_name == entry_file_name:
+                            with open(dst_path, "w", encoding="utf-8") as f:
+                                f.write(runtime_prelude + (fcontent or code_str))
+                        else:
+                            with open(dst_path, "w", encoding="utf-8") as f:
+                                f.write(fcontent or "")
+                temp_path = os.path.join(run_dir, entry_file_name)
+                if not os.path.exists(temp_path):
+                    with open(temp_path, "w", encoding="utf-8") as f:
+                        f.write(runtime_prelude + code_str)
+            else:
+                temp_path = os.path.join(run_dir, f"main_{model}.py")
                 with open(temp_path, "w", encoding="utf-8") as f:
                     f.write(runtime_prelude + code_str)
-        else:
-            temp_path = os.path.join(run_dir, f"main_{model}.py")
-            with open(temp_path, "w", encoding="utf-8") as f:
-                f.write(runtime_prelude + code_str)
+
+        except Exception as e:
+            # Setup failed before the worker started: release the slot and close the DB row, never leave "running".
+            slot.process = None
+            slot.submission_id = None
+            slot.is_executing = False
+            if run_dir:
+                shutil.rmtree(run_dir, ignore_errors=True)
+            await append_logs(submission_id, f"\n[Supervisor ERROR] Could not prepare the run: {e}\n")
+            await update_status(submission_id, "failed")
+            raise
 
         success = False
         try:

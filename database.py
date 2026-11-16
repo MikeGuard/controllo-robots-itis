@@ -400,6 +400,13 @@ async def init_db():
             cols = [row[1] for row in await cursor.fetchall()]
             if "robot_model" not in cols:
                 await db.execute("ALTER TABLE examples ADD COLUMN robot_model TEXT NOT NULL DEFAULT 'ur'")
+            # Multi-file examples: every file, the entry point and (optionally) earlier iterations
+            if "files" not in cols:
+                await db.execute("ALTER TABLE examples ADD COLUMN files TEXT DEFAULT NULL")
+            if "entry_point" not in cols:
+                await db.execute("ALTER TABLE examples ADD COLUMN entry_point TEXT DEFAULT 'main.py'")
+            if "history" not in cols:
+                await db.execute("ALTER TABLE examples ADD COLUMN history TEXT DEFAULT NULL")
 
         # Users table for student registration & admin approvals
         await db.execute("""
@@ -927,6 +934,24 @@ async def clear_pending_queue():
 
 # --- Examples CRUD with Robot Model Filtering ---
 
+def _parse_example_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Decodes the JSON columns and guarantees `files` always contains at least the entry file."""
+    for key in ("files", "history"):
+        raw = row.get(key)
+        if isinstance(raw, str) and raw.strip():
+            try:
+                row[key] = json.loads(raw)
+            except Exception:
+                row[key] = None
+    entry = row.get("entry_point") or "main.py"
+    row["entry_point"] = entry
+    if not isinstance(row.get("files"), dict) or not row["files"]:
+        row["files"] = {entry: row.get("code", "")}      # legacy single-file example
+    if not isinstance(row.get("history"), list):
+        row["history"] = []
+    return row
+
+
 async def get_all_examples(robot_model: Optional[str] = None) -> List[Dict[str, Any]]:
     """Returns examples, optionally filtered by robot_model ('ur' | 'niryo')."""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -937,11 +962,10 @@ async def get_all_examples(robot_model: Optional[str] = None) -> List[Dict[str, 
                 (robot_model.strip(),)
             ) as cursor:
                 rows = await cursor.fetchall()
-                return [dict(r) for r in rows]
         else:
             async with db.execute("SELECT * FROM examples ORDER BY robot_model ASC, is_builtin DESC, id ASC") as cursor:
                 rows = await cursor.fetchall()
-                return [dict(r) for r in rows]
+        return [_parse_example_row(dict(r)) for r in rows]
 
 
 async def get_example(example_id: int) -> Optional[Dict[str, Any]]:
@@ -949,19 +973,23 @@ async def get_example(example_id: int) -> Optional[Dict[str, Any]]:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM examples WHERE id = ?", (example_id,)) as cursor:
             row = await cursor.fetchone()
-            return dict(row) if row else None
+            return _parse_example_row(dict(row)) if row else None
 
 
-async def create_example(title: str, description: str, code: str, is_builtin: int = 0, robot_model: str = "ur") -> int:
+async def create_example(title: str, description: str, code: str, is_builtin: int = 0, robot_model: str = "ur",
+                         files: Optional[Dict[str, str]] = None, entry_point: str = "main.py",
+                         history: Optional[List[Dict[str, Any]]] = None) -> int:
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     model = robot_model.strip().lower() if robot_model else "ur"
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             """
-            INSERT INTO examples (title, description, code, is_builtin, robot_model, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO examples (title, description, code, is_builtin, robot_model, created_at, files, entry_point, history)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (title.strip(), description.strip(), code, is_builtin, model, now)
+            (title.strip(), description.strip(), code, is_builtin, model, now,
+             json.dumps(files) if files else None, entry_point or "main.py",
+             json.dumps(history) if history else None)
         )
         await db.commit()
         return cursor.lastrowid
@@ -973,16 +1001,20 @@ async def delete_example(example_id: int):
         await db.commit()
 
 
-async def update_example(example_id: int, title: str, description: str, code: str, robot_model: str = "ur") -> bool:
+async def update_example(example_id: int, title: str, description: str, code: str, robot_model: str = "ur",
+                         files: Optional[Dict[str, str]] = None, entry_point: str = "main.py",
+                         history: Optional[List[Dict[str, Any]]] = None) -> bool:
     model = robot_model.strip().lower() if robot_model else "ur"
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             """
             UPDATE examples
-            SET title = ?, description = ?, code = ?, robot_model = ?
+            SET title = ?, description = ?, code = ?, robot_model = ?, files = ?, entry_point = ?, history = ?
             WHERE id = ?
             """,
-            (title.strip(), description.strip(), code, model, example_id)
+            (title.strip(), description.strip(), code, model,
+             json.dumps(files) if files else None, entry_point or "main.py",
+             json.dumps(history) if history else None, example_id)
         )
         await db.commit()
         return cursor.rowcount > 0
@@ -1003,3 +1035,23 @@ async def has_student_submitted_project(student_name: str, task_id: str, project
                 (student_name, task_id)
             ) as cur:
                 return await cur.fetchone() is not None
+
+
+async def reconcile_stale_runs(active_ids) -> List[int]:
+    """
+    Single place that repairs run state: any submission the DB calls 'running' that the execution engine
+    is NOT actually executing (server restart, crashed worker, lost robot link) is closed as 'aborted'.
+    Returns the ids it changed.
+    """
+    active = {int(i) for i in active_ids if i}
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    note = "\n[Supervisor] Run interrupted: the server or robot link stopped before it finished. Marked aborted.\n"
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT id FROM submissions WHERE status = 'running'") as cur:
+            stale = [r[0] for r in await cur.fetchall() if r[0] not in active]
+        for sid in stale:
+            await db.execute(
+                "UPDATE submissions SET status = 'aborted', completed_at = ?, logs = COALESCE(logs, '') || ? WHERE id = ?",
+                (now, note, sid))
+        await db.commit()
+    return stale

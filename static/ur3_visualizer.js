@@ -38,7 +38,24 @@ class UR3Visualizer {
         this.applyJointAngles(this.currentQ);
 
         this.animate = this.animate.bind(this);
-        requestAnimationFrame(this.animate);
+        this._raf = requestAnimationFrame(this.animate);
+    }
+
+    // Stop the render loop and release listeners/GPU resources (call when the view is torn down).
+    dispose() {
+        this._disposed = true;
+        cancelAnimationFrame(this._raf);
+        this.stopSimulation();
+        if (this.onWindowResize) window.removeEventListener('resize', this.onWindowResize);
+        if (this._ro) this._ro.disconnect();
+        if (this.controls) this.controls.dispose();
+        if (this.robotRoot) { this.scene.remove(this.robotRoot); this.disposeObject(this.robotRoot); }
+        this.disposeMaterials();
+        if (this.renderer) {
+            this.renderer.dispose();
+            const el = this.renderer.domElement;
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        }
     }
 
     initThree() {
@@ -113,8 +130,9 @@ class UR3Visualizer {
         // Responsive resize handlers
         const handleResize = () => {
             if (!this.container) return;
-            const w = this.container.clientWidth || 400;
-            const h = this.container.clientHeight || 350;
+            const w = this.container.clientWidth;
+            const h = this.container.clientHeight;
+            if (!w || !h) return;   // hidden panel: keep the last good size instead of forcing 400x350
             if (this.renderer && this.camera) {
                 this.camera.aspect = w / h;
                 this.camera.updateProjectionMatrix();
@@ -126,8 +144,8 @@ class UR3Visualizer {
 
         window.addEventListener('resize', handleResize);
         if (window.ResizeObserver && this.container) {
-            const ro = new ResizeObserver(handleResize);
-            ro.observe(this.container);
+            this._ro = new ResizeObserver(handleResize);
+            this._ro.observe(this.container);
         }
     }
 
@@ -526,14 +544,18 @@ class UR3Visualizer {
         }
     }
 
+    // Every angle source (live telemetry, simulation waypoints, buttons) goes through this one
+    // normaliser so live and simulated motion can never disagree about units.
+    // Backend sends radians; if any joint exceeds a full turn (> 6.5) the array is taken as degrees.
+    static toRadians(q, forceDegrees) {
+        const arr = Array.from(q || [], v => (Number.isFinite(Number(v)) ? Number(v) : 0));
+        const deg = forceDegrees !== undefined ? forceDegrees : arr.some(v => Math.abs(v) > 6.5);
+        return deg ? arr.map(v => v * Math.PI / 180) : arr;
+    }
+
     setJointAngles(q) {
         if (!q || q.length !== 6) return;
-        // Auto-detect if angles were passed in degrees (any element > ~6.5 radians) and convert whole array to radians
-        const isDegreeArray = q.some(val => typeof val === 'number' && Math.abs(val) > 6.5);
-        const rads = q.map(val => {
-            const num = Number(val) || 0;
-            return isDegreeArray ? (num * Math.PI / 180) : num;
-        });
+        const rads = UR3Visualizer.toRadians(q);
         for (let i = 0; i < 6; i++) {
             this.targetQ[i] = rads[i];
         }
@@ -576,13 +598,16 @@ class UR3Visualizer {
             this.setRobotModel(modelHint);
         }
 
-        // Ensure timestamps are monotonic and realistic
+        // Units are decided once for the whole path (never per waypoint), then timestamps are made monotonic.
+        const isDeg = waypoints.some(wp => Array.isArray(wp.q) && wp.q.some(v => Math.abs(Number(v)) > 6.5));
         let prevT = 0.0;
-        const normalizedWps = waypoints.map((wp, idx) => {
+        const normalizedWps = waypoints.map((wp) => {
             let t = (typeof wp.t === 'number' && !isNaN(wp.t)) ? wp.t : (prevT + 0.05);
             if (t < prevT) t = prevT + 0.02;
             prevT = t;
-            return { ...wp, t };
+            const out = { ...wp, t };
+            if (Array.isArray(wp.q) && wp.q.length === 6) out.q = UR3Visualizer.toRadians(wp.q, isDeg);
+            return out;
         });
 
         // Set initial pose immediately
@@ -619,7 +644,8 @@ class UR3Visualizer {
     }
 
     animate() {
-        requestAnimationFrame(this.animate);
+        if (this._disposed) return;
+        this._raf = requestAnimationFrame(this.animate);
 
         // Skip all work while the tab is hidden or the viewport is collapsed (e.g. inactive panel)
         if (document.hidden || !this.container || this.container.clientWidth === 0 || this.container.clientHeight === 0) {
@@ -667,8 +693,8 @@ class UR3Visualizer {
 
                 if (wpA.q && wpB.q) {
                     for (let i = 0; i < 6; i++) {
-                        const qA = wpA.q[i] || 0;
-                        const qB = wpB.q[i] || qA;
+                        const qA = Number.isFinite(wpA.q[i]) ? wpA.q[i] : 0;
+                        const qB = Number.isFinite(wpB.q[i]) ? wpB.q[i] : qA;
                         this.currentQ[i] = qA + (qB - qA) * smoothAlpha;
                         this.targetQ[i] = this.currentQ[i];
                     }

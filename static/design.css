@@ -1,0 +1,205 @@
+/*
+ * Design system — shared by student.html and instructor.html.
+ *
+ * Tokens live here (semantic names); palette scales live in design.js and are generated per theme
+ * from one table, so dark and light can never drift apart.
+ *
+ *   surfaces   --bg  --surface  --surface-2  --surface-hover
+ *   lines      --border  --border-strong
+ *   text       --text  --text-muted  --text-faint
+ *   accent     --accent  --accent-hover  --accent-ink  --accent-soft      (the ONLY brand colour)
+ *   status     --st-<name>-fg / --st-<name>-bg     (pending running completed failed aborted offline)
+ *
+ * Components: .btn(.btn-primary|-secondary|-ghost|-danger|-sm)  .badge[data-status]  .input  .select
+ *             .tab  .panel  .data-table  .kbd  .estop-banner
+ * Radius: 4 controls / 6 buttons+inputs / 8 panels. Elevation: none (borders), one shadow for floating layers.
+ */
+
+/* ---------- Neutral scale (Tailwind `slate-*` resolves here) ---------- */
+:root {
+  --slate-50: 248 250 252;  --slate-100: 241 245 249; --slate-200: 226 232 240; --slate-300: 203 213 225;
+  --slate-400: 148 163 184; --slate-500: 100 116 139; --slate-600: 71 85 105;   --slate-700: 51 65 85;
+  --slate-800: 30 41 59;    --slate-850: 23 32 51;    --slate-900: 15 23 42;    --slate-950: 2 6 23;
+}
+:root[data-theme="light"] {
+  --slate-50: 2 6 23;       --slate-100: 15 23 42;    --slate-200: 30 41 59;    --slate-300: 51 65 85;
+  --slate-400: 71 85 105;   --slate-500: 95 111 134;  --slate-600: 148 163 184; --slate-700: 203 213 225;
+  --slate-800: 226 232 240; --slate-850: 238 242 246; --slate-900: 255 255 255; --slate-950: 244 246 250;
+}
+
+/* ---------- Semantic tokens ---------- */
+:root {
+  --bg: rgb(var(--slate-950));
+  --surface: rgb(var(--slate-900));
+  --surface-2: rgb(var(--slate-850));
+  --surface-hover: rgb(var(--slate-800));
+  --border: rgb(var(--slate-800));
+  --border-strong: rgb(var(--slate-700));
+  --text: rgb(var(--slate-100));
+  --text-muted: rgb(var(--slate-400));
+  --text-faint: rgb(var(--slate-500));
+
+  --accent: rgb(var(--blue-600));
+  --accent-hover: rgb(var(--blue-500));
+  --accent-ink: #ffffff;
+  --accent-soft: rgb(var(--blue-500) / .14);
+  --focus: rgb(var(--blue-400));
+  --danger: rgb(var(--rose-600));
+  --danger-hover: rgb(var(--rose-500));
+
+  --st-pending-fg: rgb(var(--amber-300));   --st-pending-bg: rgb(var(--amber-500) / .14);
+  --st-running-fg: rgb(var(--blue-300));    --st-running-bg: rgb(var(--blue-500) / .16);
+  --st-completed-fg: rgb(var(--emerald-300)); --st-completed-bg: rgb(var(--emerald-500) / .14);
+  --st-failed-fg: rgb(var(--rose-300));     --st-failed-bg: rgb(var(--rose-500) / .14);
+  --st-aborted-fg: #ffffff;                 --st-aborted-bg: rgb(var(--rose-600));
+  --st-offline-fg: rgb(var(--slate-400));   --st-offline-bg: rgb(var(--slate-700) / .45);
+
+  --float-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+}
+:root[data-theme="light"] {
+  --accent: rgb(var(--blue-600));
+  --accent-hover: rgb(var(--blue-700));
+  --focus: rgb(var(--blue-600));
+  /* In the light theme the palette is remapped (900 = pale tint), so tints use the 900 step. */
+  --st-pending-fg: rgb(var(--amber-700));   --st-pending-bg: rgb(var(--amber-900));
+  --st-running-fg: rgb(var(--blue-700));    --st-running-bg: rgb(var(--blue-900));
+  --st-completed-fg: rgb(var(--emerald-700)); --st-completed-bg: rgb(var(--emerald-900));
+  --st-failed-fg: rgb(var(--rose-700));     --st-failed-bg: rgb(var(--rose-900));
+  --st-aborted-fg: #ffffff;                 --st-aborted-bg: rgb(var(--rose-600));
+  --st-offline-fg: rgb(var(--slate-400));   --st-offline-bg: rgb(var(--slate-800));
+  --float-shadow: 0 8px 24px rgba(15, 23, 42, .16);
+}
+
+/* ---------- Base ---------- */
+body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-feature-settings: "tnum" 1, "cv11" 1;
+  -webkit-font-smoothing: antialiased;
+  background: var(--bg);
+  color: var(--text);
+}
+:where(button, a, input, select, textarea, summary, [role="tab"]):focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+:where(input, select, textarea):focus { outline: none; }
+:where(button):disabled { opacity: .5; cursor: not-allowed; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--slate-500)); }
+@media (prefers-reduced-motion: reduce) { .animate-pulse, .animate-ping { animation: none !important; } }
+
+/* White text only belongs on coloured fills; on neutral surfaces it must follow the theme. */
+:root[data-theme="light"] .text-white,
+:root[data-theme="light"] .hover\:text-white:hover { color: rgb(var(--slate-100)); }
+:root[data-theme="light"] :is([class*="bg-blue-"], [class*="bg-indigo-"], [class*="bg-sky-"], [class*="bg-purple-"], [class*="bg-emerald-"], [class*="bg-rose-"], [class*="bg-red-"], [class*="bg-cyan-"], [class*="bg-amber-"]).text-white { color: #fff; }
+:root[data-theme="light"] .bg-black\/60, :root[data-theme="light"] .bg-slate-950\/70 { background-color: rgba(15, 23, 42, .45); }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border-strong);
+  font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer;
+  background: var(--surface-2); color: var(--text);
+  transition: background-color .12s, border-color .12s, color .12s;
+}
+.btn:hover:not(:disabled) { background: var(--surface-hover); }
+.btn-sm { height: 28px; padding: 0 10px; }
+.btn-primary { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+.btn-danger { background: var(--danger); border-color: transparent; color: #fff; }
+.btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
+.btn-quiet-danger:hover:not(:disabled) { background: var(--st-failed-bg); color: var(--st-failed-fg); border-color: transparent; }
+
+/* ---------- Badges (status colours are used ONLY here and on the robot status chips) ---------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; letter-spacing: .02em;
+  background: var(--surface-hover); color: var(--text-muted);
+}
+.badge[data-status="pending"]   { background: var(--st-pending-bg);   color: var(--st-pending-fg); }
+.badge[data-status="running"]   { background: var(--st-running-bg);   color: var(--st-running-fg); }
+.badge[data-status="completed"] { background: var(--st-completed-bg); color: var(--st-completed-fg); }
+.badge[data-status="failed"]    { background: var(--st-failed-bg);    color: var(--st-failed-fg); }
+.badge[data-status="aborted"]   { background: var(--st-aborted-bg);   color: var(--st-aborted-fg); }
+.badge[data-status="offline"], .badge[data-status="rejected"] { background: var(--st-offline-bg); color: var(--st-offline-fg); }
+.badge[data-status="running"]::before { content: ""; width: 6px; height: 6px; border-radius: 9999px; background: currentColor; animation: pulse-dot 1.4s ease-in-out infinite; }
+@keyframes pulse-dot { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .badge[data-status="running"]::before { animation: none; } }
+
+/* ---------- Inputs ---------- */
+.input, .select {
+  height: 32px; padding: 0 10px; border-radius: 6px; font-size: 12px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border-strong); min-width: 0;
+}
+.input::placeholder { color: var(--text-faint); }
+.input:focus, .select:focus { border-color: var(--accent); }
+.select { padding-right: 6px; cursor: pointer; }
+
+/* ---------- Tabs ---------- */
+.tab {
+  display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 6px;
+  font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; border: 0;
+  background: transparent; color: var(--text-muted); transition: background-color .12s, color .12s;
+}
+.tab:hover { background: var(--surface-hover); color: var(--text); }
+.tab[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+:root:not([data-theme="light"]) .tab[aria-selected="true"] { color: rgb(var(--blue-300)); }
+
+/* ---------- Panels, key hints ---------- */
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.kbd { display: inline-block; padding: 0 5px; border-radius: 4px; border: 1px solid currentColor; font: 600 11px ui-monospace, Menlo, monospace; opacity: .85; }
+
+/* ---------- Data table (queue) ---------- */
+.data-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.data-table th {
+  white-space: nowrap;
+  position: sticky; top: 0; z-index: 1; height: 36px; padding: 0 12px; text-align: left;
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text-muted); background: var(--surface-2); border-bottom: 1px solid var(--border);
+}
+.data-table td { height: 48px; padding: 0 12px; border-bottom: 1px solid var(--border); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table tr.group-row td { background: var(--surface-2); font-weight: 600; cursor: pointer; }
+.data-table tr.group-row:hover td, .data-table tr.iter-row:hover td { background: var(--surface-hover); }
+.data-table tr.iter-row td { height: 40px; color: var(--text-muted); cursor: pointer; }
+.data-table tr.iter-row td:nth-child(1) { padding-left: 28px; }     /* indent lives inside column 1: columns never shift */
+.data-table tr.iter-row.is-selected td { background: var(--accent-soft); }
+.data-table .cell-sub { display: block; font-size: 11px; font-weight: 400; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; }
+.data-table .cell-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.row-live td:first-child { box-shadow: inset 3px 0 0 var(--st-running-fg); }
+
+/* ---------- Emergency stop ---------- */
+.estop-banner {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200; display: flex; gap: 12px; align-items: center; justify-content: center;
+  padding: 10px 16px; background: var(--danger); color: #fff; font-size: 13px; font-weight: 600;
+}
+.estop-banner[hidden] { display: none; }
+.estop-banner .btn { background: #fff; color: var(--danger); }
+
+/* ---------- Header / nav (admin) ---------- */
+#cardStatusUR, #cardStatusNiryo { min-width: 14rem; }
+#textStatusUR, #textStatusNiryo { white-space: nowrap; }
+#adminTabSimBadge, #adminTabRunBadge { min-width: 3rem; justify-content: center; }
+#adminTabProjectsBadge { min-width: 1.5rem; justify-content: center; }
+#cardStatusUR button, #cardStatusNiryo button { white-space: nowrap; flex-shrink: 0; }
+#cardStatusUR > div, #cardStatusNiryo > div { min-width: 0; }
+@media (max-width: 640px) {
+  #adminHeader > div:nth-child(1) { order: 1; flex: 1 1 0; min-width: 0; }
+  #adminHeader > div:nth-child(3) { order: 2; margin-left: 0; }
+  #adminHeader > div:nth-child(2) { order: 3; width: 100%; flex-wrap: nowrap; gap: .5rem; }
+  #cardStatusUR, #cardStatusNiryo { flex: 1 1 0; min-width: 0; padding-left: .625rem; padding-right: .625rem; }
+  #ipDisplayUR, #ipDisplayNiryo { display: none; }
+}
+
+/* ---------- Robot status chips (header) ---------- */
+.robot-chip { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.robot-chip[data-state="halted"] { border-color: var(--danger); }
+.robot-chip .dot { width: 8px; height: 8px; border-radius: 9999px; flex-shrink: 0; background: var(--st-offline-fg); }
+.robot-chip .dot[data-state="idle"] { background: rgb(var(--emerald-500)); }
+.robot-chip .dot[data-state="running"] { background: rgb(var(--blue-500)); animation: pulse-dot 1.4s ease-in-out infinite; }
+.robot-chip .dot[data-state="halted"] { background: var(--danger); }
+.robot-chip .state { font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--text-muted); }
+.robot-chip .state[data-state="idle"] { color: var(--st-completed-fg); }
+.robot-chip .state[data-state="running"] { color: var(--st-running-fg); }
+.robot-chip .state[data-state="halted"] { color: var(--st-failed-fg); }

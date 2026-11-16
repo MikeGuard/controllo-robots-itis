@@ -127,31 +127,62 @@ class _BaseSampler:
             self._prev_t = None
             self.started_at = time.time()
 
+    # Encoder/pose noise floor. A reading only counts as movement once it has left this band around the
+    # last accepted position. 0 = trust every sample (UR: its controller already filters).
+    POSE_DEADBAND_M = 0.0
+    Q_DEADBAND_RAD = 0.0
+
     def _integrate(self, now: float, pose: Optional[List[float]], q: Optional[List[float]],
                    speed: Optional[float]) -> Dict[str, Any]:
-        """Derives speed / path length / joint speeds from successive samples."""
-        dt = (now - self._prev_t) if self._prev_t else 0.0
+        """
+        Derives speed / path length / joint speeds from successive samples.
+
+        Root cause of the Niryo "jitter": the Ned reports raw encoder positions, so a motionless arm still
+        differs by a fraction of a millimetre between reads. Differencing those every ~0.15 s made path length
+        grow and joint speeds flicker at rest. Positions are therefore only *accepted* once they leave the noise
+        band; speed and joint speed are measured between accepted positions (so slow real motion is still seen).
+        """
         derived: Dict[str, Any] = {}
-        if pose and self._prev_pose and dt > 1e-3:
-            d = _norm([pose[i] - self._prev_pose[i] for i in range(3)])
-            if speed is None:
-                speed = d / dt
-            if d < 1.0:  # ignore teleport glitches
-                self.path_length += d
-        if q and self._prev_q and dt > 1e-3:
-            derived["joint_speed_fd"] = [(q[i] - self._prev_q[i]) / dt for i in range(min(len(q), len(self._prev_q)))]
-        if speed is not None:
-            self.max_speed = max(self.max_speed, speed)
-            self.speed_sum += speed
-            self.speed_n += 1
-            if speed > 0.003 and dt > 0:
-                self.moving_time += dt
+        dt = (now - self._prev_t) if self._prev_t else 0.0
+        measured_speed = speed
+
         if pose:
-            self._prev_pose = list(pose)
+            if self._prev_pose is None:
+                self._prev_pose, self._pose_t = list(pose), now
+            else:
+                d = _norm([pose[i] - self._prev_pose[i] for i in range(3)])
+                if d > self.POSE_DEADBAND_M:
+                    span = now - getattr(self, "_pose_t", now)
+                    if measured_speed is None:
+                        measured_speed = (d / span) if span > 1e-3 else 0.0
+                    if d < 1.0:  # ignore teleport glitches
+                        self.path_length += d
+                    self._prev_pose, self._pose_t = list(pose), now
+                elif measured_speed is None:
+                    measured_speed = 0.0          # inside the noise band: not moving
+
         if q:
-            self._prev_q = list(q)
+            if self._prev_q is None:
+                self._prev_q, self._q_t = list(q), now
+            else:
+                n = min(len(q), len(self._prev_q))
+                dq = max(abs(q[i] - self._prev_q[i]) for i in range(n)) if n else 0.0
+                if dq > self.Q_DEADBAND_RAD:
+                    span = now - getattr(self, "_q_t", now)
+                    if span > 1e-3:
+                        derived["joint_speed_fd"] = [(q[i] - self._prev_q[i]) / span for i in range(n)]
+                    self._prev_q, self._q_t = list(q), now
+                else:
+                    derived["joint_speed_fd"] = [0.0] * n
+
+        if measured_speed is not None:
+            self.max_speed = max(self.max_speed, measured_speed)
+            self.speed_sum += measured_speed
+            self.speed_n += 1
+            if measured_speed > 0.003 and dt > 0:
+                self.moving_time += dt
         self._prev_t = now
-        derived["speed"] = speed or 0.0
+        derived["speed"] = measured_speed or 0.0
         return derived
 
     def stats(self) -> Dict[str, Any]:
@@ -446,6 +477,10 @@ class URSampler(_BaseSampler):
 
 class NiryoSampler(_BaseSampler):
     model = "niryo"
+    # Starting values, NOT measured on your arm: the live `noise_deg` field shows the real resting noise.
+    # Re-tune from tools/niryo_noise_probe.py output (rule of thumb: ~4x the measured peak noise).
+    POSE_DEADBAND_M = 0.001       # 1 mm
+    Q_DEADBAND_RAD = 0.003        # ~0.17 deg
 
     def __init__(self):
         super().__init__()
@@ -494,6 +529,25 @@ class NiryoSampler(_BaseSampler):
         self.robot = NiryoRobot(ip)
         self._robot_ip = ip
 
+    def _settle(self, q_raw: List[float], pose_raw: List[float]):
+        """
+        Shows the last *accepted* position until the arm really leaves the encoder noise band, so a motionless
+        Ned reads steadily. Raw readings are still exposed (q_raw / noise_deg) so noise stays measurable
+        instead of being hidden.
+        """
+        shown_q = getattr(self, "_shown_q", None)
+        shown_p = getattr(self, "_shown_pose", None)
+        if shown_q is None or len(shown_q) != len(q_raw) or max(abs(a - b) for a, b in zip(q_raw, shown_q)) > self.Q_DEADBAND_RAD:
+            shown_q = list(q_raw)
+        if shown_p is None or len(shown_p) != len(pose_raw) or _norm([a - b for a, b in zip(pose_raw[:3], shown_p[:3])]) > self.POSE_DEADBAND_M:
+            shown_p = list(pose_raw)
+        self._shown_q, self._shown_pose = shown_q, shown_p
+        win = getattr(self, "_noise_win", None)
+        if win is None:
+            win = self._noise_win = deque(maxlen=40)
+        win.append(max(abs(a - b) for a, b in zip(q_raw, shown_q)))
+        return list(shown_q), list(shown_p)
+
     def _hardware(self) -> Dict[str, Any]:
         now = time.time()
         if now - self._hw_ts < 1.5 and self._hw_cache:
@@ -539,9 +593,10 @@ class NiryoSampler(_BaseSampler):
 
         self._connect()
         now = time.time()
-        q = [float(v) for v in self.robot.get_joints()]
+        q_raw = [float(v) for v in self.robot.get_joints()]
         pose_obj = self.robot.get_pose()
-        pose = pose_obj.to_list() if hasattr(pose_obj, "to_list") else list(pose_obj)
+        pose_raw = pose_obj.to_list() if hasattr(pose_obj, "to_list") else list(pose_obj)
+        q, pose = self._settle(q_raw, pose_raw)
         derived = self._integrate(now, pose, q, None)
         qd = derived.get("joint_speed_fd") or [0.0] * len(q)
 
@@ -563,6 +618,8 @@ class NiryoSampler(_BaseSampler):
             "q": q,
             "actual_q": q,
             "joints": q,
+            "q_raw": q_raw,
+            "noise_deg": math.degrees(max(self._noise_win)) if getattr(self, "_noise_win", None) else 0.0,
             "qd": qd,
             "actual_qd": qd,
             "tcp_pose": pose,

@@ -187,15 +187,20 @@ def save_project(username: str, project: str, files: Dict[str, str],
             raise WorkspaceError(f"File '{cname}' is too large (max {MAX_FILE_BYTES // 1024} KB).")
         cleaned[cname] = content
 
+    # Write first (atomically, via temp file + rename), delete stale files last, so a failure
+    # part-way through can never leave a project with fewer files than it started with.
+    for cname, content in cleaned.items():
+        target = os.path.join(pdir, cname)
+        tmp = target + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, target)
     for existing in os.listdir(pdir):
         epath = os.path.join(pdir, existing)
-        if existing.startswith(".") or not os.path.isfile(epath):
+        if existing.startswith(".") or existing.endswith(".tmp") or not os.path.isfile(epath):
             continue
         if existing not in cleaned:
             os.remove(epath)
-    for cname, content in cleaned.items():
-        with open(os.path.join(pdir, cname), "w", encoding="utf-8") as f:
-            f.write(content)
 
     meta = _read_meta(pdir)
     ep = (entry_point or meta.get("entry_point") or "main.py").strip()

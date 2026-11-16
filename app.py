@@ -41,6 +41,8 @@ active_sessions: Dict[str, Dict[str, Any]] = {}
 async def lifespan(app: FastAPI):
     # Startup: initialize database
     await database.init_db()
+    # A server restart kills every worker: close any run the DB still calls 'running'.
+    await database.reconcile_stale_runs(set())
     yield
 
 
@@ -86,8 +88,12 @@ class SubmissionRequest(BaseModel):
 class CreateExampleRequest(BaseModel):
     title: str
     description: Optional[str] = ""
-    code: str
+    code: str = ""
     robot_model: Optional[str] = "ur"
+    # Everything the example needs to run: all project files, the entry point, and earlier iterations.
+    files: Optional[Dict[str, str]] = None
+    entry_point: Optional[str] = "main.py"
+    history: Optional[List[Dict[str, Any]]] = None
 
 
 class AdminSendCodeRequest(BaseModel):
@@ -1077,9 +1083,49 @@ async def submit_code(payload: SubmissionRequest):
     }
 
 
+async def _reconcile_runs() -> List[int]:
+    """Closes 'running' DB rows the engine is not actually executing, and tells the dashboards."""
+    fixed = await database.reconcile_stale_runs(engine.active_submission_ids())
+    for sid in fixed:
+        await broadcast_to_admins({"type": "submission_updated", "id": sid})
+    return fixed
+
+
+@app.get("/api/state")
+async def get_system_state(authorization: Optional[str] = Header(default=None)):
+    """
+    Single source of truth for robot + run state. The dashboard store renders only from this
+    (and the WebSocket events that tell it to refetch), never from its own remembered flags.
+    """
+    verify_any_admin(authorization)
+    await _reconcile_runs()
+    (ur_ready, ur_ping, _), (ny_ready, ny_ping, _) = await asyncio.gather(
+        check_robot_reachability(config.UR_IP, model="ur"),
+        check_robot_reachability(config.NIRYO_IP, model="niryo"),
+    )
+    eng = engine.snapshot()
+    reach = {"ur": (ur_ready, ur_ping, config.UR_IP), "niryo": (ny_ready, ny_ping, config.NIRYO_IP)}
+    robots = {}
+    for m in ("ur", "niryo"):
+        e = eng[m]
+        ready, ping, ip = reach[m]
+        if e["emergency_halted"]:
+            status = "halted"
+        elif e["executing"]:
+            status = "running"
+        elif not ready:
+            status = "offline"
+        else:
+            status = "idle"
+        robots[m] = {"model": m, "label": "UR3 Arm" if m == "ur" else "Niryo Ned", "ip": ip,
+                     "reachable": ready, "ping_ok": ping, "status": status, **e}
+    return {"robots": robots, "any_executing": engine.is_any_executing(), "any_halted": engine.is_emergency_halted()}
+
+
 @app.get("/api/submissions")
 async def list_submissions(request: Request, authorization: Optional[str] = Header(default=None)):
     verify_any_admin(authorization)
+    await _reconcile_runs()
     rows = await database.get_all_submissions(500)
     payload = {
         "submissions": rows,
@@ -1168,7 +1214,7 @@ async def launch_submission_execution(
     workspace_project: Optional[str] = None
 ):
     active_model = robot_model or getattr(config, "ROBOT_MODEL", "ur")
-    engine.reset_emergency(active_model)
+    # NOTE: the E-stop latch is deliberately NOT cleared here. Only POST /api/emergency-reset may do that.
 
     async def log_broadcaster(msg: str):
         # Broadcast to any student or instructor listening to this submission
@@ -1244,6 +1290,12 @@ async def approve_submission(
     else:
         sub_model = sub.get("robot_model") or ("niryo" if ("pyniryo" in all_code or "NiryoRobot" in all_code) else "ur")
     model_name = "Niryo Ned" if sub_model == "niryo" else "UR3"
+
+    if engine.is_emergency_halted(sub_model):
+        raise HTTPException(
+            status_code=423,
+            detail=f"Emergency stop is active on {model_name}. Press Reset E-Stop before running anything."
+        )
 
     if engine.is_model_executing(sub_model):
         raise HTTPException(status_code=409, detail=f"A script is already running on {model_name}.")
@@ -1330,6 +1382,11 @@ async def admin_send_code(payload: AdminSendCodeRequest, authorization: Optional
             raise HTTPException(
                 status_code=503,
                 detail=f"{model_name} at {target_ip} is offline. Script added to queue as #{sub_id} but not started."
+            )
+        if engine.is_emergency_halted(detected_model):
+            raise HTTPException(
+                status_code=423,
+                detail=f"Emergency stop is active on {model_name}. Press Reset E-Stop before running. Added as #{sub_id}."
             )
         if engine.is_model_executing(detected_model):
             raise HTTPException(
@@ -1525,15 +1582,28 @@ async def create_example_endpoint(payload: CreateExampleRequest, authorization: 
     verify_admin_permission(authorization, "can_manage_examples")
     if not payload.title.strip():
         raise HTTPException(status_code=400, detail="Title is required.")
-    if not payload.code.strip():
-        raise HTTPException(status_code=400, detail="Code cannot be empty.")
 
-    valid, errors = validate_python_code(payload.code)
-    if not valid:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "Syntax check failed on example code.", "errors": errors}
-        )
+    files = payload.files if (payload.files and any((v or "").strip() for v in payload.files.values())) else None
+    entry = (payload.entry_point or "main.py").strip()
+    if files:
+        if entry not in files:
+            entry = "main.py" if "main.py" in files else next(iter(files))
+        modules = {os.path.splitext(f)[0] for f in files if f.endswith(".py")}
+        errors = []
+        for fname, content in files.items():
+            if fname.endswith(".py"):
+                ok, errs = validate_python_code(content or "", project_modules=modules)
+                if not ok:
+                    errors += [f"[{fname}] {e}" for e in errs]
+        if errors:
+            return JSONResponse(status_code=422, content={"detail": "Syntax check failed on example code.", "errors": errors})
+        payload.code = files[entry]
+    else:
+        if not payload.code.strip():
+            raise HTTPException(status_code=400, detail="Code cannot be empty.")
+        valid, errors = validate_python_code(payload.code)
+        if not valid:
+            return JSONResponse(status_code=422, content={"detail": "Syntax check failed on example code.", "errors": errors})
 
     model = (payload.robot_model or "ur").strip().lower()
     if model not in ("ur", "niryo"):
@@ -1544,11 +1614,13 @@ async def create_example_endpoint(payload: CreateExampleRequest, authorization: 
         description=payload.description or "",
         code=payload.code,
         is_builtin=0,
-        robot_model=model
+        robot_model=model,
+        files=files, entry_point=entry, history=payload.history
     )
 
     await broadcast_to_admins({"type": "examples_updated", "id": example_id, "robot_model": model})
-    return {"status": "created", "example_id": example_id, "title": payload.title, "robot_model": model}
+    return {"status": "created", "example_id": example_id, "title": payload.title, "robot_model": model,
+            "files": list((files or {entry: payload.code}).keys())}
 
 
 @app.post("/api/examples/upload")
@@ -1609,15 +1681,28 @@ async def update_example_endpoint(example_id: int, payload: CreateExampleRequest
         raise HTTPException(status_code=404, detail="Example not found")
     if not payload.title.strip():
         raise HTTPException(status_code=400, detail="Title is required.")
-    if not payload.code.strip():
-        raise HTTPException(status_code=400, detail="Code cannot be empty.")
 
-    valid, errors = validate_python_code(payload.code)
-    if not valid:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": "Syntax check failed on example code.", "errors": errors}
-        )
+    files = payload.files if (payload.files and any((v or "").strip() for v in payload.files.values())) else None
+    entry = (payload.entry_point or "main.py").strip()
+    if files:
+        if entry not in files:
+            entry = "main.py" if "main.py" in files else next(iter(files))
+        modules = {os.path.splitext(f)[0] for f in files if f.endswith(".py")}
+        errors = []
+        for fname, content in files.items():
+            if fname.endswith(".py"):
+                ok, errs = validate_python_code(content or "", project_modules=modules)
+                if not ok:
+                    errors += [f"[{fname}] {e}" for e in errs]
+        if errors:
+            return JSONResponse(status_code=422, content={"detail": "Syntax check failed on example code.", "errors": errors})
+        payload.code = files[entry]
+    else:
+        if not payload.code.strip():
+            raise HTTPException(status_code=400, detail="Code cannot be empty.")
+        valid, errors = validate_python_code(payload.code)
+        if not valid:
+            return JSONResponse(status_code=422, content={"detail": "Syntax check failed on example code.", "errors": errors})
 
     model = (payload.robot_model or "ur").strip().lower()
     if model not in ("ur", "niryo"):
@@ -1628,7 +1713,8 @@ async def update_example_endpoint(example_id: int, payload: CreateExampleRequest
         title=payload.title,
         description=payload.description or "",
         code=payload.code,
-        robot_model=model
+        robot_model=model,
+        files=files, entry_point=entry, history=payload.history
     )
 
     await broadcast_to_admins({"type": "examples_updated", "id": example_id, "robot_model": model})

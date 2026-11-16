@@ -6,6 +6,8 @@
     <title>Robotics Execution Portal - Student Sandbox</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/static/design.js"></script>
+    <link rel="stylesheet" href="/static/design.css">
     <!-- Monaco Editor CDN -->
     <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
     <!-- Three.js and OrbitControls for 3D Robot Visualizer -->
@@ -14,9 +16,6 @@
     <script src="/static/ur3_visualizer.js"></script>
     <!-- JSZip for Multi-File Project Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    </style>
 </head>
 <body class="bg-slate-950 text-slate-100 h-screen overflow-hidden flex flex-col">
 
@@ -30,18 +29,18 @@
         <!-- Views -->
         <nav class="flex items-center space-x-1" aria-label="Views">
             <button id="tabNavCode" onclick="switchMainPortalView('code')"
-                class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 bg-blue-600 text-white shadow-lg shadow-blue-600/30">
-                <span>💻 Code</span>
-                <span id="navFileCountBadge" class="hidden px-1.5 rounded-full text-[10px] bg-blue-800 text-blue-200">1 file</span>
+                class="btn btn-sm btn-primary">
+                <span>Code</span>
+                <span id="navFileCountBadge" class="hidden px-1.5 rounded-full text-[11px] bg-blue-800 text-blue-200">1 file</span>
             </button>
             <button id="tabNavSim" onclick="switchMainPortalView('sim')"
                 class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
-                <span>🎮 Simulation</span>
-                <span id="navSimStatusBadge" class="px-1.5 rounded-full text-[10px] bg-slate-800 text-slate-400">IDLE</span>
+                <span>Simulate</span>
+                <span id="navSimStatusBadge" class="px-1.5 rounded-full text-[11px] bg-slate-800 text-slate-400">IDLE</span>
             </button>
             <button id="tabNavRun" onclick="switchMainPortalView('run')"
                 class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800">
-                <span>🚀 Live</span>
+                <span>Live</span>
                 <span id="navRunPulseDot" class="w-2 h-2 rounded-full bg-slate-600"></span>
             </button>
         </nav>
@@ -50,7 +49,7 @@
         <div class="flex items-center gap-2">
             <span id="headerRobotBadge" class="px-2.5 py-1 rounded-lg text-xs font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center space-x-1.5" title="Robot this project is written for">
                 <span id="headerRobotDot" class="w-2 h-2 rounded-full bg-sky-400"></span>
-                <span id="headerRobotLabel">🦾 UR3 Arm</span>
+                <span id="headerRobotLabel">UR3 Arm</span>
             </span>
             <div id="connectionStatus" class="flex items-center space-x-2 text-xs text-rose-400 bg-rose-950/60 border border-rose-800 px-2.5 py-1 rounded-full transition-all">
                 <span id="pingDot" class="w-2 h-2 rounded-full bg-rose-500"></span>
@@ -62,19 +61,20 @@
 
         <!-- Main actions -->
         <div class="flex items-center gap-2">
-            <button id="btnSyntax" onclick="checkSyntax()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700">🔍 <span class="hidden lg:inline">Check</span></button>
-            <button id="btnSimulate" onclick="simulateCode()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-600/30 transition">🎮 Simulate</button>
-            <button id="btnSubmit" onclick="submitCode()" class="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/30 transition">🚀 Send</button>
+            <button id="btnSyntax" onclick="checkSyntax()" class="btn btn-sm"><span class="hidden lg:inline">Check</span></button>
+            <button id="btnSimulate" onclick="simulateCode()" class="btn btn-sm btn-primary">Simulate</button>
+            <button id="btnSubmit" onclick="submitCode()" class="btn btn-sm btn-primary">Submit</button>
         </div>
 
         <!-- Secondary links + user -->
         <div class="flex items-center gap-2">
-            <a id="docsLink" href="https://sdurobotics.gitlab.io/ur_rtde" target="_blank" rel="noopener noreferrer" class="px-2 py-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition" title="Robot library documentation">📚</a>
-            <a id="headerManagerLink" href="/admin" class="px-2 py-1.5 text-amber-300/80 hover:text-amber-200 hover:bg-slate-800 rounded-lg text-xs transition" title="Robot Manager / Instructor Console">🛠️</a>
+            <button type="button" data-theme-toggle onclick="Theme.toggle()" class="px-2 py-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg text-xs transition" title="Switch light / dark theme">Light mode</button>
+            <a id="docsLink" href="https://sdurobotics.gitlab.io/ur_rtde" target="_blank" rel="noopener noreferrer" class="px-2 py-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition" title="Robot library documentation">Docs</a>
+            <a id="headerManagerLink" href="/admin" class="px-2 py-1.5 text-amber-300/80 hover:text-amber-200 hover:bg-slate-800 rounded-lg text-xs transition" title="Robot Manager / Instructor Console">Manager</a>
             <div id="userHeaderBadge" class="flex items-center space-x-1.5 bg-slate-850 border border-slate-700 px-2.5 py-1 rounded-lg text-xs">
                 <span id="loggedInStudentName" class="font-bold text-sky-400">Not Logged In</span>
-                <span id="userRoleHeaderBadge" class="hidden px-1.5 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">ADMIN</span>
-                <button onclick="logoutStudent()" title="Log out / Switch User" class="text-slate-400 hover:text-rose-400 transition">⏻</button>
+                <span id="userRoleHeaderBadge" class="hidden px-1.5 rounded text-[11px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">ADMIN</span>
+                <button onclick="logoutStudent()" title="Log out / Switch User" class="text-slate-400 hover:text-rose-400 transition">Sign out</button>
             </div>
         </div>
     </header>
@@ -94,43 +94,39 @@
                     <div class="flex items-center space-x-3 flex-1 min-w-[280px]">
                         <div class="flex items-center space-x-2">
                             <label for="studentProjectSelect" class="text-xs font-bold text-slate-400 whitespace-nowrap flex items-center space-x-1.5">
-                                <span>📁</span>
                                 <span>Project:</span>
                             </label>
                             <select id="studentProjectSelect" onchange="onSelectStudentProject(this.value)" class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500 font-mono font-bold max-w-[220px]">
                             </select>
-                            <button onclick="openNewProjectModal()" title="Create New Project Folder" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
-                                <span>➕</span>
+                            <button onclick="openNewProjectModal()" title="Create New Project Folder" class="btn btn-sm btn-primary">
                                 <span class="hidden sm:inline">New Project</span>
                             </button>
-                            <button onclick="promptRenameCurrentProject()" title="Rename this project folder" class="p-1 px-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">
-                                ✏️
-                            </button>
+                            <button onclick="promptRenameCurrentProject()" title="Rename this project folder" class="p-1 px-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">Rename</button>
                         </div>
                         <div id="saveToast" class="text-xs text-emerald-400 font-medium opacity-0 transition-opacity duration-300 whitespace-nowrap">
-                            ✓ Saved!
+                            Saved!
                         </div>
                     </div>
                     
                     <div class="flex items-center gap-2">
-                        <button id="btnSave" onclick="saveCodeLocally()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700" title="Save (Ctrl+S)">💾 Save</button>
-                        <button id="btnMyProjects" onclick="openMyProjectsModal()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg transition border border-slate-700">
-                            📂 Projects <span id="myProjectsCountBadge" class="hidden ml-1 px-1.5 rounded-full text-[10px] font-bold bg-sky-600 text-white">0</span>
+                        <button id="btnSave" onclick="saveCodeLocally()" class="btn btn-sm" title="Save (Ctrl+S)">Save</button>
+                        <button id="btnMyProjects" onclick="openMyProjectsModal()" class="btn btn-sm">
+                            Projects <span id="myProjectsCountBadge" class="hidden ml-1 px-1.5 rounded-full text-[11px] font-bold bg-sky-600 text-white">0</span>
                         </button>
                         <div class="relative inline-block text-left">
-                            <button id="btnExamples" onclick="toggleExamplesMenu(event)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700">📚 Examples ▾</button>
+                            <button id="btnExamples" onclick="toggleExamplesMenu(event)" class="btn btn-sm">Examples ▾</button>
                             <div id="examplesDropdown" class="hidden absolute right-0 top-full mt-2 w-80 max-w-sm bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-96">
                                 <div class="px-3 py-2 bg-slate-850 border-b border-slate-800 text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center justify-between">
                                     <span id="examplesModalTitle">Lab Examples</span>
-                                    <button onclick="fetchExamples(true)" class="text-blue-400 hover:underline text-[10px]">Refresh</button>
+                                    <button onclick="fetchExamples(true)" class="text-blue-400 hover:underline text-[11px]">Refresh</button>
                                 </div>
                                 <div id="examplesListContainer" class="overflow-y-auto divide-y divide-slate-800 p-1">
                                     <div class="p-3 text-xs text-slate-500 text-center">Loading examples...</div>
                                 </div>
                             </div>
                         </div>
-                        <button onclick="exportProjectZip()" title="Download project as .zip" class="px-2 py-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition">📦</button>
-                        <button onclick="resetEditorToDefault()" title="Reset code to the default template" class="px-2 py-1 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg text-xs transition">↺</button>
+                        <button onclick="exportProjectZip()" title="Download project as .zip" class="px-2 py-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-xs transition">Export</button>
+                        <button onclick="resetEditorToDefault()" title="Reset code to the default template" class="px-2 py-1 text-slate-500 hover:text-rose-400 hover:bg-slate-800 rounded-lg text-xs transition">Reset</button>
                         <span id="robotSelectedBadge" class="hidden"></span>
                     </div>
                 </div>
@@ -140,10 +136,9 @@
                     <div class="flex items-center space-x-1.5 overflow-x-auto py-0.5 flex-1 min-w-0" id="editorTabsBar">
                         <!-- Sidebar Toggle Button -->
                         <button id="btnToggleExplorer" onclick="toggleProjectExplorer()" title="Toggle Project File Explorer"
-                            class="px-2.5 py-1 rounded text-xs font-semibold transition flex items-center space-x-1.5 bg-slate-800 text-sky-400 hover:bg-slate-700 mr-1 border border-slate-700/80">
-                            <span>📁</span>
+                            class="btn btn-sm">
                             <span class="font-mono text-[11px]">Explorer</span>
-                            <span id="tabFilesCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-sky-900/80 text-sky-300">1</span>
+                            <span id="tabFilesCountBadge" class="px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-900/80 text-sky-300">1</span>
                         </button>
                         
                         <!-- Dynamic File Tabs List -->
@@ -170,9 +165,9 @@
                     <div id="projectExplorerSidebar" class="w-52 flex-shrink-0 bg-slate-950 border-r border-slate-800 flex flex-col transition-all duration-150 select-none">
                         <!-- Explorer Header -->
                         <div class="px-3 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
-                            <span class="text-[10px] font-extrabold tracking-wider uppercase text-slate-400 font-mono">Project Files</span>
+                            <span class="text-[11px] font-bold tracking-wider uppercase text-slate-400 font-mono">Project Files</span>
                             <div class="flex items-center space-x-1">
-                                <button onclick="openNewFileModal()" title="Create New File" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-sky-300 rounded text-[10px] font-semibold transition border border-slate-700 flex items-center space-x-1">
+                                <button onclick="openNewFileModal()" title="Create New File" class="btn btn-sm">
                                     <span>+ New File</span>
                                 </button>
                                 <button onclick="toggleProjectExplorer()" title="Collapse Sidebar" class="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition text-xs">
@@ -183,7 +178,6 @@
 
                         <!-- Folder Label -->
                         <div class="hidden">
-                            <span>📂</span>
                             <span id="sidebarProjectFolderName" class="truncate font-mono">robot_project/</span>
                         </div>
 
@@ -193,7 +187,7 @@
                         </div>
 
                         <!-- Sidebar Footer -->
-                        <div class="p-2 border-t border-slate-800/80 bg-slate-900/60 text-[10px] text-slate-400 flex items-center justify-between">
+                        <div class="p-2 border-t border-slate-800/80 bg-slate-900/60 text-[11px] text-slate-400 flex items-center justify-between">
                             <span id="sidebarFooterStats">1 file • Entry: main.py</span>
                             <label title="Import file into project" class="cursor-pointer text-blue-400 hover:underline font-semibold">
                                 Import
@@ -208,7 +202,6 @@
 
                 <!-- Robot Offline Notice Banner -->
                 <div id="robotOfflineNotice" class="hidden px-4 py-2 bg-amber-950/80 border-t border-amber-800 text-xs text-amber-300 flex items-center space-x-2 font-medium">
-                    <span>⚠️</span>
                     <span><strong>Robot Currently Offline:</strong> You can write code, test syntax, and run 3D simulations. Physical execution will wait until the arm is online.</span>
                 </div>
 
@@ -223,19 +216,19 @@
             <!-- Output Header Banner -->
             <div class="flex flex-wrap items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 gap-3 shadow-lg flex-shrink-0">
                 <div class="flex items-center space-x-3">
-                    <button onclick="switchMainPortalView('code')" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-semibold rounded-lg transition flex items-center space-x-1.5 border border-sky-500/30">
+                    <button onclick="switchMainPortalView('code')" class="btn btn-sm">
                         <span>◀ Back to Code Studio</span>
                     </button>
                     <div class="flex items-center space-x-2">
-                        <span id="outputRobotBadge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3 ARM</span>
+                        <span id="outputRobotBadge" class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3 ARM</span>
                         <span id="submissionStatus" class="text-xs font-bold text-white uppercase tracking-wider">Live Simulation &amp; Execution Monitor</span>
                     </div>
                 </div>
                 
                 <div class="flex items-center space-x-2.5">
-                    <span id="statusBadge" class="hidden text-[10px] font-semibold px-2 py-0.5 rounded-full">PENDING</span>
-                    <button onclick="simulateCode()" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition flex items-center space-x-1">
-                        <span>🔄 Re-Simulate</span>
+                    <span id="statusBadge" class="hidden text-[11px] font-semibold px-2 py-0.5 rounded-full">PENDING</span>
+                    <button onclick="simulateCode()" class="btn btn-sm btn-primary">
+                        <span>Re-Simulate</span>
                     </button>
                 </div>
             </div>
@@ -253,14 +246,14 @@
                         <div class="flex items-center space-x-1.5">
                             <!-- Playback Speed Control -->
                             <div class="flex items-center space-x-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-slate-800 text-xs text-slate-400 mr-1">
-                                <span class="text-[10px] uppercase font-bold text-slate-500 mr-0.5">Speed:</span>
-                                <button data-speed="0.5" onclick="setStudentSimSpeed(0.5)" class="student-sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition">0.5x</button>
-                                <button data-speed="1.0" onclick="setStudentSimSpeed(1.0)" class="student-sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-600 text-white shadow-sm transition">1.0x</button>
-                                <button data-speed="2.0" onclick="setStudentSimSpeed(2.0)" class="student-sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition">2.0x</button>
+                                <span class="text-[11px] uppercase font-bold text-slate-500 mr-0.5">Speed:</span>
+                                <button data-speed="0.5" onclick="setStudentSimSpeed(0.5)" class="student-sim-speed-btn px-1.5 py-0.5 rounded text-[11px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition">0.5x</button>
+                                <button data-speed="1.0" onclick="setStudentSimSpeed(1.0)" class="btn btn-sm btn-primary">1.0x</button>
+                                <button data-speed="2.0" onclick="setStudentSimSpeed(2.0)" class="student-sim-speed-btn px-1.5 py-0.5 rounded text-[11px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition">2.0x</button>
                             </div>
-                            <button onclick="ur3Vis.setPhotoPose()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-sky-300 rounded transition font-medium">Photo</button>
-                            <button onclick="ur3Vis.setHomePose()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded transition font-medium">Home</button>
-                            <button onclick="ur3Vis.resetCamera()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded transition font-medium">Reset</button>
+                            <button onclick="ur3Vis.setPhotoPose()" class="btn btn-sm">Photo</button>
+                            <button onclick="ur3Vis.setHomePose()" class="btn btn-sm">Home</button>
+                            <button onclick="ur3Vis.resetCamera()" class="btn btn-sm">Reset</button>
                         </div>
                     </div>
                     <div id="ur3CanvasContainer" class="flex-1 relative bg-[#111622] min-h-0">
@@ -273,16 +266,14 @@
                 <!-- Execution Status & Live Log Terminal (5 cols on lg) -->
                 <div class="lg:col-span-5 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-0">
                     <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
-                        <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Execution Output &amp; Logs</span>
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Output</span>
                         <div class="flex items-center space-x-2">
                             <button onclick="copyTerminalLogs()" class="text-xs text-slate-400 hover:text-slate-200">Copy</button>
                             <button onclick="clearTerminal()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
                         </div>
                     </div>
                     <div id="terminal" class="flex-1 p-4 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white min-h-0">
-Welcome to Robotics Execution Console.
-Write your Python script or multi-file project in the Code Studio.
-When you run a 3D simulation or physical execution, trajectory playback and live robot logs will appear right here.
+No output. Run a simulation or submit to see logs.
                     </div>
                 </div>
 
@@ -300,11 +291,11 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                     <div id="studentRunStatusDot" class="w-3.5 h-3.5 rounded-full bg-slate-600 shrink-0"></div>
                     <div>
                         <div class="flex items-center space-x-2 flex-wrap">
-                            <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Execution Status:</span>
-                            <span id="studentRunActiveLabel" class="text-sm font-black text-white font-mono">IDLE — Waiting for instructor execution</span>
-                            <span id="studentRunModelBadge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">UR3 ARM</span>
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Execution Status:</span>
+                            <span id="studentRunActiveLabel" class="text-sm font-bold text-white font-mono">IDLE — Waiting for instructor execution</span>
+                            <span id="studentRunModelBadge" class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700">UR3 ARM</span>
                             <div class="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-[11px] ml-1">
-                                <button id="btnStudentRunUR" onclick="switchStudentRunModel('ur')" class="px-2.5 py-0.5 rounded font-bold bg-indigo-600 text-white transition">UR3</button>
+                                <button id="btnStudentRunUR" onclick="switchStudentRunModel('ur')" class="btn btn-sm btn-primary">UR3</button>
                                 <button id="btnStudentRunNiryo" onclick="switchStudentRunModel('niryo')" class="px-2.5 py-0.5 rounded text-slate-400 hover:text-white transition">Niryo</button>
                             </div>
                         </div>
@@ -321,10 +312,9 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 <!-- Execution Protection Notice (Students cannot start or stop programs) -->
                 <div class="flex items-center flex-wrap gap-2.5">
                     <div class="px-3.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center space-x-2 shadow-sm">
-                        <span class="text-sm">🔒</span>
                         <div>
                             <span class="font-bold block text-xs">Instructor Execution Only (View-Only)</span>
-                            <span class="text-[10px] text-amber-400/80 font-normal">Physical motion is started and controlled by an instructor.</span>
+                            <span class="text-[11px] text-amber-400/80 font-normal">Physical motion is started and controlled by an instructor.</span>
                         </div>
                     </div>
                 </div>
@@ -333,49 +323,48 @@ When you run a 3D simulation or physical execution, trajectory playback and live
             <!-- Hardware Disconnected Banner (Shown when no physical robot is connected) -->
             <div id="studentTelDisconnectedBanner" class="p-3 bg-slate-900 border border-amber-500/40 rounded-xl flex items-center justify-between text-xs text-amber-300 shadow-lg">
                 <div class="flex items-center space-x-2.5">
-                    <span class="text-lg">🔌</span>
                     <div>
                         <strong class="font-bold text-amber-200">No Physical Robot Connected:</strong>
                         <span class="text-amber-300/80"> Hardware telemetry stream and physical twin mirror are offline. Connect the robot arm to view live dynamics.</span>
                     </div>
                 </div>
-                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800 uppercase">HARDWARE OFFLINE</span>
+                <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-950 text-amber-300 border border-amber-800 uppercase">HARDWARE OFFLINE</span>
             </div>
 
             <!-- Detailed telemetry (collapsed by default to keep the page simple) -->
             <details class="flex-shrink-0 group">
-            <summary class="cursor-pointer select-none text-xs font-semibold text-slate-400 hover:text-slate-200 px-1 py-1">📊 Telemetry details (speed, pose, joints, diagnostics)</summary>
+            <summary class="cursor-pointer select-none text-xs font-semibold text-slate-400 hover:text-slate-200 px-1 py-1">Telemetry details (speed, pose, joints, diagnostics)</summary>
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-2">
                 <!-- Card 1: Speed & Dynamics -->
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-lg flex flex-col justify-between">
                     <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-2">
                         <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Speed &amp; Dynamics</span>
-                        <span class="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded">LIVE</span>
+                        <span class="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded">LIVE</span>
                     </div>
                     <div class="space-y-1.5">
                         <div class="flex items-baseline space-x-2">
-                            <span id="studentTelSpeedNum" class="text-2xl font-black font-mono text-emerald-400">—</span>
+                            <span id="studentTelSpeedNum" class="text-2xl font-bold font-mono text-emerald-400">—</span>
                             <span class="text-xs text-slate-400 font-bold">m/s</span>
                             <span class="text-xs text-slate-500 font-mono">(<span id="studentTelSpeedMm">—</span> mm/s)</span>
                         </div>
                         <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-800">
-                            <div id="studentTelSpeedBar" class="bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-500 h-1.5 rounded-full transition-all duration-200" style="width: 0%"></div>
+                            <div id="studentTelSpeedBar" class="bg-emerald-500 h-1.5 rounded-full transition-all duration-200" style="width: 0%"></div>
                         </div>
                         <div class="grid grid-cols-2 gap-1.5 text-xs pt-1">
                             <div>
-                                <span class="text-slate-500 text-[10px] uppercase block">Peak Speed:</span>
+                                <span class="text-slate-500 text-[11px] uppercase block">Peak Speed:</span>
                                 <span id="studentTelMaxSpeed" class="font-mono text-slate-200 font-semibold text-xs">—</span>
                             </div>
                             <div>
-                                <span class="text-slate-500 text-[10px] uppercase block">Avg Speed:</span>
+                                <span class="text-slate-500 text-[11px] uppercase block">Avg Speed:</span>
                                 <span id="studentTelAvgSpeed" class="font-mono text-slate-200 font-semibold text-xs">—</span>
                             </div>
                             <div>
-                                <span class="text-slate-500 text-[10px] uppercase block">Path Traveled:</span>
+                                <span class="text-slate-500 text-[11px] uppercase block">Path Traveled:</span>
                                 <span id="studentTelPathLen" class="font-mono text-indigo-300 font-semibold text-xs">—</span>
                             </div>
                             <div>
-                                <span class="text-slate-500 text-[10px] uppercase block">Motion Time:</span>
+                                <span class="text-slate-500 text-[11px] uppercase block">Motion Time:</span>
                                 <span id="studentTelMovingTime" class="font-mono text-slate-200 font-semibold text-xs">—</span>
                             </div>
                         </div>
@@ -386,24 +375,24 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-lg flex flex-col justify-between">
                     <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-2">
                         <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Cartesian Pose (TCP)</span>
-                        <span id="studentTelTargetModelLabel" class="text-[10px] font-mono text-slate-400 uppercase">UR3</span>
+                        <span id="studentTelTargetModelLabel" class="text-[11px] font-mono text-slate-400 uppercase">UR3</span>
                     </div>
                     <div class="space-y-1.5 text-xs font-mono">
                         <div class="grid grid-cols-3 gap-1.5">
                             <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80 text-center">
-                                <span class="text-rose-400 font-bold block text-[10px]">X (mm)</span>
+                                <span class="text-rose-400 font-bold block text-[11px]">X (mm)</span>
                                 <span id="studentTelPosX" class="text-xs font-bold text-white">—</span>
                             </div>
                             <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80 text-center">
-                                <span class="text-emerald-400 font-bold block text-[10px]">Y (mm)</span>
+                                <span class="text-emerald-400 font-bold block text-[11px]">Y (mm)</span>
                                 <span id="studentTelPosY" class="text-xs font-bold text-white">—</span>
                             </div>
                             <div class="bg-slate-950 p-1.5 rounded-lg border border-slate-800/80 text-center">
-                                <span class="text-sky-400 font-bold block text-[10px]">Z (mm)</span>
+                                <span class="text-sky-400 font-bold block text-[11px]">Z (mm)</span>
                                 <span id="studentTelPosZ" class="text-xs font-bold text-white">—</span>
                             </div>
                         </div>
-                        <div class="grid grid-cols-3 gap-1 text-[10px] pt-1 text-slate-400">
+                        <div class="grid grid-cols-3 gap-1 text-[11px] pt-1 text-slate-400">
                             <div>Rx: <span id="studentTelRotRx" class="text-slate-200 font-semibold">—</span></div>
                             <div>Ry: <span id="studentTelRotRy" class="text-slate-200 font-semibold">—</span></div>
                             <div>Rz: <span id="studentTelRotRz" class="text-slate-200 font-semibold">—</span></div>
@@ -415,7 +404,7 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-lg flex flex-col justify-between">
                     <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-1.5">
                         <span class="text-xs font-bold uppercase tracking-wider text-slate-400">6-DOF Joints</span>
-                        <span class="text-[10px] font-mono text-slate-400">J1..J6</span>
+                        <span class="text-[11px] font-mono text-slate-400">J1..J6</span>
                     </div>
                     <div class="space-y-1 text-[11px] font-mono">
                         <div class="flex items-center justify-between">
@@ -443,7 +432,7 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 shadow-lg flex flex-col justify-between">
                     <div class="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-1.5">
                         <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Diagnostics</span>
-                        <span id="studentTelConnectedPill" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">OFFLINE</span>
+                        <span id="studentTelConnectedPill" class="text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">OFFLINE</span>
                     </div>
                     <div class="space-y-1 text-xs">
                         <div class="flex items-center justify-between">
@@ -475,7 +464,7 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                     <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
                         <div class="flex items-center space-x-2">
                             <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Robot Execution Log</span>
-                            <span id="studentRunStreamBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-sky-400">Stream: Idle</span>
+                            <span id="studentRunStreamBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-sky-400">Stream: Idle</span>
                         </div>
                         <button onclick="clearStudentRunTerminal()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
                     </div>
@@ -492,13 +481,13 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                             <span id="studentRunVisTitle" class="text-xs font-bold uppercase tracking-wider text-slate-300">3D Real-Time Digital Twin</span>
                         </div>
                         <div class="flex items-center space-x-1">
-                            <button onclick="if(studentRunVis) studentRunVis.setPhotoPose()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-sky-300 rounded transition">Photo</button>
-                            <button onclick="if(studentRunVis) studentRunVis.setHomePose()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded transition">Home</button>
-                            <button onclick="if(studentRunVis) studentRunVis.resetCamera()" class="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded transition">Reset</button>
+                            <button onclick="if(studentRunVis) studentRunVis.setPhotoPose()" class="btn btn-sm">Photo</button>
+                            <button onclick="if(studentRunVis) studentRunVis.setHomePose()" class="btn btn-sm">Home</button>
+                            <button onclick="if(studentRunVis) studentRunVis.resetCamera()" class="btn btn-sm">Reset</button>
                         </div>
                     </div>
                     <div id="studentRunCanvasContainer" class="flex-1 relative bg-[#111622] min-h-0 overflow-hidden">
-                        <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[10px] font-mono text-slate-400">
+                        <div class="absolute bottom-2 left-2 pointer-events-none bg-slate-900/80 backdrop-blur border border-slate-700 px-2 py-0.5 rounded text-[11px] font-mono text-slate-400">
                             Live Angles: <span class="ur3AngleReadout text-sky-300">0° | -90° | 90° | -90° | -90° | 0°</span>
                         </div>
                     </div>
@@ -509,11 +498,10 @@ When you run a 3D simulation or physical execution, trajectory playback and live
     </main>
 
     <!-- Student Projects & Workspaces Modal -->
-    <div id="myProjectsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div id="myProjectsModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
             <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-850">
                 <div class="flex items-center space-x-2">
-                    <span class="text-lg">📂</span>
                     <div>
                         <h3 class="text-sm font-bold text-white">Project Workspaces &amp; History</h3>
                         <p class="text-[11px] text-slate-400">Manage your project folders and view past submissions</p>
@@ -526,18 +514,18 @@ When you run a 3D simulation or physical execution, trajectory playback and live
             <div class="flex border-b border-slate-800 bg-slate-900 px-5 pt-2 space-x-4">
                 <button id="tabBtnNiryoProjects" onclick="switchProjectsModalTab('niryo')"
                     class="pb-2 text-xs font-bold text-cyan-400 border-b-2 border-cyan-400 transition flex items-center space-x-1.5">
-                    <span>🤖 Niryo Ned Projects</span>
-                    <span id="niryoCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono font-bold">0</span>
+                    <span>Niryo Ned Projects</span>
+                    <span id="niryoCountBadge" class="px-1.5 py-0.5 rounded-full text-[11px] bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono font-bold">0</span>
                 </button>
                 <button id="tabBtnURProjects" onclick="switchProjectsModalTab('ur')"
                     class="pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5">
-                    <span>🦾 UR3 Projects</span>
-                    <span id="urCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-400 font-mono font-bold">0</span>
+                    <span>UR3 Projects</span>
+                    <span id="urCountBadge" class="px-1.5 py-0.5 rounded-full text-[11px] bg-slate-800 text-slate-400 font-mono font-bold">0</span>
                 </button>
                 <button id="tabBtnSubmissionsHistory" onclick="switchProjectsModalTab('history')"
                     class="pb-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5">
-                    <span>📜 Submissions History</span>
-                    <span id="historyCountBadge" class="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-800 text-slate-400 font-mono font-bold">0</span>
+                    <span>Submissions History</span>
+                    <span id="historyCountBadge" class="px-1.5 py-0.5 rounded-full text-[11px] bg-slate-800 text-slate-400 font-mono font-bold">0</span>
                 </button>
             </div>
 
@@ -546,8 +534,8 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 <div id="modalWorkspacesSection" class="space-y-3">
                     <div class="flex items-center justify-between bg-slate-850 p-3 rounded-xl border border-slate-800">
                         <div id="modalWorkspacesSubtitle" class="text-xs text-slate-300 font-medium">Create a new workspace folder for custom scripts and output data:</div>
-                        <button id="btnModalNewProject" onclick="openNewProjectModal(false, currentModalTabModel)" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
-                            <span>➕ New Project Folder</span>
+                        <button id="btnModalNewProject" onclick="openNewProjectModal(false, currentModalTabModel)" class="btn btn-sm btn-primary">
+                            <span>New Project Folder</span>
                         </button>
                     </div>
                     <div id="modalWorkspacesList" class="space-y-2">
@@ -566,11 +554,10 @@ When you run a 3D simulation or physical execution, trajectory playback and live
     </div>
 
     <!-- Create New File Modal -->
-    <div id="newFileModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div id="newFileModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
             <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
                 <h3 class="text-sm font-bold text-white flex items-center space-x-1.5">
-                    <span>📄</span>
                     <span>Create New File</span>
                 </h3>
                 <button onclick="closeNewFileModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
@@ -578,17 +565,17 @@ When you run a 3D simulation or physical execution, trajectory playback and live
             <div>
                 <label class="block text-xs font-semibold text-slate-300 mb-1.5">File Type</label>
                 <div class="grid grid-cols-4 gap-2 text-center text-xs">
-                    <button type="button" onclick="setNewFileType('txt')" id="fileTypeBtn_txt" class="py-1.5 px-2 rounded-lg bg-blue-600/30 border border-blue-500 font-bold text-blue-300 transition">
-                        📄 .txt
+                    <button type="button" onclick="setNewFileType('txt')" id="fileTypeBtn_txt" class="btn btn-sm btn-primary">
+                        .txt
                     </button>
-                    <button type="button" onclick="setNewFileType('py')" id="fileTypeBtn_py" class="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-slate-200 transition">
-                        🐍 .py
+                    <button type="button" onclick="setNewFileType('py')" id="fileTypeBtn_py" class="btn btn-sm">
+                        .py
                     </button>
-                    <button type="button" onclick="setNewFileType('json')" id="fileTypeBtn_json" class="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-slate-200 transition">
-                        📊 .json
+                    <button type="button" onclick="setNewFileType('json')" id="fileTypeBtn_json" class="btn btn-sm">
+                        .json
                     </button>
-                    <button type="button" onclick="setNewFileType('custom')" id="fileTypeBtn_custom" class="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold text-slate-200 transition">
-                        📝 Other
+                    <button type="button" onclick="setNewFileType('custom')" id="fileTypeBtn_custom" class="btn btn-sm">
+                        Other
                     </button>
                 </div>
             </div>
@@ -597,11 +584,11 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 <input id="newFileNameInput" type="text" placeholder="e.g., data.txt, notes.txt, helpers.py"
                     onkeydown="if(event.key==='Enter') confirmCreateFile()"
                     class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition font-mono">
-                <p id="newFileHint" class="text-[10px] text-slate-400 mt-1">Creating a text file (<code class="text-amber-300">.txt</code>). Python code can write to it with <code class="text-sky-300">open("filename.txt", "w")</code>.</p>
+                <p id="newFileHint" class="text-[11px] text-slate-400 mt-1">Creating a text file (<code class="text-amber-300">.txt</code>). Python code can write to it with <code class="text-sky-300">open("filename.txt", "w")</code>.</p>
             </div>
             <div class="flex items-center justify-end space-x-2 pt-2">
-                <button onclick="closeNewFileModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition">Cancel</button>
-                <button onclick="confirmCreateFile()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition shadow">Create File</button>
+                <button onclick="closeNewFileModal()" class="btn btn-sm">Cancel</button>
+                <button onclick="confirmCreateFile()" class="btn btn-sm btn-primary">Create File</button>
             </div>
         </div>
     </div>
@@ -610,7 +597,6 @@ When you run a 3D simulation or physical execution, trajectory playback and live
     <div id="newProjectModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
             <div class="flex items-center space-x-3 border-b border-slate-800 pb-3">
-                <span class="text-2xl">📁</span>
                 <div>
                     <h3 id="newProjectModalTitle" class="text-base font-bold text-white">Create New Project Folder</h3>
                     <p id="newProjectModalSubtitle" class="text-xs text-slate-400">All code, scripts, and output files will be stored in this project folder.</p>
@@ -627,15 +613,15 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                 <label class="block text-xs font-semibold text-slate-300 mb-1.5">Target Robot Arm</label>
                 <select id="newProjectRobotSelect"
                     class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition font-medium">
-                    <option value="ur">🦾 Universal Robots UR3</option>
-                    <option value="niryo">🤖 Niryo Ned / One</option>
+                    <option value="ur">Universal Robots UR3</option>
+                    <option value="niryo">Niryo Ned / One</option>
                 </select>
                 <p class="text-[11px] text-slate-500 mt-1.5">Select the target robot for this project (configures starter template and 3D kinematics).</p>
             </div>
             <div class="flex items-center justify-end space-x-2 pt-2">
-                <button id="btnCancelNewProject" onclick="closeNewProjectModal()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition">Cancel</button>
-                <button onclick="confirmCreateProject()" class="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5">
-                    <span>🚀 Create Project</span>
+                <button id="btnCancelNewProject" onclick="closeNewProjectModal()" class="btn btn-sm">Cancel</button>
+                <button onclick="confirmCreateProject()" class="btn btn-sm btn-primary">
+                    <span>Create</span>
                 </button>
             </div>
         </div>
@@ -645,7 +631,6 @@ When you run a 3D simulation or physical execution, trajectory playback and live
     <div id="commitMessageModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
             <div class="flex items-center space-x-3 border-b border-slate-800 pb-3">
-                <span class="text-2xl">📝</span>
                 <div>
                     <h3 class="text-base font-bold text-white">Project Resubmission Notes</h3>
                     <p id="commitModalSubtitle" class="text-xs text-slate-400">A submission with this project name already exists. Enter a commit message to record what changed in this version:</p>
@@ -653,26 +638,25 @@ When you run a 3D simulation or physical execution, trajectory playback and live
             </div>
             <div>
                 <label class="block text-xs font-semibold text-slate-300 mb-1.5">Commit Message / Version Description</label>
-                <input id="commitMessageInput" type="text" placeholder="e.g., Adjusted pick coordinates, tuned speed, fixed gripper timing"
+                <input id="commitMessageInput" type="text" placeholder="What changed?"
                     onkeydown="if(event.key==='Enter') confirmCommitSubmission()"
                     class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition font-sans">
                 <p class="text-[11px] text-slate-500 mt-1.5">This message will be attached to the new iteration in the instructor execution tree.</p>
             </div>
             <div class="flex items-center justify-end space-x-2 pt-2">
-                <button id="btnCancelCommitModal" onclick="closeCommitMessageModal()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition">Cancel</button>
-                <button id="btnConfirmCommitModal" onclick="confirmCommitSubmission()" class="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center space-x-1.5">
-                    <span>🚀 Submit New Version</span>
+                <button id="btnCancelCommitModal" onclick="closeCommitMessageModal()" class="btn btn-sm">Cancel</button>
+                <button id="btnConfirmCommitModal" onclick="confirmCommitSubmission()" class="btn btn-sm btn-primary">
+                    <span>Submit version</span>
                 </button>
             </div>
         </div>
     </div>
 
     <!-- Rename File Modal -->
-    <div id="renameFileModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div id="renameFileModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
         <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4">
             <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
                 <h3 class="text-sm font-bold text-white flex items-center space-x-1.5">
-                    <span>✏️</span>
                     <span>Rename File</span>
                 </h3>
                 <button onclick="closeRenameFileModal()" class="text-slate-400 hover:text-white text-lg font-bold">&times;</button>
@@ -684,8 +668,8 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                     class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition font-mono">
             </div>
             <div class="flex items-center justify-end space-x-2 pt-2">
-                <button onclick="closeRenameFileModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition">Cancel</button>
-                <button onclick="confirmRenameFile()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition shadow">Save</button>
+                <button onclick="closeRenameFileModal()" class="btn btn-sm">Cancel</button>
+                <button onclick="confirmRenameFile()" class="btn btn-sm btn-primary">Save</button>
             </div>
         </div>
     </div>
@@ -697,7 +681,6 @@ When you run a 3D simulation or physical execution, trajectory playback and live
             <!-- Login Form -->
             <div id="loginFormSection" class="space-y-4">
                 <div class="text-center space-y-1">
-                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 text-2xl mb-1">🤖</div>
                     <h2 class="text-lg font-bold text-white">Student Lab Login</h2>
                     <p class="text-xs text-slate-400">Select your student account and enter your password</p>
                 </div>
@@ -716,17 +699,17 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                     <input id="loginPassword" type="password" placeholder="Enter your password" onkeydown="if(event.key==='Enter') submitStudentLogin()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition">
                 </div>
 
-                <button id="btnLoginSubmit" onclick="submitStudentLogin()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center justify-center space-x-1.5">
+                <button id="btnLoginSubmit" onclick="submitStudentLogin()" class="btn btn-sm btn-primary w-full">
                     <span>Log In &amp; Enter Lab</span>
                 </button>
 
                 <div class="text-center pt-2 border-t border-slate-800 space-y-2">
                     <button onclick="toggleAuthMode('register')" class="text-xs text-sky-400 hover:text-sky-300 font-medium block w-full text-center">
-                        ➕ New Student? Create an Account
+                        New Student? Create an Account
                     </button>
                     <div class="pt-2 border-t border-slate-800/80">
-                        <button onclick="toggleAuthMode('manager')" class="w-full py-2 px-3 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 hover:from-amber-500/20 hover:to-indigo-500/20 border border-amber-500/30 hover:border-amber-400 rounded-xl text-xs font-bold text-amber-300 transition flex items-center justify-center space-x-2 shadow-sm">
-                            <span>🛠️ Access as Robot Manager</span>
+                        <button onclick="toggleAuthMode('manager')" class="btn btn-sm btn-primary w-full">
+                            <span>Manager sign-in</span>
                         </button>
                     </div>
                 </div>
@@ -735,7 +718,6 @@ When you run a 3D simulation or physical execution, trajectory playback and live
             <!-- Registration Form -->
             <div id="registerFormSection" class="hidden space-y-4">
                 <div class="text-center space-y-1">
-                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 text-2xl mb-1">✍️</div>
                     <h2 class="text-lg font-bold text-white">Student Registration</h2>
                     <p class="text-xs text-slate-400">Register your student account for instructor approval</p>
                 </div>
@@ -757,7 +739,7 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                     <input id="regConfirmPassword" type="password" placeholder="Re-enter password" onkeydown="if(event.key==='Enter') submitStudentRegister()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
                 </div>
 
-                <button id="btnRegisterSubmit" onclick="submitStudentRegister()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-lg shadow-lg shadow-emerald-600/30 transition flex items-center justify-center space-x-1.5">
+                <button id="btnRegisterSubmit" onclick="submitStudentRegister()" class="btn btn-sm btn-primary w-full">
                     <span>Create Account (Submit for Approval)</span>
                 </button>
 
@@ -771,7 +753,6 @@ When you run a 3D simulation or physical execution, trajectory playback and live
             <!-- Robot Manager / Superadmin Login Form -->
             <div id="managerFormSection" class="hidden space-y-4">
                 <div class="text-center space-y-1">
-                    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/20 to-indigo-500/20 text-amber-400 border border-amber-500/40 text-2xl mb-1">🛠️</div>
                     <h2 class="text-lg font-bold text-white">Robot Manager Access</h2>
                     <p class="text-xs text-slate-400">Superadmin &amp; Dispatcher Management Portal</p>
                 </div>
@@ -788,8 +769,8 @@ When you run a 3D simulation or physical execution, trajectory playback and live
                     <input id="managerPassword" type="password" placeholder="Enter manager password" onkeydown="if(event.key==='Enter') submitManagerLogin()" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition font-mono">
                 </div>
 
-                <button id="btnManagerSubmit" onclick="submitManagerLogin()" class="w-full py-2.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-slate-950 hover:text-black font-extrabold text-sm rounded-lg shadow-lg shadow-amber-500/20 transition flex items-center justify-center space-x-1.5">
-                    <span>⚡ Unlock Manager Console</span>
+                <button id="btnManagerSubmit" onclick="submitManagerLogin()" class="btn btn-sm btn-primary w-full">
+                    <span>Unlock Manager Console</span>
                 </button>
 
                 <div class="text-center pt-2 border-t border-slate-800">
@@ -805,6 +786,21 @@ When you run a 3D simulation or physical execution, trajectory playback and live
     <!-- Monaco Loader -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
     <script>
+        function notify(msg) {
+            let el = document.getElementById("notifyToast");
+            if (!el) {
+                el = document.createElement("div");
+                el.id = "notifyToast";
+                el.setAttribute("role", "status");
+                el.className = "fixed bottom-4 right-4 z-[100] max-w-sm px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-xs text-slate-100 transition-opacity duration-200 opacity-0 pointer-events-none";
+                document.body.appendChild(el);
+            }
+            el.textContent = msg;
+            el.style.opacity = "1";
+            clearTimeout(el._t);
+            el._t = setTimeout(() => { el.style.opacity = "0"; }, 4500);
+        }
+
         let editor;
         let currentSubId = null;
         let logSocket = null;
@@ -896,7 +892,7 @@ def offset_pose(pose, dx=0.0, dy=0.0, dz=0.0):
 
             if (view === 'sim') {
                 if (simView) simView.classList.remove("hidden");
-                if (btnSim) btnSim.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-indigo-600 text-white shadow-lg shadow-indigo-600/30";
+                if (btnSim) btnSim.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-indigo-600 text-white";
                 setTimeout(() => {
                     if (ur3Vis && ur3Vis.onWindowResize) {
                         ur3Vis.onWindowResize();
@@ -904,11 +900,11 @@ def offset_pose(pose, dx=0.0, dy=0.0, dz=0.0):
                 }, 60);
             } else if (view === 'run') {
                 if (runView) runView.classList.remove("hidden");
-                if (btnRun) btnRun.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-emerald-600 text-white shadow-lg shadow-emerald-600/30";
+                if (btnRun) btnRun.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-emerald-600 text-white";
                 initStudentRunView();
             } else {
                 if (codeView) codeView.classList.remove("hidden");
-                if (btnCode) btnCode.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-blue-600 text-white shadow-lg shadow-blue-600/30";
+                if (btnCode) btnCode.className = "px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 bg-blue-600 text-white";
                 setTimeout(() => {
                     if (editor) {
                         editor.layout();
@@ -1032,7 +1028,7 @@ print("Routine completed successfully!")
         function selectStudentRobotModel(model, confirmCodeSwitch = true) {
             if (model !== 'ur' && model !== 'niryo') return;
             if (projectState && projectState.robot_model && projectState.robot_model !== model) {
-                alert(`This project is locked to ${projectState.robot_model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}. You can only run it on that robot. To use another robot, please create or open a project configured for it.`);
+                notify(`This project is locked to ${projectState.robot_model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}. You can only run it on that robot. To use another robot, please create or open a project configured for it.`);
                 return;
             }
             if (currentRobotModel === model) return;
@@ -1095,20 +1091,20 @@ print("Routine completed successfully!")
 
             if (model === 'niryo') {
                 if (headerBadge) {
-                    headerBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]"></span><span>🤖 NIRYO NED</span>`;
+                    headerBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-cyan-400"></span><span>NIRYO NED</span>`;
                     headerBadge.className = "flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm";
                 }
                 if (navBadge) {
                     navBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span><span>NIRYO NED</span>`;
-                    navBadge.className = "px-2 py-1 rounded-md text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 flex items-center space-x-1.5";
+                    navBadge.className = "px-2 py-1 rounded-md text-[11px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 flex items-center space-x-1.5";
                 }
                 if (badge) {
                     badge.innerText = "NIRYO NED";
-                    badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
+                    badge.className = "px-2.5 py-0.5 rounded text-[11px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
                 }
                 if (outBadge) {
                     outBadge.innerText = "NIRYO NED";
-                    outBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
+                    outBadge.className = "px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
                 }
                 if (docsLink) {
                     docsLink.href = "https://niryorobotics.github.io/pyniryo/v1.2.5/index.html";
@@ -1116,20 +1112,20 @@ print("Routine completed successfully!")
                 }
             } else {
                 if (headerBadge) {
-                    headerBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-sky-300 shadow-[0_0_8px_rgba(56,189,248,0.8)]"></span><span>🦾 UR3 ARM</span>`;
+                    headerBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-sky-300"></span><span>UR3 ARM</span>`;
                     headerBadge.className = "flex items-center space-x-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm";
                 }
                 if (navBadge) {
                     navBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span><span>UR3 ARM</span>`;
-                    navBadge.className = "px-2 py-1 rounded-md text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 flex items-center space-x-1.5";
+                    navBadge.className = "px-2 py-1 rounded-md text-[11px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 flex items-center space-x-1.5";
                 }
                 if (badge) {
                     badge.innerText = "UR3 ARM";
-                    badge.className = "px-2.5 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+                    badge.className = "px-2.5 py-0.5 rounded text-[11px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
                 }
                 if (outBadge) {
                     outBadge.innerText = "UR3 ARM";
-                    outBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+                    outBadge.className = "px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
                 }
                 if (docsLink) {
                     docsLink.href = "https://sdurobotics.gitlab.io/ur_rtde";
@@ -1267,7 +1263,7 @@ print("Routine completed successfully!")
                 const students = data.students || [];
 
                 if (students.length === 0) {
-                    sel.innerHTML = '<option value="">(No approved students yet — create an account)</option>';
+                    sel.innerHTML = '<option value="">No approved accounts</option>';
                     return;
                 }
 
@@ -1330,7 +1326,7 @@ print("Routine completed successfully!")
                 if (role === 'admin' || role === 'superadmin') {
                     sessionStorage.setItem("ur_admin_token", currentAuthToken);
                     localStorage.setItem("ur_admin_token", currentAuthToken);
-                    showAuthAlert("login", `✓ Welcome ${data.username}! Opening Robot Manager Console...`, false);
+                    showAuthAlert("login", "Signed in.", false);
                     setTimeout(() => {
                         window.location.href = "/admin";
                     }, 400);
@@ -1404,7 +1400,7 @@ print("Routine completed successfully!")
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerText = "⚡ Unlock Manager Console";
+                    btn.innerText = "Unlock Manager Console";
                 }
             }
         }
@@ -1454,7 +1450,7 @@ print("Routine completed successfully!")
                     return;
                 }
 
-                showAuthAlert("register", `✓ Account "${username}" registered! Please ask your instructor to approve your account before logging in.`, false);
+                showAuthAlert("register", `Account "${username}" registered! Please ask your instructor to approve your account before logging in.`, false);
                 if (passEl) passEl.value = "";
                 if (confirmEl) confirmEl.value = "";
                 setTimeout(() => {
@@ -1481,7 +1477,7 @@ print("Routine completed successfully!")
             if (roleBadge) {
                 if (isMgr) {
                     roleBadge.innerText = currentStudentUser.role.toUpperCase();
-                    roleBadge.className = "px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30";
+                    roleBadge.className = "px-1.5 py-0.5 rounded text-[11px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30";
                     roleBadge.classList.remove("hidden");
                 } else {
                     roleBadge.classList.add("hidden");
@@ -1491,7 +1487,7 @@ print("Routine completed successfully!")
             const mgrLink = document.getElementById("headerManagerLink");
             if (mgrLink) {
                 if (isMgr) {
-                    mgrLink.className = "flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs shadow-lg shadow-amber-600/30 transition animate-pulse";
+                    mgrLink.className = "flex items-center space-x-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs transition animate-pulse";
                     mgrLink.title = "Access Robot Manager & Execution Dispatcher Console";
                 } else {
                     mgrLink.className = "flex items-center space-x-1.5 px-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-slate-400 hover:text-amber-300 border border-slate-700 rounded-lg text-xs font-semibold transition";
@@ -1544,7 +1540,7 @@ print("Routine completed successfully!")
                                 saveProjectToStorage();
                                 renderEditorTabs();
                                 renderProjectExplorer();
-                                appendStudentLog(`\n[LIVE SYNC] 🔄 Code updated from Instructor Code Studio (${new Date().toLocaleTimeString()}).\n`);
+                                appendStudentLog(`\n[LIVE SYNC] Code updated from Instructor Code Studio (${new Date().toLocaleTimeString()}).\n`);
                             }
                         }
                     } catch(e) {
@@ -1620,12 +1616,12 @@ print("Routine completed successfully!")
                 if (select) {
                     let html = '';
                     if (niryoProjects.length > 0) {
-                        html += `<optgroup label="🤖 Niryo Ned Projects">` +
+                        html += `<optgroup label="Niryo Ned Projects">` +
                             niryoProjects.map(p => `<option value="${escapeHtml(p.name)}" ${p.name === activeProjName ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join("") +
                             `</optgroup>`;
                     }
                     if (urProjects.length > 0) {
-                        html += `<optgroup label="🦾 UR3 Projects">` +
+                        html += `<optgroup label="UR3 Projects">` +
                             urProjects.map(p => `<option value="${escapeHtml(p.name)}" ${p.name === activeProjName ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join("") +
                             `</optgroup>`;
                     }
@@ -1664,7 +1660,7 @@ print("Routine completed successfully!")
             });
 
             if (filtered.length === 0) {
-                list.innerHTML = `<div class="p-8 text-xs text-slate-500 text-center bg-slate-950/40 rounded-xl border border-slate-800">No ${targetModel === 'niryo' ? 'Niryo Ned' : 'UR3'} projects created yet.<br><span class="text-[11px] text-slate-400">Click "+ New Project Folder" above to create one.</span></div>`;
+                list.innerHTML = `<div class="p-8 text-xs text-slate-500 text-center bg-slate-950/40 rounded-xl border border-slate-800">No ${targetModel === 'niryo' ? 'Niryo Ned' : 'UR3'} projects.</div>`;
                 return;
             }
             list.innerHTML = filtered.map(p => {
@@ -1672,24 +1668,23 @@ print("Routine completed successfully!")
                 const modifiedStr = p.updated_at ? new Date(p.updated_at).toLocaleString() : (p.modified ? new Date(p.modified * 1000).toLocaleString() : 'N/A');
                 const isNiryo = (p.robot_model || '').toLowerCase() === 'niryo';
                 const modelBadge = isNiryo
-                    ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Niryo</span>'
-                    : '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>';
+                    ? '<span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Niryo</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>';
                 return `
                     <div class="p-3 bg-slate-850 hover:bg-slate-800 rounded-xl border ${isCurrent ? (isNiryo ? 'border-cyan-500/60 bg-cyan-950/20' : 'border-indigo-500/60 bg-indigo-950/20') : 'border-slate-800'} transition flex items-center justify-between gap-3">
                         <div class="flex items-center space-x-2.5 min-w-0">
-                            <span class="text-xl">${isNiryo ? '🤖' : '🦾'}</span>
                             <div>
                                 <div class="flex items-center space-x-2">
                                     <span class="text-xs font-bold text-white font-mono">${escapeHtml(p.name)}</span>
                                     ${modelBadge}
-                                    ${isCurrent ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-600 text-white">ACTIVE</span>' : ''}
+                                    ${isCurrent ? '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-sky-600 text-white">ACTIVE</span>' : ''}
                                 </div>
-                                <div class="text-[10px] text-slate-400 mt-0.5">${p.files_count || 0} file(s) • Modified: ${modifiedStr}</div>
+                                <div class="text-[11px] text-slate-400 mt-0.5">${p.files_count || 0} file(s) • Modified: ${modifiedStr}</div>
                             </div>
                         </div>
                         <div class="flex items-center space-x-2">
-                            ${!isCurrent ? `<button onclick="onSelectStudentProject('${escapeHtml(p.name)}'); closeMyProjectsModal();" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition">Open</button>` : '<span class="text-xs text-sky-400 font-semibold px-2">Current</span>'}
-                            ${p.name !== 'default' ? `<button onclick="deleteProjectFolder('${escapeHtml(p.name)}')" title="Delete Project Folder" class="p-1 px-2 text-rose-400 hover:text-rose-300 text-xs">🗑️</button>` : ''}
+                            ${!isCurrent ? `<button onclick="onSelectStudentProject('${escapeHtml(p.name)}'); closeMyProjectsModal();" class="btn btn-sm btn-primary">Open</button>` : '<span class="text-xs text-sky-400 font-semibold px-2">Current</span>'}
+                            ${p.name !== 'default' ? `<button onclick="deleteProjectFolder('${escapeHtml(p.name)}')" title="Delete Project Folder" class="p-1 px-2 text-rose-400 hover:text-rose-300 text-xs">Delete</button>` : ''}
                         </div>
                     </div>
                 `;
@@ -1706,7 +1701,7 @@ print("Routine completed successfully!")
                     headers: { 'Authorization': `Bearer ${currentAuthToken}` }
                 });
                 if (!res.ok) {
-                    if (!fromAutoLoad) alert("Could not load project folder.");
+                    if (!fromAutoLoad) notify("Could not load project folder.");
                     return;
                 }
                 const data = await res.json();
@@ -1763,20 +1758,20 @@ print("Routine completed successfully!")
                 });
                 const data = await res.json();
                 if (!res.ok) {
-                    alert("Could not create project folder: " + (data.detail || "Error"));
+                    notify("Could not create project folder: " + (data.detail || "Error"));
                     return;
                 }
                 appendStudentLog(`\n[WORKSPACE] Created custom project folder "${clean}".\n`);
                 await onSelectStudentProject(clean);
                 await fetchWorkspaceFolders();
             } catch (e) {
-                alert("Failed to create project folder: " + e.message);
+                notify("Failed to create project folder: " + e.message);
             }
         }
 
         async function deleteProjectFolder(projectName) {
             if (projectName === 'default') {
-                alert("Cannot delete the default project folder.");
+                notify("Cannot delete the default project folder.");
                 return;
             }
             if (!confirm(`Are you sure you want to delete the project folder "${projectName}" and all its files?`)) return;
@@ -1794,27 +1789,37 @@ print("Routine completed successfully!")
                     }
                 }
             } catch (e) {
-                alert("Failed to delete project folder: " + e.message);
+                notify("Failed to delete project folder: " + e.message);
             }
         }
 
-        async function syncActiveProjectToServer() {
-            if (!currentAuthToken || !projectState.current_project) return;
-            try {
-                await fetch(`/api/workspace/projects/${encodeURIComponent(projectState.current_project)}`, {
+        // Saves are serialised: a slow earlier PUT can never land after (and overwrite) a newer one.
+        let _syncChain = Promise.resolve();
+        function syncActiveProjectToServer() {
+            if (!currentAuthToken || !projectState.current_project) return Promise.resolve(true);
+            // Snapshot now so later edits don't change what this request sends.
+            const name = projectState.current_project;
+            const body = JSON.stringify({
+                files: projectState.files,
+                entry_point: projectState.entry_point,
+                robot_model: currentRobotModel
+            });
+            const run = async () => {
+                const res = await fetch(`/api/workspace/projects/${encodeURIComponent(name)}`, {
                     method: 'PUT',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${currentAuthToken}`
-                    },
-                    body: JSON.stringify({
-                        files: projectState.files,
-                        entry_point: projectState.entry_point
-                    })
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${currentAuthToken}` },
+                    body
                 });
-            } catch (e) {
-                console.warn("Could not sync project folder to server:", e);
-            }
+                if (!res.ok) {
+                    let detail = `HTTP ${res.status}`;
+                    try { detail = (await res.json()).detail || detail; } catch (_) {}
+                    throw new Error(detail);
+                }
+                return true;
+            };
+            const result = _syncChain.then(run, run);
+            _syncChain = result.catch(() => {});
+            return result;
         }
 
         function switchProjectsModalTab(tab) {
@@ -1900,7 +1905,6 @@ print("Routine completed successfully!")
             if (!projects || projects.length === 0) {
                 container.innerHTML = `
                     <div class="p-8 text-center bg-slate-950/40 rounded-xl border border-slate-800 space-y-2">
-                        <div class="text-3xl">📭</div>
                         <div class="text-xs font-bold text-slate-300">No Saved Projects Found</div>
                         <p class="text-[11px] text-slate-500">When you send a program for execution, it is automatically saved in your personal project history.</p>
                     </div>
@@ -1918,11 +1922,11 @@ print("Routine completed successfully!")
                     aborted: "bg-red-600 text-white font-bold",
                     rejected: "bg-slate-700 text-slate-300"
                 };
-                const badge = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${statusColors[p.status] || 'bg-slate-700'}">${p.status}</span>`;
+                const badge = `<span class="px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${statusColors[p.status] || 'bg-slate-700'}">${p.status}</span>`;
                 const projModel = p.robot_model || ((p.code && p.code.includes('pyniryo')) ? 'niryo' : 'ur');
                 const modelBadge = projModel === 'niryo'
-                    ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Niryo</span>'
-                    : '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>';
+                    ? '<span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Niryo</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">UR3</span>';
                 const codeSnippet = p.code ? p.code.split('\n').slice(0, 3).join('\n') : '';
 
                 return `
@@ -1932,14 +1936,14 @@ print("Routine completed successfully!")
                                 <span class="text-xs font-bold text-white">${escapeHtml(p.task_id)}</span>
                                 ${modelBadge}
                                 ${badge}
-                                <span class="text-[10px] text-slate-500 font-mono">#${p.id}</span>
+                                <span class="text-[11px] text-slate-500 font-mono">#${p.id}</span>
                             </div>
                             <div class="text-[11px] text-slate-400 mt-0.5">Submitted: ${dateStr}</div>
-                            <pre class="text-[10px] text-slate-400 font-mono bg-slate-950/60 p-2 rounded mt-2 overflow-x-auto border border-slate-800 max-h-16">${escapeHtml(codeSnippet)}</pre>
+                            <pre class="text-[11px] text-slate-400 font-mono bg-slate-950/60 p-2 rounded mt-2 overflow-x-auto border border-slate-800 max-h-16">${escapeHtml(codeSnippet)}</pre>
                         </div>
                         <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
-                            <button onclick="loadProjectIntoEditor(${p.id})" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow transition flex items-center space-x-1">
-                                <span>📋 Open in Editor</span>
+                            <button onclick="loadProjectIntoEditor(${p.id})" class="btn btn-sm btn-primary">
+                                <span>Open in Editor</span>
                             </button>
                         </div>
                     </div>
@@ -2042,19 +2046,35 @@ print("Routine completed successfully!")
             }
         }
 
-        function saveCodeLocally() {
+        function showSaveStatus(text, ok) {
+            const toast = document.getElementById("saveToast");
+            if (!toast) return;
+            toast.innerText = text;
+            toast.classList.toggle("text-emerald-400", ok);
+            toast.classList.toggle("text-rose-400", !ok);
+            toast.style.opacity = '1';
+            clearTimeout(showSaveStatus._t);
+            showSaveStatus._t = setTimeout(() => { toast.style.opacity = '0'; }, ok ? 2000 : 6000);
+        }
+
+        async function saveCodeLocally() {
             if (editor && projectState.active_file) {
                 projectState.files[projectState.active_file] = editor.getValue();
             }
-            const progName = projectState.current_project || "default";
-            localStorage.setItem(STORAGE_PROG_KEY, progName);
-            saveProjectToStorage();
-            syncActiveProjectToServer();
-            
-            const toast = document.getElementById("saveToast");
-            if (toast) {
-                toast.style.opacity = '1';
-                setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+            localStorage.setItem(STORAGE_PROG_KEY, projectState.current_project || "default");
+            saveProjectToStorage();   // local copy always succeeds first
+
+            const btn = document.getElementById("btnSave");
+            if (btn) btn.disabled = true;
+            showSaveStatus("Saving...", true);
+            try {
+                await syncActiveProjectToServer();
+                showSaveStatus(`Saved ${Object.keys(projectState.files).length} file(s)`, true);
+            } catch (e) {
+                console.warn("Server save failed:", e);
+                showSaveStatus(`Saved locally only - server rejected: ${e.message}`, false);
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
 
@@ -2098,14 +2118,13 @@ print("Routine completed successfully!")
                 const isActive = (f === projectState.active_file);
                 const isEntry = (f === projectState.entry_point);
                 const ext = f.split('.').pop().toLowerCase();
-                const icon = ext === 'json' ? '⚙️' : (ext === 'txt' ? '📄' : '🐍');
 
                 const activeClass = isActive
                     ? "bg-slate-900 text-sky-400 font-bold border-t-2 border-sky-400 shadow-sm"
                     : "bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800";
 
                 const entryBadge = isEntry
-                    ? '<span class="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-semibold" title="Main Entry Point">main</span>'
+                    ? '<span class="text-[11px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold" title="Main Entry Point">main</span>'
                     : '';
 
                 const closeBtn = (fileNames.length > 1)
@@ -2115,7 +2134,6 @@ print("Routine completed successfully!")
                 return `
                     <div onclick="switchToFile('${escapeHtml(f)}')"
                         class="px-2.5 py-1 rounded-t text-xs font-mono transition flex items-center space-x-1.5 cursor-pointer border-r border-slate-800/60 flex-shrink-0 ${activeClass}">
-                        <span>${icon}</span>
                         <span>${escapeHtml(f)}</span>
                         ${entryBadge}
                         ${closeBtn}
@@ -2145,7 +2163,6 @@ print("Routine completed successfully!")
                 const isActive = (f === projectState.active_file);
                 const isEntry = (f === projectState.entry_point);
                 const ext = f.split('.').pop().toLowerCase();
-                const icon = ext === 'json' ? '⚙️' : (ext === 'txt' ? '📄' : '🐍');
 
                 const activeClass = isActive
                     ? "bg-slate-800 text-sky-400 font-semibold border-l-2 border-sky-400"
@@ -2155,14 +2172,13 @@ print("Routine completed successfully!")
                     <div onclick="switchToFile('${escapeHtml(f)}')"
                         class="group px-2.5 py-1.5 rounded text-xs font-mono flex items-center justify-between cursor-pointer transition ${activeClass}">
                         <div class="flex items-center space-x-1.5 truncate">
-                            <span class="text-xs">${icon}</span>
                             <span class="truncate">${escapeHtml(f)}</span>
-                            ${isEntry ? '<span class="text-[9px] px-1 py-0.2 bg-amber-500/20 text-amber-300 rounded font-semibold" title="Entry Point">main</span>' : ''}
+                            ${isEntry ? '<span class="text-[11px] px-1 py-0.5 bg-amber-500/20 text-amber-300 rounded font-semibold" title="Entry Point">main</span>' : ''}
                         </div>
-                        <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
-                            ${!isEntry && ext === 'py' ? `<button onclick="event.stopPropagation(); setFileAsEntryPoint('${escapeHtml(f)}')" title="Set as Entry Point" class="text-slate-400 hover:text-amber-300 text-[11px] p-0.5">⭐</button>` : ''}
-                            <button onclick="event.stopPropagation(); openRenameFileModal('${escapeHtml(f)}')" title="Rename file" class="text-slate-400 hover:text-blue-300 text-[11px] p-0.5">✏️</button>
-                            ${fileNames.length > 1 ? `<button onclick="event.stopPropagation(); deleteFile('${escapeHtml(f)}')" title="Delete file" class="text-slate-400 hover:text-rose-400 text-[11px] p-0.5">🗑️</button>` : ''}
+                        <div class="hidden group-hover:flex group-focus-within:flex items-center space-x-1 flex-shrink-0 pl-2">
+                            ${!isEntry && ext === 'py' ? `<button onclick="event.stopPropagation(); setFileAsEntryPoint('${escapeHtml(f)}')" title="Set as Entry Point" class="text-slate-400 hover:text-amber-300 text-[11px] p-0.5">Set main</button>` : ''}
+                            <button onclick="event.stopPropagation(); openRenameFileModal('${escapeHtml(f)}')" title="Rename file" class="text-slate-400 hover:text-blue-300 text-[11px] p-0.5">Rename</button>
+                            ${fileNames.length > 1 ? `<button onclick="event.stopPropagation(); deleteFile('${escapeHtml(f)}')" title="Delete file" class="text-slate-400 hover:text-rose-400 text-[11px] p-0.5">Delete</button>` : ''}
                         </div>
                     </div>
                 `;
@@ -2237,7 +2253,7 @@ print("Routine completed successfully!")
 
             let name = input.value.trim();
             if (!name) {
-                alert("Please enter a file name.");
+                notify("Please enter a file name.");
                 return;
             }
 
@@ -2249,12 +2265,12 @@ print("Routine completed successfully!")
 
             const cleanName = name.replace(/[^a-zA-Z0-9_.-]/g, "");
             if (!cleanName) {
-                alert("Invalid file name. Use letters, numbers, underscores, and dots.");
+                notify("Invalid file name. Use letters, numbers, underscores, and dots.");
                 return;
             }
 
             if (projectState.files[cleanName] !== undefined) {
-                alert(`File "${cleanName}" already exists in the project.`);
+                notify(`File "${cleanName}" already exists in the project.`);
                 return;
             }
 
@@ -2335,7 +2351,7 @@ print("Routine completed successfully!")
                 });
                 const data = await res.json();
                 if (!res.ok) {
-                    alert("Could not create project folder: " + (data.detail || "Error"));
+                    notify("Could not create project folder: " + (data.detail || "Error"));
                     return;
                 }
                 const modal = document.getElementById("newProjectModal");
@@ -2346,14 +2362,14 @@ print("Routine completed successfully!")
                 await fetchWorkspaceFolders();
                 await onSelectStudentProject(clean);
             } catch (e) {
-                alert("Failed to create project folder: " + e.message);
+                notify("Failed to create project folder: " + e.message);
             }
         }
 
         async function promptRenameCurrentProject() {
             const current = projectState.current_project || "default";
             if (current === 'default') {
-                alert("The default project cannot be renamed. Create a new project folder instead.");
+                notify("The default project cannot be renamed. Create a new project folder instead.");
                 return;
             }
             const newName = prompt(`Enter new name for project folder "${current}":`, current);
@@ -2371,14 +2387,14 @@ print("Routine completed successfully!")
                 });
                 const data = await res.json();
                 if (!res.ok) {
-                    alert("Failed to rename project: " + (data.detail || "Error"));
+                    notify("Failed to rename project: " + (data.detail || "Error"));
                     return;
                 }
                 appendStudentLog(`\n[WORKSPACE] Renamed project from "${current}" to "${clean}".\n`);
                 await fetchWorkspaceFolders();
                 await onSelectStudentProject(clean);
             } catch (e) {
-                alert("Rename failed: " + e.message);
+                notify("Rename failed: " + e.message);
             }
         }
 
@@ -2407,7 +2423,7 @@ print("Routine completed successfully!")
 
             let newName = input.value.trim().replace(/[^a-zA-Z0-9_.-]/g, "");
             if (!newName) {
-                alert("Please enter a valid file name.");
+                notify("Please enter a valid file name.");
                 return;
             }
 
@@ -2417,7 +2433,7 @@ print("Routine completed successfully!")
             }
 
             if (projectState.files[newName]) {
-                alert(`File "${newName}" already exists in the project.`);
+                notify(`File "${newName}" already exists in the project.`);
                 return;
             }
 
@@ -2447,7 +2463,7 @@ print("Routine completed successfully!")
         function deleteFile(filename) {
             const fileNames = Object.keys(projectState.files);
             if (fileNames.length <= 1) {
-                alert("Cannot delete the only file in the project. Projects must contain at least one file.");
+                notify("Cannot delete the only file in the project. Projects must contain at least one file.");
                 return;
             }
 
@@ -2475,7 +2491,7 @@ print("Routine completed successfully!")
 
         function setFileAsEntryPoint(filename) {
             if (!filename.endsWith('.py')) {
-                alert("Only Python (.py) files can be set as the main entry point.");
+                notify("Only Python (.py) files can be set as the main entry point.");
                 return;
             }
             projectState.entry_point = filename;
@@ -2487,7 +2503,7 @@ print("Routine completed successfully!")
 
         async function exportProjectZip() {
             if (typeof JSZip === "undefined") {
-                alert("JSZip library is still loading. Please try again in a moment.");
+                notify("JSZip library is still loading. Please try again in a moment.");
                 return;
             }
 
@@ -2566,7 +2582,7 @@ print("Routine completed successfully!")
                         editor = monaco.editor.create(edCont, {
                             value: initialCode,
                             language: 'python',
-                            theme: 'vs-dark',
+                            theme: Theme.monacoTheme(),
                             automaticLayout: true,
                             minimap: { enabled: true, maxColumn: 80 },
                             fontSize: 13,
@@ -2607,14 +2623,6 @@ print("Routine completed successfully!")
 
                         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function() {
                             submitCode();
-                        });
-
-                        editor.addCommand(monaco.KeyCode.Space, function() {
-                            if (isStudentExecuting) {
-                                abortStudentRobot("SPACE Key (inside Code Editor)");
-                            } else {
-                                editor.trigger('keyboard', 'type', { text: ' ' });
-                            }
                         });
                     }
 
@@ -2759,16 +2767,16 @@ print("Routine completed successfully!")
                 
                 clearTerminal();
                 if (data.valid) {
-                    appendStudentLog("✓ SYNTAX & SAFETY CHECK PASSED!\nNo hazardous OS / system calls detected across project files.\nAll project modules and cross-file references verified safe.\n");
+                    appendStudentLog("SYNTAX & SAFETY CHECK PASSED!\nNo hazardous OS / system calls detected across project files.\nAll project modules and cross-file references verified safe.\n");
                 } else {
-                    appendStudentLog("✗ SYNTAX OR SAFETY VIOLATIONS DETECTED:\n" + data.errors.map(e => " - " + e).join("\n") + "\n\nPlease correct these issues before submitting.\n");
+                    appendStudentLog("SYNTAX OR SAFETY VIOLATIONS DETECTED:\n" + data.errors.map(e => " - " + e).join("\n") + "\n\nPlease correct these issues before submitting.\n");
                 }
             } catch (err) {
                 appendStudentLog("[ERROR] Failed to contact server for syntax check: " + err.message + "\n");
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML = "<span>🔍 Check Syntax</span>";
+                    btn.innerHTML = "<span>Check Syntax</span>";
                 }
             }
         }
@@ -2781,7 +2789,7 @@ print("Routine completed successfully!")
 
             const entryCode = projectState.files[projectState.entry_point] || (editor ? editor.getValue() : "");
             if (!entryCode || !entryCode.trim()) {
-                alert(`Entry file "${projectState.entry_point}" is empty. Please add code before simulating.`);
+                notify(`Entry file "${projectState.entry_point}" is empty. Please add code before simulating.`);
                 return;
             }
 
@@ -2790,7 +2798,7 @@ print("Routine completed successfully!")
 
             const navBadge = document.getElementById("navSimStatusBadge");
             if (navBadge) {
-                navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-indigo-600 text-white animate-pulse";
+                navBadge.className = "px-2 py-0.5 rounded-full text-[11px] bg-indigo-600 text-white animate-pulse";
                 navBadge.innerText = "SIMULATING";
                 navBadge.classList.remove("hidden");
             }
@@ -2826,16 +2834,16 @@ print("Routine completed successfully!")
                 const data = await res.json();
                 if (!res.ok || data.success === false) {
                     const errMsg = data.error || (data.errors ? data.errors.join("\n") : data.detail) || "Simulation failed";
-                    appendStudentLog("✗ SIMULATION ERROR:\n" + errMsg + "\n");
+                    appendStudentLog("SIMULATION ERROR:\n" + errMsg + "\n");
                     if (navBadge) {
-                        navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-rose-900/80 text-rose-300";
+                        navBadge.className = "px-2 py-0.5 rounded-full text-[11px] bg-rose-900/80 text-rose-300";
                         navBadge.innerText = "ERROR";
                     }
                     return;
                 }
 
                 if (navBadge) {
-                    navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-emerald-900/80 text-emerald-300";
+                    navBadge.className = "px-2 py-0.5 rounded-full text-[11px] bg-emerald-900/80 text-emerald-300";
                     navBadge.innerText = "READY";
                 }
 
@@ -2862,7 +2870,7 @@ print("Routine completed successfully!")
                             }
                         },
                         () => {
-                            appendStudentLog("✓ 3D Trajectory playback complete!\n");
+                            appendStudentLog("3D Trajectory playback complete!\n");
                         }
                     );
                 } else {
@@ -2879,8 +2887,8 @@ print("Routine completed successfully!")
                     saveProjectToStorage();
                     renderEditorTabs();
                     renderProjectExplorer();
-                    appendStudentLog(`\n📁 [SANDBOX I/O] Generated file(s) saved to workspace: ${createdList.join(", ")}\n`);
-                    syncActiveProjectToServer();
+                    appendStudentLog(`\n[SANDBOX I/O] Generated file(s) saved to workspace: ${createdList.join(", ")}\n`);
+                    syncActiveProjectToServer().catch(e => console.warn('Background sync failed:', e));
                 }
             } catch (err) {
                 clearTimeout(timeoutId);
@@ -2890,13 +2898,13 @@ print("Routine completed successfully!")
                     appendStudentLog("[ERROR] Simulation call failed: " + err.message + "\n");
                 }
                 if (navBadge) {
-                    navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-rose-900/80 text-rose-300";
+                    navBadge.className = "px-2 py-0.5 rounded-full text-[11px] bg-rose-900/80 text-rose-300";
                     navBadge.innerText = "ERROR";
                 }
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML = "<span>🎮 Simulate in 3D</span>";
+                    btn.innerHTML = "<span>Simulate</span>";
                 }
             }
         }
@@ -2922,7 +2930,7 @@ print("Routine completed successfully!")
             const input = document.getElementById("commitMessageInput");
             const msg = (input ? input.value : "").trim();
             if (!msg) {
-                alert("Please enter a commit message describing your changes (e.g., 'Fixed joint limits', 'Adjusted gripper speed').");
+                notify("Please enter a commit message describing your changes (e.g., 'Fixed joint limits', 'Adjusted gripper speed').");
                 return;
             }
             closeCommitMessageModal();
@@ -2944,7 +2952,7 @@ print("Routine completed successfully!")
 
             const entryCode = projectState.files[projectState.entry_point] || (editor ? editor.getValue() : "");
             if (!entryCode || !entryCode.trim()) {
-                alert(`Entry file "${projectState.entry_point}" is empty. Please add code before sending for execution.`);
+                notify(`Entry file "${projectState.entry_point}" is empty. Please add code before sending for execution.`);
                 return;
             }
 
@@ -2975,7 +2983,7 @@ print("Routine completed successfully!")
 
             const navBadge = document.getElementById("navSimStatusBadge");
             if (navBadge) {
-                navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-blue-600 text-white animate-pulse";
+                navBadge.className = "px-2 py-0.5 rounded-full text-[11px] bg-blue-600 text-white animate-pulse";
                 navBadge.innerText = "QUEUED";
                 navBadge.classList.remove("hidden");
             }
@@ -3012,9 +3020,9 @@ print("Routine completed successfully!")
 
                 const data = await response.json();
                 if (!response.ok) {
-                    alert("Submission Blocked: " + (data.errors ? data.errors.join("\n") : data.detail));
+                    notify("Submission Blocked: " + (data.errors ? data.errors.join("\n") : data.detail));
                     if (navBadge) {
-                        navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-rose-900/80 text-rose-300";
+                        navBadge.className = "px-2 py-0.5 rounded-full text-[11px] bg-rose-900/80 text-rose-300";
                         navBadge.innerText = "BLOCKED";
                     }
                     if (runPulse) runPulse.className = "w-2 h-2 rounded-full bg-rose-500";
@@ -3032,7 +3040,7 @@ print("Routine completed successfully!")
                 const runLabel = document.getElementById("studentRunActiveLabel");
                 if (runLabel) {
                     runLabel.innerText = `QUEUED #${currentSubId}: ${programName} — Waiting for Instructor Run`;
-                    runLabel.className = "text-sm font-black text-amber-400 font-mono";
+                    runLabel.className = "text-sm font-bold text-amber-400 font-mono";
                 }
                 const runDot = document.getElementById("studentRunStatusDot");
                 if (runDot) runDot.className = "w-3.5 h-3.5 rounded-full bg-amber-400 animate-pulse shrink-0";
@@ -3080,15 +3088,15 @@ print("Routine completed successfully!")
                 // Refresh saved projects list
                 fetchStudentProjects();
             } catch (err) {
-                alert("Error sending for execution: " + err.message);
+                notify("Error sending for execution: " + err.message);
                 if (navBadge) {
-                    navBadge.className = "px-2 py-0.5 rounded-full text-[10px] bg-rose-900/80 text-rose-300";
+                    navBadge.className = "px-2 py-0.5 rounded-full text-[11px] bg-rose-900/80 text-rose-300";
                     navBadge.innerText = "FAILED";
                 }
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML = "<span>🚀 Send for Execution</span>";
+                    btn.innerHTML = "<span>Submit for execution</span>";
                 }
             }
         }
@@ -3104,7 +3112,7 @@ print("Routine completed successfully!")
                 aborted: "bg-red-600 text-white font-bold",
                 rejected: "bg-slate-700 text-slate-300"
             };
-            badge.className = `text-[10px] font-semibold px-2 py-0.5 rounded-full ${colors[status] || "bg-slate-700"}`;
+            badge.className = `text-[11px] font-semibold px-2 py-0.5 rounded-full ${colors[status] || "bg-slate-700"}`;
             badge.innerText = status.toUpperCase();
         }
 
@@ -3123,9 +3131,9 @@ print("Routine completed successfully!")
             document.querySelectorAll(".student-sim-speed-btn").forEach(btn => {
                 const btnSpd = parseFloat(btn.dataset.speed || btn.innerText);
                 if (Math.abs(btnSpd - num) < 0.01) {
-                    btn.className = "student-sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-600 text-white shadow-sm transition";
+                    btn.className = "student-sim-speed-btn px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-indigo-600 text-white shadow-sm transition";
                 } else {
-                    btn.className = "student-sim-speed-btn px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition";
+                    btn.className = "student-sim-speed-btn px-1.5 py-0.5 rounded text-[11px] font-mono text-slate-400 hover:text-white hover:bg-slate-800 transition";
                 }
             });
             appendStudentLog(`[SIMULATOR] Simulation playback speed set to ${num}x.\n`);
@@ -3169,7 +3177,7 @@ print("Routine completed successfully!")
                     updateBadge("running");
                     if (runLabel) {
                         runLabel.innerText = `RUNNING #${subId} — Physical Execution in Progress`;
-                        runLabel.className = "text-sm font-black text-emerald-400 font-mono";
+                        runLabel.className = "text-sm font-bold text-emerald-400 font-mono";
                     }
                     if (runDot) runDot.className = "w-3.5 h-3.5 rounded-full bg-emerald-400 animate-ping shrink-0";
                     if (runPulse) runPulse.className = "w-2 h-2 rounded-full bg-emerald-400 animate-ping";
@@ -3180,7 +3188,7 @@ print("Routine completed successfully!")
                     updateBadge("completed");
                     if (runLabel) {
                         runLabel.innerText = `COMPLETED #${subId} — Routine Finished`;
-                        runLabel.className = "text-sm font-black text-emerald-400 font-mono";
+                        runLabel.className = "text-sm font-bold text-emerald-400 font-mono";
                     }
                     if (runDot) runDot.className = "w-3.5 h-3.5 rounded-full bg-emerald-500 shrink-0";
                     if (runPulse) runPulse.className = "w-2 h-2 rounded-full bg-emerald-500";
@@ -3191,7 +3199,7 @@ print("Routine completed successfully!")
                     updateBadge("failed");
                     if (runLabel) {
                         runLabel.innerText = `FAILED #${subId} — Execution Error`;
-                        runLabel.className = "text-sm font-black text-rose-400 font-mono";
+                        runLabel.className = "text-sm font-bold text-rose-400 font-mono";
                     }
                     if (runDot) runDot.className = "w-3.5 h-3.5 rounded-full bg-rose-500 shrink-0";
                     if (runPulse) runPulse.className = "w-2 h-2 rounded-full bg-rose-500";
@@ -3202,7 +3210,7 @@ print("Routine completed successfully!")
                     updateBadge("aborted");
                     if (runLabel) {
                         runLabel.innerText = `ABORTED #${subId} — Emergency Halted`;
-                        runLabel.className = "text-sm font-black text-rose-400 font-mono";
+                        runLabel.className = "text-sm font-bold text-rose-400 font-mono";
                     }
                     if (runDot) runDot.className = "w-3.5 h-3.5 rounded-full bg-rose-600 animate-pulse shrink-0";
                     if (runPulse) runPulse.className = "w-2 h-2 rounded-full bg-rose-600";
@@ -3268,7 +3276,7 @@ print("Routine completed successfully!")
                         <div class="text-xs font-bold text-slate-200 group-hover:text-blue-400 transition truncate">${escapeHtml(ex.title)}</div>
                         <div class="text-[11px] text-slate-400 truncate mt-0.5">${escapeHtml(ex.description || "(No description)")}</div>
                     </div>
-                    <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition font-medium">Load</span>
+                    <span class="text-[11px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition font-medium">Load</span>
                 </div>
             `).join("");
         }
@@ -3277,34 +3285,34 @@ print("Routine completed successfully!")
             try {
                 const res = await fetch(`/api/examples/${exampleId}`);
                 const ex = await res.json();
-                if (ex && ex.code) {
-                    if (confirm(`Load example "${ex.title}" into editor? This replaces current editor code.`)) {
+                if (ex && (ex.code || ex.files)) {
+                    const files = (ex.files && Object.keys(ex.files).length) ? ex.files : { "main.py": ex.code };
+                    const names = Object.keys(files);
+                    if (confirm(`Load example "${ex.title}" (${names.length} file${names.length === 1 ? '' : 's'}: ${names.join(', ')})?\nThis replaces ALL files in the current project.`)) {
                         const targetModel = ex.robot_model || currentRobotModel || 'ur';
                         projectState.robot_model = targetModel;
                         selectStudentRobotModel(targetModel, false);
                         lockStudentProjectRobot(targetModel);
 
-                        const targetFile = projectState.active_file || projectState.entry_point || "main.py";
-                        if (!projectState.files || typeof projectState.files !== 'object') {
-                            projectState.files = {};
-                        }
-                        projectState.files[targetFile] = ex.code;
-                        projectState.active_file = targetFile;
+                        // Restore the whole example so it runs exactly as the instructor saved it.
+                        projectState.files = { ...files };
+                        projectState.entry_point = (ex.entry_point in files) ? ex.entry_point : names[0];
+                        projectState.active_file = projectState.entry_point;
 
                         if (editor) {
-                            editor.setValue(ex.code);
+                            editor.setValue(projectState.files[projectState.active_file] || "");
                             setTimeout(() => editor.layout(), 40);
                         }
                         saveCodeLocally();
                         renderEditorTabs();
                         renderProjectExplorer();
-                        appendStudentLog(`[INFO] Loaded example: ${ex.title}\n`);
+                        appendStudentLog(`[INFO] Loaded example: ${ex.title} (${names.length} file${names.length === 1 ? '' : 's'})\n`);
                         const dd = document.getElementById("examplesDropdown");
                         if (dd) dd.classList.add("hidden");
                     }
                 }
             } catch (e) {
-                alert("Failed to load example: " + e.message);
+                notify("Failed to load example: " + e.message);
             }
         }
 
@@ -3341,7 +3349,7 @@ print("Routine completed successfully!")
 
         function switchStudentRunModel(model) {
             if (projectState && projectState.robot_model && projectState.robot_model !== model) {
-                alert(`This project is configured for ${projectState.robot_model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}. You cannot switch to another arm.`);
+                notify(`This project is configured for ${projectState.robot_model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}. You cannot switch to another arm.`);
                 return;
             }
             studentActiveRunModel = (model === 'niryo') ? 'niryo' : 'ur';
@@ -3354,13 +3362,13 @@ print("Routine completed successfully!")
             if (studentActiveRunModel === 'niryo') {
                 if (btnUR) btnUR.className = "px-2.5 py-0.5 rounded text-slate-400 hover:text-white transition";
                 if (btnNiryo) btnNiryo.className = "px-2.5 py-0.5 rounded font-bold bg-indigo-600 text-white transition";
-                if (badge) { badge.innerText = "NIRYO NED"; badge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-950 text-amber-300 border border-amber-800"; }
+                if (badge) { badge.innerText = "NIRYO NED"; badge.className = "px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-amber-950 text-amber-300 border border-amber-800"; }
                 if (modelLabel) modelLabel.innerText = "NIRYO";
                 if (visTitle) visTitle.innerText = "3D Digital Twin (Niryo Ned)";
             } else {
                 if (btnUR) btnUR.className = "px-2.5 py-0.5 rounded font-bold bg-indigo-600 text-white transition";
                 if (btnNiryo) btnNiryo.className = "px-2.5 py-0.5 rounded text-slate-400 hover:text-white transition";
-                if (badge) { badge.innerText = "UR3 ARM"; badge.className = "px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700"; }
+                if (badge) { badge.innerText = "UR3 ARM"; badge.className = "px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700"; }
                 if (modelLabel) modelLabel.innerText = "UR3";
                 if (visTitle) visTitle.innerText = "3D Digital Twin (UR3)";
             }
@@ -3464,10 +3472,10 @@ print("Routine completed successfully!")
             const pill = document.getElementById("studentTelConnectedPill");
             if (pill) {
                 if (conn) {
-                    pill.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800";
+                    pill.className = "text-[11px] font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800";
                     pill.innerText = "CONNECTED";
                 } else {
-                    pill.className = "text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
+                    pill.className = "text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
                     pill.innerText = "OFFLINE";
                 }
             }
@@ -3483,19 +3491,19 @@ print("Routine completed successfully!")
                 if (isHalt) {
                     dot.className = "w-3.5 h-3.5 rounded-full bg-rose-500 animate-pulse shrink-0";
                     label.innerText = "EMERGENCY HALTED";
-                    label.className = "text-sm font-black text-rose-400 font-mono";
+                    label.className = "text-sm font-bold text-rose-400 font-mono";
                 } else if (isExec) {
                     dot.className = "w-3.5 h-3.5 rounded-full bg-emerald-500 animate-pulse shrink-0";
                     label.innerText = `RUNNING (Job #${engine.active_sub_id || currentSubId || 'Active'})`;
-                    label.className = "text-sm font-black text-emerald-400 font-mono";
+                    label.className = "text-sm font-bold text-emerald-400 font-mono";
                 } else if (currentSubId && currentSubStatus === 'pending') {
                     dot.className = "w-3.5 h-3.5 rounded-full bg-amber-400 animate-pulse shrink-0";
                     label.innerText = `QUEUED (#${currentSubId}: ${projectState.current_project || 'default'}) — Waiting for Instructor Run`;
-                    label.className = "text-sm font-black text-amber-400 font-mono";
+                    label.className = "text-sm font-bold text-amber-400 font-mono";
                 } else if (conn) {
                     dot.className = "w-3.5 h-3.5 rounded-full bg-slate-600 shrink-0";
                     label.innerText = "IDLE — Hardware Online (Waiting for execution)";
-                    label.className = "text-sm font-black text-white font-mono";
+                    label.className = "text-sm font-bold text-white font-mono";
                 } else {
                     dot.className = "w-3.5 h-3.5 rounded-full bg-slate-700 shrink-0";
                     label.innerText = "DISCONNECTED — Arm Offline";
@@ -3611,7 +3619,7 @@ print("Routine completed successfully!")
             const q = snap.q || snap.actual_q || snap.joints;
             if (Array.isArray(q) && q.length >= 6) {
                 const toDeg = 180 / Math.PI;
-                const qRad = q.map(val => (typeof val === 'number' && Math.abs(val) > 6.5) ? (val * Math.PI / 180) : Number(val) || 0);
+                const qRad = UR3Visualizer.toRadians(q);
                 const qDeg = qRad.map(val => val * toDeg);
                 for (let i = 0; i < 6; i++) {
                     const el = document.getElementById(`studentTelQ${i}`);
