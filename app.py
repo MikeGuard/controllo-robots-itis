@@ -349,6 +349,20 @@ def verify_any_admin(authorization: Optional[str]) -> Dict[str, Any]:
     return session
 
 
+def repo_session(authorization: Optional[str], owner: str) -> Dict[str, Any]:
+    """Admins may use any repository; a student only their own (same rule as the workspace API)."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    session = active_sessions.get(authorization.replace("Bearer ", "").strip())
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session. Please log in again.")
+    if session.get("role") in ("admin", "superadmin"):
+        return session
+    if session["username"].lower() != (owner or "").lower():
+        raise HTTPException(status_code=403, detail="You can only access your own projects.")
+    return session
+
+
 def verify_authenticated_user(authorization: Optional[str]) -> Dict[str, Any]:
     """Requires any valid authenticated session (student, admin, superadmin)."""
     if not authorization:
@@ -1637,9 +1651,16 @@ def _working_copy_info(owner: str, project: str) -> Optional[Dict[str, Any]]:
 @app.get("/api/repos")
 async def list_repos(authorization: Optional[str] = Header(default=None)):
     """Every project (folder) with its branches and head commit: commit-backed ones plus workspace-only folders."""
-    verify_any_admin(authorization)
+    if not authorization or not active_sessions.get(authorization.replace("Bearer ", "").strip()):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    session = active_sessions[authorization.replace("Bearer ", "").strip()]
+    is_admin = session.get("role") in ("admin", "superadmin")
     repos = {(r["owner"].lower(), r["project"].lower()): r for r in await database.list_repo_rows()}
-    for wp in workspace.list_all_users_projects():
+    if not is_admin:
+        mine = session["username"].lower()
+        repos = {k: v for k, v in repos.items() if v["owner"].lower() == mine}
+    for wp in (workspace.list_all_users_projects() if is_admin else
+               [{**p, "owner": session["username"]} for p in workspace.list_projects(session["username"])]):
         key = (wp["owner"].lower(), wp["name"].lower())
         if key not in repos:
             repos[key] = {"owner": wp["owner"], "project": wp["name"], "commits": 0, "branches": ["main"], "head": None,
@@ -1667,7 +1688,7 @@ async def create_repo(payload: RepoCreateRequest, authorization: Optional[str] =
 
 @app.get("/api/repos/{owner}/{project}")
 async def get_repo(owner: str, project: str, authorization: Optional[str] = Header(default=None)):
-    verify_any_admin(authorization)
+    repo_session(authorization, owner)
     branches = await database.list_branches(owner, project)
     commits = await database.list_commits(owner, project, "main", limit=1)
     wc = _working_copy_info(owner, project)
@@ -1680,14 +1701,14 @@ async def get_repo(owner: str, project: str, authorization: Optional[str] = Head
 
 @app.get("/api/repos/{owner}/{project}/commits")
 async def get_repo_commits(owner: str, project: str, branch: Optional[str] = "main", authorization: Optional[str] = Header(default=None)):
-    verify_any_admin(authorization)
+    repo_session(authorization, owner)
     return {"branch": branch, "commits": await database.list_commits(owner, project, branch)}
 
 
 @app.get("/api/repos/{owner}/{project}/commits/{commit_id}")
 async def get_repo_commit(owner: str, project: str, commit_id: int, authorization: Optional[str] = Header(default=None)):
     """One commit with ALL its files."""
-    verify_any_admin(authorization)
+    repo_session(authorization, owner)
     sub = await database.get_commit_in_repo(owner, project, commit_id)
     if not sub:
         raise HTTPException(status_code=404, detail="Commit not found in this project.")
@@ -1697,7 +1718,7 @@ async def get_repo_commit(owner: str, project: str, commit_id: int, authorizatio
 
 @app.get("/api/repos/{owner}/{project}/working-copy")
 async def get_repo_working_copy(owner: str, project: str, authorization: Optional[str] = Header(default=None)):
-    verify_any_admin(authorization)
+    repo_session(authorization, owner)
     wc = _working_copy_info(owner, project)
     if not wc:
         raise HTTPException(status_code=404, detail="No working copy.")
@@ -1707,7 +1728,7 @@ async def get_repo_working_copy(owner: str, project: str, authorization: Optiona
 
 @app.post("/api/repos/{owner}/{project}/commits")
 async def create_repo_commit(owner: str, project: str, payload: CommitRequest, authorization: Optional[str] = Header(default=None)):
-    session = verify_any_admin(authorization)
+    session = repo_session(authorization, owner)
     branch = (payload.branch or "main").strip()
     branches = {b["name"].lower(): b for b in await database.list_branches(owner, project)}
     if branch.lower() not in branches:
@@ -1735,7 +1756,7 @@ async def create_repo_commit(owner: str, project: str, payload: CommitRequest, a
                 synced = not await _owner_is_admin(owner)
         except workspace.WorkspaceError:
             pass
-        if synced:
+        if synced and session["username"].lower() != owner.lower():
             await broadcast_to_student(owner, {"type": "code_synced", "code": cleaned[entry], "files": cleaned, "project_name": project,
                                                "project": project, "task_id": project, "entry_point": entry, "robot_model": model,
                                                "message": "Instructor updated code in Code Studio."})
@@ -1745,7 +1766,7 @@ async def create_repo_commit(owner: str, project: str, payload: CommitRequest, a
 
 @app.post("/api/repos/{owner}/{project}/branches")
 async def create_repo_branch(owner: str, project: str, payload: BranchRequest, authorization: Optional[str] = Header(default=None)):
-    session = verify_any_admin(authorization)
+    session = repo_session(authorization, owner)
     name = payload.name.strip()
     if not _BRANCH_RE.match(name):
         raise HTTPException(status_code=400, detail="Branch names use letters, digits, '-', '_', '.', '/' (max 48).")
@@ -1763,7 +1784,7 @@ async def create_repo_branch(owner: str, project: str, payload: BranchRequest, a
 
 @app.delete("/api/repos/{owner}/{project}/branches/{name:path}")
 async def delete_repo_branch(owner: str, project: str, name: str, authorization: Optional[str] = Header(default=None)):
-    verify_any_admin(authorization)
+    repo_session(authorization, owner)
     if name.lower() == "main":
         raise HTTPException(status_code=400, detail="The main branch cannot be deleted.")
     n = await database.delete_branch(owner, project, name)

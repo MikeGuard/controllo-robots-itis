@@ -818,7 +818,7 @@ async def get_student_submissions(student_name: str, limit: int = 100) -> List[D
             """
             SELECT id, student_name, task_id, code, files, status, logs, submitted_at, executed_at, completed_at, robot_model, commit_message
             FROM submissions 
-            WHERE LOWER(student_name) = LOWER(?) 
+            WHERE LOWER(student_name) = LOWER(?) AND COALESCE(branch, 'main') = 'main'
             ORDER BY id DESC LIMIT ?
             """,
             (student_name.strip(), limit)
@@ -841,15 +841,15 @@ async def get_all_students_overview() -> List[Dict[str, Any]]:
                 u.created_at,
                 COUNT(s.id) as project_count,
                 MAX(s.submitted_at) as last_submitted_at,
-                (SELECT s2.task_id FROM submissions s2 WHERE LOWER(s2.student_name) = LOWER(s_all.student_name) ORDER BY s2.id DESC LIMIT 1) as latest_program_name,
-                (SELECT s3.robot_model FROM submissions s3 WHERE LOWER(s3.student_name) = LOWER(s_all.student_name) ORDER BY s3.id DESC LIMIT 1) as latest_robot_model
+                (SELECT s2.task_id FROM submissions s2 WHERE LOWER(s2.student_name) = LOWER(s_all.student_name) AND COALESCE(s2.branch,'main')='main' ORDER BY s2.id DESC LIMIT 1) as latest_program_name,
+                (SELECT s3.robot_model FROM submissions s3 WHERE LOWER(s3.student_name) = LOWER(s_all.student_name) AND COALESCE(s3.branch,'main')='main' ORDER BY s3.id DESC LIMIT 1) as latest_robot_model
             FROM (
                 SELECT username as student_name FROM users WHERE role = 'student' OR is_trusted = 1
                 UNION
                 SELECT student_name FROM submissions WHERE student_name IS NOT NULL AND TRIM(student_name) != ''
             ) s_all
             LEFT JOIN users u ON LOWER(u.username) = LOWER(s_all.student_name)
-            LEFT JOIN submissions s ON LOWER(s.student_name) = LOWER(s_all.student_name)
+            LEFT JOIN submissions s ON LOWER(s.student_name) = LOWER(s_all.student_name) AND COALESCE(s.branch, 'main') = 'main'
             GROUP BY s_all.student_name
             ORDER BY (MAX(s.submitted_at) IS NOT NULL) DESC, MAX(s.submitted_at) DESC, s_all.student_name ASC
         """) as cursor:

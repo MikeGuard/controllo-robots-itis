@@ -142,3 +142,47 @@ def test_workspace_only_project_is_listed(client, admin):
     d = client.get("/api/repos/carol/legacy", headers=admin).json()
     assert d["working_copy"]["files_count"] == 1
     assert client.get("/api/repos/carol/legacy/working-copy", headers=admin).json()["files"] == {"main.py": "print(1)\n"}
+
+
+# ---------- student access ----------
+
+@pytest.fixture()
+def student(client):
+    """A registered, approved student 'dora' with a session token."""
+    client.post("/api/auth/register", json={"username": "dora", "password": "pw12345"})
+    admin = client.post("/api/auth/login", json={"username": "mike", "password": "mike2088"}).json()["token"]
+    users = client.get("/api/admin/users", headers={"Authorization": f"Bearer {admin}"}).json()
+    uid = next(u["id"] for u in (users if isinstance(users, list) else users["users"]) if u["username"] == "dora")
+    client.post(f"/api/admin/users/{uid}/approve", headers={"Authorization": f"Bearer {admin}"})
+    tok = client.post("/api/auth/login", json={"username": "dora", "password": "pw12345"}).json()["token"]
+    return {"Authorization": f"Bearer {tok}"}
+
+
+def test_student_sees_only_own_repos_and_history(client, student):
+    a = _student_submit(client, {"main.py": "print(1)\n"}, project="mine", student="dora", msg="first")
+    _student_submit(client, {"main.py": "print(2)\n"}, project="theirs", student="eve")
+    repos = client.get("/api/repos", headers=student).json()["repos"]
+    assert [r["project"] for r in repos] == ["mine"]
+    assert client.get("/api/repos/dora/mine/commits", headers=student).json()["commits"][0]["id"] == a
+    assert set(client.get(f"/api/repos/dora/mine/commits/{a}", headers=student).json()["files"]) == {"main.py"}
+
+
+def test_student_cannot_touch_other_repos_or_admin_actions(client, student):
+    other = _student_submit(client, {"main.py": "print(2)\n"}, project="theirs", student="eve")
+    assert client.get("/api/repos/eve/theirs", headers=student).status_code == 403
+    assert client.get(f"/api/repos/eve/theirs/commits/{other}", headers=student).status_code == 403
+    assert client.post("/api/repos/eve/theirs/commits", headers=student, json={"files": {"main.py": "x=1\n"}}).status_code == 403
+    assert client.post("/api/repos", headers=student, json={"project": "x", "files": {"main.py": "x=1\n"}}).status_code == 403
+    assert client.delete("/api/repos/dora/anything", headers=student).status_code == 403
+    assert client.post("/api/repos/dora/anything/rename", headers=student, json={"new_name": "y"}).status_code == 403
+
+
+def test_student_branches_and_commits_stay_out_of_queue_history(client, admin, student):
+    base = _student_submit(client, {"main.py": "print(1)\n"}, project="mine", student="dora")
+    assert client.post("/api/repos/dora/mine/branches", headers=student, json={"name": "try-it", "from_commit_id": base}).status_code == 200
+    c = client.post("/api/repos/dora/mine/commits", headers=student, json={"branch": "try-it", "files": {"main.py": "print(9)\n"}, "message": "idea"}).json()
+    assert c["synced_to_student"] is False
+    mine = client.get("/api/student/projects", headers=student).json()
+    ids = [p["id"] for p in (mine if isinstance(mine, list) else mine.get("projects", []))]
+    assert base in ids and c["commit_id"] not in ids          # branch commits are not "submissions" to the instructor
+    assert client.get(f"/api/repos/dora/mine/commits/{c['commit_id']}", headers=admin).json()["author"] == "dora"

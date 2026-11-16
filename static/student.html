@@ -7,6 +7,7 @@
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/static/design.js"></script>
+    <script src="/static/js/student_repo.js"></script>
     <link rel="stylesheet" href="/static/design.css">
     <!-- Monaco Editor CDN -->
     <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
@@ -130,6 +131,44 @@
                         <span id="robotSelectedBadge" class="hidden"></span>
                     </div>
                 </div>
+
+                <!-- Version history: branch and commit selectors (same structure as the instructor's Code Studio) -->
+                <div id="srBar" class="studio-bar" style="position:relative">
+                    <div class="relative">
+                        <button id="srBranchBtn" class="btn btn-sm menu-btn" aria-haspopup="listbox" aria-expanded="false" onclick="StudentRepo.toggle('branch', event)" title="Switch branch">
+                            <span class="menu-label">Branch</span><strong id="srBranchLabel">main</strong><span aria-hidden="true">&#9662;</span>
+                        </button>
+                        <div id="srBranchPanel" class="popover hidden" role="listbox" style="width:300px">
+                            <div id="srBranchList" class="popover-list"></div>
+                            <div class="popover-foot"><button class="btn btn-sm" onclick="StudentRepo.newBranch()">New branch from this version</button></div>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <button id="srCommitBtn" class="btn btn-sm menu-btn" aria-haspopup="listbox" aria-expanded="false" onclick="StudentRepo.toggle('commit', event)" title="Browse older versions">
+                            <span class="menu-label">Version</span><strong id="srCommitLabel">Working copy</strong><span aria-hidden="true">&#9662;</span>
+                        </button>
+                        <div id="srCommitPanel" class="popover hidden" role="listbox" style="width:440px">
+                            <div id="srCommitList" class="popover-list"></div>
+                        </div>
+                    </div>
+                    <span id="srStatus"></span>
+                    <span id="srDirty" class="badge hidden" data-status="pending">Unsaved changes</span>
+                    <div class="studio-bar-actions">
+                        <button class="btn btn-sm" onclick="StudentRepo.openCommit()" title="Record this version (commit)">Commit&hellip;</button>
+                    </div>
+                    <div id="srCommitDialog" class="popover hidden" style="position:fixed;top:120px;left:50%;transform:translateX(-50%);width:440px;max-width:92vw;z-index:90">
+                        <div class="popover-head" style="font-weight:600">Commit <span id="srCommitTarget"></span></div>
+                        <div style="padding:10px 12px">
+                            <textarea id="srCommitMessage" rows="3" class="input" style="width:100%;height:auto;padding:8px 10px" placeholder="What changed and why (e.g. Fixed joint limits)"></textarea>
+                            <div id="srCommitNote" class="cell-sub" style="margin-top:8px;white-space:normal"></div>
+                        </div>
+                        <div class="popover-foot" style="gap:8px">
+                            <button class="btn btn-sm btn-ghost" onclick="StudentRepo.closeCommit()">Cancel</button>
+                            <button id="srCommitOk" class="btn btn-sm btn-primary" onclick="StudentRepo.confirmCommit()">Commit</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="srContext" class="studio-context" role="status"></div>
 
                 <!-- VS Code Editor Tab Bar -->
                 <div class="px-2 py-1 bg-slate-850/95 flex items-center justify-between border-b border-slate-800 text-xs text-slate-400 select-none flex-shrink-0">
@@ -1540,6 +1579,7 @@ print("Routine completed successfully!")
                                 saveProjectToStorage();
                                 renderEditorTabs();
                                 renderProjectExplorer();
+                                StudentRepo.rebaseline();
                                 appendStudentLog(`\n[LIVE SYNC] Code updated from Instructor Code Studio (${new Date().toLocaleTimeString()}).\n`);
                             }
                         }
@@ -1735,6 +1775,7 @@ print("Routine completed successfully!")
                 if (select) select.value = projectName;
 
                 appendStudentLog(`\n[WORKSPACE] Loaded project folder "${projectName}" (${Object.keys(projectState.files).length} files).\n`, false);
+                StudentRepo.sync();
                 if (!fromAutoLoad) {
                     fetchWorkspaceFolders(true);
                 }
@@ -2036,6 +2077,8 @@ print("Routine completed successfully!")
         }
 
         function saveProjectToStorage() {
+            // Local autosave belongs to the working copy only: not to a branch or an older commit being viewed.
+            if (window.StudentRepo && (StudentRepo.state.branch !== 'main' || (StudentRepo.state.commitId !== 'wc' && StudentRepo.state.commitId !== null))) return;
             try {
                 localStorage.setItem(STORAGE_PROJECT_KEY, JSON.stringify(projectState));
                 if (projectState.files[projectState.entry_point]) {
@@ -2061,6 +2104,13 @@ print("Routine completed successfully!")
             if (editor && projectState.active_file) {
                 projectState.files[projectState.active_file] = editor.getValue();
             }
+            if (StudentRepo.isOpen() && StudentRepo.state.branch !== 'main') {
+                StudentRepo.openCommit();        // on a branch, saving means committing; the working copy is untouched
+                return;
+            }
+            if (StudentRepo.isOpen() && typeof StudentRepo.state.commitId === 'number' &&
+                !confirm(`Replace your working copy with commit #${StudentRepo.state.commitId}?`)) return;
+            StudentRepo.state.commitId = 'wc';
             localStorage.setItem(STORAGE_PROG_KEY, projectState.current_project || "default");
             saveProjectToStorage();   // local copy always succeeds first
 
@@ -2070,6 +2120,7 @@ print("Routine completed successfully!")
             try {
                 await syncActiveProjectToServer();
                 showSaveStatus(`Saved ${Object.keys(projectState.files).length} file(s)`, true);
+                StudentRepo.rebaseline();
             } catch (e) {
                 console.warn("Server save failed:", e);
                 showSaveStatus(`Saved locally only - server rejected: ${e.message}`, false);
@@ -2615,6 +2666,7 @@ print("Routine completed successfully!")
                                 projectState.files[projectState.active_file] = editor.getValue();
                                 saveProjectToStorage();
                             }
+                            StudentRepo.markEdited();
                         });
 
                         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
@@ -2948,6 +3000,8 @@ print("Routine completed successfully!")
             if (editor && projectState.active_file) {
                 projectState.files[projectState.active_file] = editor.getValue();
             }
+            if (StudentRepo.isOpen() && (StudentRepo.state.branch !== 'main' || typeof StudentRepo.state.commitId === 'number') &&
+                !confirm(`You are viewing ${StudentRepo.state.branch !== 'main' ? 'branch "' + StudentRepo.state.branch + '"' : 'commit #' + StudentRepo.state.commitId}.\nSubmit sends exactly what is in the editor to "main" as a new iteration. Continue?`)) return;
             saveProjectToStorage();
 
             const entryCode = projectState.files[projectState.entry_point] || (editor ? editor.getValue() : "");
