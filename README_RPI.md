@@ -70,3 +70,43 @@ The script will display the local IP address for students to connect to (e.g. `h
 - **Worker Configuration:** Uvicorn runs with `--workers 1` to minimize RAM usage (~80-120 MB RAM in idle).
 - **Reloading Disabled in Production:** File watching is disabled by default in `run.sh` to save CPU cycles on low-power ARM cores. To run in dev mode with reload, use `./run.sh --reload`.
 - **Emergency Stop Safety:** Emergency stop (`SPACE` key and `[STOP]` button) sends raw abort commands to both UR RTDE/Secondary ports and Niryo TCP socket, halting physical motions immediately.
+
+---
+
+## 5. Updating with `git pull` (your data stays on the Pi)
+
+Everything the lab creates while running is local to the Pi and is **not in git** (see `.gitignore`), so `git pull` never overwrites, deletes or conflicts with it:
+
+| What | Where |
+| :--- | :--- |
+| Accounts, submissions, commits, examples | `submissions.db` (+ `submissions.db-wal` / `-shm` while running) |
+| Robot model and IPs | `runtime_config.json` |
+| Student project folders | `~/ur_platform_workspaces/` (outside the repository) |
+
+Normal update:
+```bash
+cd ~/controllo-robots-itis        # the folder you cloned
+git pull
+sudo systemctl restart ur-platform
+```
+
+### One-time step for checkouts from before 9 Nov 2026
+
+Older versions of the repository *tracked* `submissions.db`, `robot_system.db` and `runtime_config.json`. If `git pull` stops with
+"Your local changes to the following files would be overwritten by merge: submissions.db …", do **not** run `git stash`,
+`git checkout .` or `git reset --hard` (they replace or delete the database). Move the files aside, pull, and put them back:
+
+```bash
+cd ~/controllo-robots-itis
+sudo systemctl stop ur-platform              # nothing may write the database meanwhile
+mkdir -p ~/robot-data-backup
+for f in submissions.db submissions.db-wal submissions.db-shm robot_system.db runtime_config.json; do [ -e "$f" ] && mv "$f" ~/robot-data-backup/; done
+git pull
+cp -p ~/robot-data-backup/* .                # your database and robot settings, unchanged
+sudo systemctl start ur-platform
+```
+
+After this, `git status` no longer lists those files and later pulls need no special steps. (`git rm --cached` alone does not
+work here: git then refuses the pull because it would remove the untracked files.)
+
+To keep the database completely outside the checkout instead, start the server with `UR_DB_PATH=/path/to/submissions.db`.

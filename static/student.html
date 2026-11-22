@@ -7,6 +7,7 @@
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/static/design.js"></script>
+    <script src="/static/js/common.js"></script>
     <script src="/static/js/student_repo.js"></script>
     <link rel="stylesheet" href="/static/design.css">
     <!-- Monaco Editor CDN -->
@@ -825,20 +826,7 @@ No output. Run a simulation or submit to see logs.
     <!-- Monaco Loader -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
     <script>
-        function notify(msg) {
-            let el = document.getElementById("notifyToast");
-            if (!el) {
-                el = document.createElement("div");
-                el.id = "notifyToast";
-                el.setAttribute("role", "status");
-                el.className = "fixed bottom-4 right-4 z-[100] max-w-sm px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-xs text-slate-100 transition-opacity duration-200 opacity-0 pointer-events-none";
-                document.body.appendChild(el);
-            }
-            el.textContent = msg;
-            el.style.opacity = "1";
-            clearTimeout(el._t);
-            el._t = setTimeout(() => { el.style.opacity = "0"; }, 4500);
-        }
+        function notify(msg) { Common.notify(msg); }
 
         let editor;
         let currentSubId = null;
@@ -870,6 +858,69 @@ No output. Run a simulation or submit to see logs.
             active_file: "main.py",
             files: {}
         };
+
+        // The editor text always belongs to the file it was loaded from (see Common.createFileBuffer):
+        // deleting, renaming or switching files can never write one file's text into another.
+        const fileBuffer = Common.createFileBuffer({
+            editor: () => editor,
+            state: () => projectState,
+            onEdit: () => { saveProjectToStorage(); StudentRepo.markEdited(); },
+            onLoad: (name) => updateActiveFileIndicator(name),
+        });
+
+        function updateActiveFileIndicator(name) {
+            const ind = document.getElementById("activeFileIndicator");
+            if (ind) ind.innerText = name ? `${name} (${(name.split('.').pop() || '').toUpperCase()})` : "";
+        }
+
+        // True when the editor shows the working copy on main: what Save writes and the instructor sees live.
+        function onMainWorkingCopy() {
+            return !StudentRepo.isOpen() || StudentRepo.onWorkingCopy();
+        }
+
+        // One sentence for confirmations: when does a change in the editor become permanent?
+        function persistHint() {
+            const s = StudentRepo.state;
+            if (StudentRepo.isOpen() && s.branch !== 'main') return `Nothing is recorded until you commit to "${s.branch}".`;
+            if (StudentRepo.isOpen() && typeof s.commitId === 'number') return "Nothing changes on the server unless you restore this version.";
+            return "Nothing is saved until you press Save.";
+        }
+
+        // Replaces every file in the editor at once (project load, version switch, example, live sync).
+        function replaceProjectFiles(files, entryPoint, activeFile) {
+            const next = (files && Object.keys(files).length) ? { ...files }
+                : { "main.py": buildDefaultCode(configuredIp, projectState.robot_model || currentRobotModel) };
+            projectState.files = next;
+            projectState.entry_point = Common.resolveEntry(next, entryPoint);
+            fileBuffer.load((activeFile && activeFile in next) ? activeFile : projectState.entry_point);
+            renderEditorTabs();
+            renderProjectExplorer();
+        }
+
+        // Unsaved / uncommitted state, shown the same way everywhere: a dot on each changed file, the badge, the Save button.
+        function updateUnsavedIndicators() {
+            const changed = StudentRepo.changedFiles();
+            Common.markModified(document.getElementById("fileTabsList"), changed);
+            Common.markModified(document.getElementById("sidebarFilesList"), changed);
+            updateSaveButton();
+        }
+
+        function updateSaveButton() {
+            const btn = document.getElementById("btnSave");
+            if (!btn) return;
+            const s = StudentRepo.state, dirty = StudentRepo.isDirty();
+            let label = "Save", title = "Save your working copy (Ctrl+S). Your instructor sees it live.";
+            if (StudentRepo.isOpen() && s.branch !== 'main') {
+                label = "Commit…"; title = `On branch "${s.branch}" saving means committing (Ctrl+S). Main is not changed.`;
+            } else if (StudentRepo.isOpen() && typeof s.commitId === 'number') {
+                label = "Restore this version"; title = `Copy commit #${s.commitId} into your working copy (Ctrl+S)`;
+            } else if (!dirty) {
+                title = "Everything is saved.";
+            }
+            btn.textContent = label;
+            btn.title = title;
+            btn.classList.toggle("btn-primary", dirty || label !== "Save");
+        }
 
         const FILE_STARTER_TEMPLATES = {
             empty: "# New Empty File\n",
@@ -1063,8 +1114,10 @@ print("Routine completed successfully!")
             switchStudentRunModel(model);
         }
 
-        // Robot Selection Handlers (UR3 vs Niryo Ned)
-        function selectStudentRobotModel(model, confirmCodeSwitch = true) {
+        // Switches the target robot (status, IP, examples, 3D model). It never touches project files: it is called
+        // while a project, example or live update is being loaded, and the old "swap in the starter template"
+        // step here rewrote and saved main.py of the project that was still open.
+        function selectStudentRobotModel(model) {
             if (model !== 'ur' && model !== 'niryo') return;
             if (projectState && projectState.robot_model && projectState.robot_model !== model) {
                 notify(`This project is locked to ${projectState.robot_model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}. You can only run it on that robot. To use another robot, please create or open a project configured for it.`);
@@ -1072,7 +1125,6 @@ print("Routine completed successfully!")
             }
             if (currentRobotModel === model) return;
 
-            const prevModel = currentRobotModel;
             currentRobotModel = model;
             localStorage.setItem(STORAGE_ROBOT_KEY, model);
             configuredIp = allRobotIps[model] || (model === 'niryo' ? '10.0.130.49' : '10.0.10.60');
@@ -1085,40 +1137,6 @@ print("Routine completed successfully!")
 
             fetchExamples();
             checkRobotStatus();
-
-            // Smart template loader
-            if (editor) {
-                const currentCode = editor.getValue().trim();
-                const prevDefault = buildDefaultCode(allRobotIps[prevModel] || '', prevModel).trim();
-                const isCurrentDefault = !currentCode || (currentCode === prevDefault);
-
-                if (isCurrentDefault) {
-                    const newStarter = buildDefaultCode(configuredIp, model);
-                    projectState.files["main.py"] = newStarter;
-                    if (projectState.active_file === "main.py") {
-                        editor.setValue(newStarter);
-                    }
-                    saveCodeLocally();
-                    renderEditorTabs();
-                    renderProjectExplorer();
-                    appendStudentLog(`\n[ROBOT] Switched to ${model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}. Starter template loaded.\n`);
-                } else if (confirmCodeSwitch) {
-                    const modelName = model === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3';
-                    if (confirm(`You switched active robot to ${modelName}.\n\nWould you like to load the starter template for ${modelName} into main.py?\n(Click Cancel to keep your current code)`)) {
-                        const newStarter = buildDefaultCode(configuredIp, model);
-                        projectState.files["main.py"] = newStarter;
-                        if (projectState.active_file === "main.py") {
-                            editor.setValue(newStarter);
-                        }
-                        saveCodeLocally();
-                        renderEditorTabs();
-                        renderProjectExplorer();
-                        appendStudentLog(`\n[ROBOT] Switched to ${modelName}. Starter template loaded.\n`);
-                    } else {
-                        appendStudentLog(`\n[ROBOT] Switched target robot to ${modelName}. Keeping your current code.\n`);
-                    }
-                }
-            }
         }
 
         function updateStudentRobotUI(model) {
@@ -1188,8 +1206,22 @@ print("Routine completed successfully!")
                 console.warn("3D Visualizer init warning:", visErr);
             }
 
+            ["fileTabsList", "sidebarFilesList"].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener("click", onFileListClick);
+            });
+            updateSaveButton();
+
             // Check student authentication
             checkExistingAuth();
+        });
+
+        // Reloading or closing the tab would drop unsaved work (the next login reloads the saved copy).
+        window.addEventListener("beforeunload", (e) => {
+            if (currentStudentUser && StudentRepo.isDirty()) {
+                e.preventDefault();
+                e.returnValue = "";
+            }
         });
 
         // ==========================================
@@ -1558,31 +1590,7 @@ print("Routine completed successfully!")
                 studentLiveWs.onmessage = (event) => {
                     try {
                         const msg = JSON.parse(event.data);
-                        if (msg.type === 'code_synced') {
-                            const curProj = projectState.current_project || 'default';
-                            const incomingProj = msg.project_name || msg.project || msg.task_id || '';
-                            if (!incomingProj || incomingProj === curProj || curProj === 'default') {
-                                if (msg.files && typeof msg.files === 'object') {
-                                    projectState.files = msg.files;
-                                } else if (msg.code) {
-                                    projectState.files[projectState.active_file || 'main.py'] = msg.code;
-                                }
-                                if (msg.robot_model && msg.robot_model !== currentRobotModel) {
-                                    projectState.robot_model = msg.robot_model;
-                                    selectStudentRobotModel(msg.robot_model, false);
-                                }
-                                if (editor && projectState.active_file && projectState.files[projectState.active_file] !== undefined) {
-                                    const pos = editor.getPosition();
-                                    editor.setValue(projectState.files[projectState.active_file]);
-                                    if (pos) editor.setPosition(pos);
-                                }
-                                saveProjectToStorage();
-                                renderEditorTabs();
-                                renderProjectExplorer();
-                                StudentRepo.rebaseline();
-                                appendStudentLog(`\n[LIVE SYNC] Code updated from Instructor Code Studio (${new Date().toLocaleTimeString()}).\n`);
-                            }
-                        }
+                        if (msg.type === 'code_synced') applyInstructorSync(msg);
                     } catch(e) {
                         console.error("Live sync msg error:", e);
                     }
@@ -1599,7 +1607,44 @@ print("Routine completed successfully!")
             }
         }
 
+        // The instructor committed to main or edited a submission; the server has already written the new files
+        // into this project's working copy. Only the editor needs updating, and never over the student's own work.
+        function applyInstructorSync(msg) {
+            const curProj = projectState.current_project || 'default';
+            const incomingProj = msg.project_name || msg.project || msg.task_id || '';
+            if (incomingProj && incomingProj !== curProj && curProj !== 'default') return;
+            const hasFiles = msg.files && typeof msg.files === 'object' && Object.keys(msg.files).length > 0;
+            if (!hasFiles && !msg.code) return;
+            const time = new Date().toLocaleTimeString();
+
+            if (!onMainWorkingCopy()) {
+                appendStudentLog(`\n[LIVE SYNC] ${time}: your instructor updated "${incomingProj || curProj}" on main. You are viewing another version, so the editor was left as it is. Open main → Working copy to see their version.\n`);
+                notify("Your instructor updated this project on main. Open main → Working copy to see it.");
+                return;
+            }
+            if (StudentRepo.isDirty() && !confirm(`Your instructor just updated "${curProj}".\n\nLoad their version now? Your unsaved changes in the editor would be replaced.\n\nCancel keeps your edits (saving them later replaces the instructor's version).`)) {
+                appendStudentLog(`\n[LIVE SYNC] ${time}: your instructor updated "${curProj}"; you kept your unsaved edits in the editor.\n`);
+                return;
+            }
+
+            fileBuffer.capture();
+            const files = hasFiles ? msg.files : { ...projectState.files, [msg.entry_point || projectState.entry_point || 'main.py']: msg.code };
+            if ((msg.robot_model === 'ur' || msg.robot_model === 'niryo') && msg.robot_model !== projectState.robot_model) {
+                projectState.robot_model = msg.robot_model;
+                selectStudentRobotModel(msg.robot_model);
+                lockStudentProjectRobot(msg.robot_model);
+            }
+            const active = projectState.active_file;
+            const pos = editor ? editor.getPosition() : null;
+            replaceProjectFiles(files, msg.entry_point || projectState.entry_point, active);
+            if (editor && pos && projectState.active_file === active) editor.setPosition(pos);
+            saveProjectToStorage();
+            StudentRepo.rebaseline(Common.fileSet(projectState.files, projectState.entry_point));
+            appendStudentLog(`\n[LIVE SYNC] Code updated from Instructor Code Studio (${time}).\n`);
+        }
+
         function logoutStudent() {
+            if (StudentRepo.isDirty() && !confirm(`You have unsaved changes in "${projectState.current_project}".\n\nSign out anyway? They will be lost.`)) return;
             hasLoadedInitialWorkspaceProject = false;
             if (studentLiveWs) {
                 try { studentLiveWs.close(); } catch(e) {}
@@ -1731,57 +1776,58 @@ print("Routine completed successfully!")
             }).join("");
         }
 
+        // Opens a project's saved working copy. Returns true when it was loaded.
+        // fromAutoLoad: opened by the app (login, after a delete), so there is nothing of the user's to confirm.
         async function onSelectStudentProject(projectName, fromAutoLoad = false) {
-            if (!projectName) return;
-            if (!fromAutoLoad && editor && projectState.active_file) {
-                projectState.files[projectState.active_file] = editor.getValue();
+            if (!projectName) return false;
+            const select = document.getElementById("studentProjectSelect");
+            const keepSelection = () => { if (select) select.value = projectState.current_project; };
+            if (!fromAutoLoad && projectName !== projectState.current_project &&
+                !StudentRepo.confirmDiscard(`open "${projectName}"`)) {
+                keepSelection();
+                return false;
             }
             try {
                 const res = await fetch(`/api/workspace/projects/${encodeURIComponent(projectName)}`, {
                     headers: { 'Authorization': `Bearer ${currentAuthToken}` }
                 });
                 if (!res.ok) {
-                    if (!fromAutoLoad) notify("Could not load project folder.");
-                    return;
+                    if (!fromAutoLoad) notify(`Could not open project "${projectName}".`);
+                    keepSelection();
+                    return false;
                 }
                 const data = await res.json();
-                let model = data.robot_model;
-                if (!model) {
-                    const allCode = Object.values(data.files || {}).join(" ");
-                    model = (allCode.includes('pyniryo') || allCode.includes('NiryoRobot')) ? 'niryo' : 'ur';
-                }
+                const model = data.robot_model || detectRobotModel(Object.values(data.files || {}).join(" "));
                 projectState.robot_model = model;
-                selectStudentRobotModel(model, false);
+                selectStudentRobotModel(model);
                 lockStudentProjectRobot(model);
 
                 projectState.current_project = projectName;
                 projectState.folderName = projectName;
-                const loadedFiles = (data.files && Object.keys(data.files).length > 0)
-                    ? data.files
-                    : { "main.py": buildDefaultCode(configuredIp, model) };
-                projectState.files = loadedFiles;
-                projectState.entry_point = ("main.py" in projectState.files) ? "main.py" : Object.keys(projectState.files)[0];
-                projectState.active_file = projectState.entry_point;
-                saveProjectToStorage();
-
-                if (editor) {
-                    editor.setValue(projectState.files[projectState.active_file] || "");
-                    setTimeout(() => editor.layout(), 40);
-                }
-                renderEditorTabs();
-                renderProjectExplorer();
-
-                const select = document.getElementById("studentProjectSelect");
+                replaceProjectFiles(data.files, data.entry_point);
+                setTimeout(() => editor && editor.layout(), 40);
                 if (select) select.value = projectName;
 
+                StudentRepo.sync();            // baseline = what was just loaded; reads branches and commits
+                saveProjectToStorage();
+                // A project is open now: later folder refreshes (e.g. opening "Projects") must never auto-reload it
+                // over unsaved edits.
+                hasLoadedInitialWorkspaceProject = true;
                 appendStudentLog(`\n[WORKSPACE] Loaded project folder "${projectName}" (${Object.keys(projectState.files).length} files).\n`, false);
-                StudentRepo.sync();
                 if (!fromAutoLoad) {
                     fetchWorkspaceFolders(true);
                 }
+                return true;
             } catch (e) {
                 console.error("Error loading project folder:", e);
+                keepSelection();
+                return false;
             }
+        }
+
+        // Same rule as detect_robot_model() on the server: Niryo code imports pyniryo / uses NiryoRobot.
+        function detectRobotModel(text) {
+            return /pyniryo|NiryoRobot/.test(text || "") ? 'niryo' : 'ur';
         }
 
         async function promptNewProjectFolder() {
@@ -1815,19 +1861,24 @@ print("Routine completed successfully!")
                 notify("Cannot delete the default project folder.");
                 return;
             }
-            if (!confirm(`Are you sure you want to delete the project folder "${projectName}" and all its files?`)) return;
+            const isCurrent = projectState.current_project === projectName;
+            if (!confirm(`Delete the project "${projectName}" and all its files from your workspace?\n\nThis cannot be undone. Versions you already submitted stay in your instructor's history.${isCurrent ? "\n\nIt is the project open in the editor: its unsaved changes are lost too." : ""}`)) return;
             try {
                 const res = await fetch(`/api/workspace/projects/${encodeURIComponent(projectName)}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${currentAuthToken}` }
                 });
-                if (res.ok) {
-                    appendStudentLog(`\n[WORKSPACE] Deleted project folder "${projectName}".\n`);
-                    if (projectState.current_project === projectName) {
-                        await onSelectStudentProject('default');
-                    } else {
-                        await fetchWorkspaceFolders();
-                    }
+                if (!res.ok) {
+                    let detail = `HTTP ${res.status}`;
+                    try { detail = (await res.json()).detail || detail; } catch (_) {}
+                    notify(`Could not delete "${projectName}": ${detail}`);
+                    return;
+                }
+                appendStudentLog(`\n[WORKSPACE] Deleted project folder "${projectName}".\n`);
+                await fetchWorkspaceFolders(true);      // with no projects left this asks for a new one
+                // The editor must never stay on a deleted project: its next Save would bring it back.
+                if (isCurrent && studentWorkspaceFolders.length) {
+                    await onSelectStudentProject(studentWorkspaceFolders[0].name, true);
                 }
             } catch (e) {
                 notify("Failed to delete project folder: " + e.message);
@@ -1835,15 +1886,20 @@ print("Routine completed successfully!")
         }
 
         // Saves are serialised: a slow earlier PUT can never land after (and overwrite) a newer one.
+        // Resolves with exactly what was written ({ project, files, entry }) so the caller can mark that,
+        // and only that, as saved. Rejects (never silently "succeeds") when there is nothing to save to.
         let _syncChain = Promise.resolve();
         function syncActiveProjectToServer() {
-            if (!currentAuthToken || !projectState.current_project) return Promise.resolve(true);
+            if (!currentAuthToken) return Promise.reject(new Error("you are not signed in"));
+            if (!projectState.current_project) return Promise.reject(new Error("no project is open"));
+            fileBuffer.capture();
             // Snapshot now so later edits don't change what this request sends.
             const name = projectState.current_project;
+            const sent = Common.fileSet(projectState.files, projectState.entry_point);
             const body = JSON.stringify({
-                files: projectState.files,
-                entry_point: projectState.entry_point,
-                robot_model: currentRobotModel
+                files: sent.files,
+                entry_point: sent.entry,
+                robot_model: projectState.robot_model || currentRobotModel
             });
             const run = async () => {
                 const res = await fetch(`/api/workspace/projects/${encodeURIComponent(name)}`, {
@@ -1856,7 +1912,7 @@ print("Routine completed successfully!")
                     try { detail = (await res.json()).detail || detail; } catch (_) {}
                     throw new Error(detail);
                 }
-                return true;
+                return { project: name, ...sent };
             };
             const result = _syncChain.then(run, run);
             _syncChain = result.catch(() => {});
@@ -1992,48 +2048,30 @@ print("Routine completed successfully!")
             }).join("");
         }
 
+        // History -> "Open in Editor": puts the files of an earlier submission into the editor (unsaved).
         function loadProjectIntoEditor(id) {
             const proj = myProjectsData.find(p => p.id === id);
             if (!proj) return;
-            if (confirm(`Load project "${proj.task_id}" into editor? This replaces current editor code.`)) {
-                const projModel = proj.robot_model || ((proj.code && proj.code.includes('pyniryo')) ? 'niryo' : 'ur');
-                projectState.robot_model = projModel;
-                selectStudentRobotModel(projModel, false);
-                lockStudentProjectRobot(projModel);
-
-                // Restore multi-file project if available
-                let restoredFiles = null;
-                if (proj.files) {
-                    if (typeof proj.files === 'object') {
-                        restoredFiles = proj.files;
-                    } else if (typeof proj.files === 'string') {
-                        try {
-                            restoredFiles = JSON.parse(proj.files);
-                        } catch(e) {}
-                    }
-                }
-
-                if (restoredFiles && typeof restoredFiles === 'object' && Object.keys(restoredFiles).length > 0) {
-                    projectState.files = restoredFiles;
-                    projectState.entry_point = ("main.py" in restoredFiles) ? "main.py" : Object.keys(restoredFiles)[0];
-                    projectState.active_file = projectState.entry_point;
-                } else {
-                    projectState.files = {
-                        "main.py": proj.code || buildDefaultCode(configuredIp, projModel)
-                    };
-                    projectState.entry_point = "main.py";
-                    projectState.active_file = "main.py";
-                }
-
-                // task_id unified with project
-                saveProjectToStorage();
-                switchToFile(projectState.active_file);
-                renderEditorTabs();
-                renderProjectExplorer();
-                closeMyProjectsModal();
-                switchMainPortalView('code');
-                appendStudentLog(`\n[PROJECTS] Loaded project #${proj.id} ("${proj.task_id}") [${projModel.toUpperCase()}] into editor.\n`);
+            let restoredFiles = proj.files;
+            if (typeof restoredFiles === 'string') {
+                try { restoredFiles = JSON.parse(restoredFiles); } catch (e) { restoredFiles = null; }
             }
+            if (!restoredFiles || typeof restoredFiles !== 'object' || !Object.keys(restoredFiles).length) {
+                restoredFiles = { [proj.entry_point || "main.py"]: proj.code || "" };
+            }
+            const count = Object.keys(restoredFiles).length;
+            if (!confirm(`Load submission #${proj.id} ("${proj.task_id}", ${count} file${count === 1 ? '' : 's'}) into the editor?\n\nIt replaces the files currently in the editor of "${projectState.current_project}". ${persistHint()}`)) return;
+
+            const projModel = proj.robot_model || detectRobotModel(proj.code);
+            projectState.robot_model = projModel;
+            selectStudentRobotModel(projModel);
+            lockStudentProjectRobot(projModel);
+            replaceProjectFiles(restoredFiles, proj.entry_point);
+            saveProjectToStorage();
+            StudentRepo.markEdited();
+            closeMyProjectsModal();
+            switchMainPortalView('code');
+            appendStudentLog(`\n[PROJECTS] Loaded submission #${proj.id} ("${proj.task_id}") [${projModel.toUpperCase()}] into the editor (not saved yet).\n`);
         }
 
         // ==========================================
@@ -2047,10 +2085,9 @@ print("Routine completed successfully!")
                     const parsed = JSON.parse(saved);
                     if (parsed && parsed.files && typeof parsed.files === 'object' && Object.keys(parsed.files).length > 0) {
                         projectState = parsed;
-                        if (!projectState.entry_point || !projectState.files[projectState.entry_point]) {
-                            projectState.entry_point = Object.keys(projectState.files)[0];
-                        }
-                        if (!projectState.active_file || !projectState.files[projectState.active_file]) {
+                        // `in`, not truthiness: an empty file is still a file
+                        projectState.entry_point = Common.resolveEntry(projectState.files, projectState.entry_point);
+                        if (!(projectState.active_file in projectState.files)) {
                             projectState.active_file = projectState.entry_point;
                         }
                         return;
@@ -2078,7 +2115,7 @@ print("Routine completed successfully!")
 
         function saveProjectToStorage() {
             // Local autosave belongs to the working copy only: not to a branch or an older commit being viewed.
-            if (window.StudentRepo && (StudentRepo.state.branch !== 'main' || (StudentRepo.state.commitId !== 'wc' && StudentRepo.state.commitId !== null))) return;
+            if (!onMainWorkingCopy()) return;
             try {
                 localStorage.setItem(STORAGE_PROJECT_KEY, JSON.stringify(projectState));
                 if (projectState.files[projectState.entry_point]) {
@@ -2101,63 +2138,55 @@ print("Routine completed successfully!")
         }
 
         async function saveCodeLocally() {
-            if (editor && projectState.active_file) {
-                projectState.files[projectState.active_file] = editor.getValue();
-            }
+            fileBuffer.capture();
             if (StudentRepo.isOpen() && StudentRepo.state.branch !== 'main') {
                 StudentRepo.openCommit();        // on a branch, saving means committing; the working copy is untouched
                 return;
             }
-            if (StudentRepo.isOpen() && typeof StudentRepo.state.commitId === 'number' &&
-                !confirm(`Replace your working copy with commit #${StudentRepo.state.commitId}?`)) return;
-            StudentRepo.state.commitId = 'wc';
-            localStorage.setItem(STORAGE_PROG_KEY, projectState.current_project || "default");
-            saveProjectToStorage();   // local copy always succeeds first
+            const restoring = StudentRepo.isOpen() && typeof StudentRepo.state.commitId === 'number';
+            if (restoring && !confirm(`Restore commit #${StudentRepo.state.commitId} into your working copy?\n\nThe saved working copy of "${projectState.current_project}" is replaced by the ${Object.keys(projectState.files).length} file(s) now in the editor.`)) return;
 
             const btn = document.getElementById("btnSave");
             if (btn) btn.disabled = true;
-            showSaveStatus("Saving...", true);
+            showSaveStatus("Saving…", true);
             try {
-                await syncActiveProjectToServer();
-                showSaveStatus(`Saved ${Object.keys(projectState.files).length} file(s)`, true);
-                StudentRepo.rebaseline();
+                const sent = await syncActiveProjectToServer();
+                localStorage.setItem(STORAGE_PROG_KEY, sent.project);
+                if (sent.project === projectState.current_project) {
+                    StudentRepo.markSaved(sent);   // exactly what was written is "saved"; edits typed meanwhile stay unsaved
+                    saveProjectToStorage();
+                }
+                showSaveStatus(`Saved ${Object.keys(sent.files).length} file(s)`, true);
             } catch (e) {
                 console.warn("Server save failed:", e);
-                showSaveStatus(`Saved locally only - server rejected: ${e.message}`, false);
+                showSaveStatus(`Not saved: ${e.message}`, false);
+                notify(`Your changes were NOT saved: ${e.message}`);
             } finally {
                 if (btn) btn.disabled = false;
+                updateUnsavedIndicators();
             }
         }
 
         function switchToFile(filename) {
-            if (!projectState.files || !projectState.files[filename]) return;
-            if (editor && projectState.active_file) {
-                projectState.files[projectState.active_file] = editor.getValue();
-            }
-            projectState.active_file = filename;
-
-            if (editor) {
-                editor.setValue(projectState.files[filename] || "");
-                const ext = filename.split('.').pop().toLowerCase();
-                let lang = 'python';
-                if (ext === 'json') lang = 'json';
-                else if (ext === 'txt') lang = 'plaintext';
-                const model = editor.getModel();
-                if (model) {
-                    monaco.editor.setModelLanguage(model, lang);
-                }
-            }
-
-            const ind = document.getElementById("activeFileIndicator");
-            if (ind) {
-                const ext = filename.split('.').pop().toUpperCase();
-                ind.innerText = `${filename} (${ext})`;
-            }
-
+            if (!fileBuffer.open(filename)) return;     // empty files open too
             saveProjectToStorage();
             renderEditorTabs();
             renderProjectExplorer();
             setTimeout(() => { if (editor) editor.layout(); }, 30);
+        }
+
+        // Clicks on file tabs / explorer rows (one delegated handler, no names inside inline JS).
+        function onFileListClick(event) {
+            const target = event.target.closest('[data-act]');
+            if (!target) return;
+            const row = target.closest('[data-file]');
+            const name = target.dataset.path || (row && row.dataset.file);
+            if (!name) return;
+            const act = target.dataset.act;
+            if (act === 'delete') deleteFile(name);
+            else if (act === 'rename') openRenameFileModal(name);
+            else if (act === 'entry') setFileAsEntryPoint(name);
+            else switchToFile(name);
         }
 
         function renderEditorTabs() {
@@ -2165,27 +2194,29 @@ print("Routine completed successfully!")
             if (!tabsContainer || !projectState.files) return;
 
             const fileNames = Object.keys(projectState.files);
+            const changed = StudentRepo.changedFiles();
+            const esc = Common.esc;
             tabsContainer.innerHTML = fileNames.map(f => {
                 const isActive = (f === projectState.active_file);
                 const isEntry = (f === projectState.entry_point);
-                const ext = f.split('.').pop().toLowerCase();
 
                 const activeClass = isActive
                     ? "bg-slate-900 text-sky-400 font-bold border-t-2 border-sky-400 shadow-sm"
                     : "bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800";
 
                 const entryBadge = isEntry
-                    ? '<span class="text-[11px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold" title="Main Entry Point">main</span>'
+                    ? '<span class="text-[11px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold" title="Runs when you Simulate or Submit">main</span>'
                     : '';
 
                 const closeBtn = (fileNames.length > 1)
-                    ? `<button onclick="event.stopPropagation(); deleteFile('${escapeHtml(f)}')" title="Delete file" class="hover:text-rose-400 text-xs ml-1 px-1 rounded transition">&times;</button>`
+                    ? `<button type="button" data-act="delete" data-path="${esc(f)}" title="Delete ${esc(f)}" aria-label="Delete ${esc(f)}" class="hover:text-rose-400 text-xs ml-1 px-1 rounded transition">&times;</button>`
                     : '';
 
                 return `
-                    <div onclick="switchToFile('${escapeHtml(f)}')"
-                        class="px-2.5 py-1 rounded-t text-xs font-mono transition flex items-center space-x-1.5 cursor-pointer border-r border-slate-800/60 flex-shrink-0 ${activeClass}">
-                        <span>${escapeHtml(f)}</span>
+                    <div data-file="${esc(f)}" data-act="open" role="tab" aria-selected="${isActive}" title="${esc(f)}"
+                        class="px-2.5 py-1 rounded-t text-xs font-mono transition flex items-center space-x-1.5 cursor-pointer border-r border-slate-800/60 flex-shrink-0 ${activeClass} ${changed.has(f) ? 'is-modified' : ''}">
+                        <span>${esc(f)}</span>
+                        <span class="file-dot" title="Unsaved changes" aria-label="unsaved changes"></span>
                         ${entryBadge}
                         ${closeBtn}
                     </div>
@@ -2210,6 +2241,8 @@ print("Routine completed successfully!")
             if (folderEl) folderEl.innerText = `${projectState.folderName || 'robot_project'}/`;
 
             if (!listEl) return;
+            const changed = StudentRepo.changedFiles();
+            const esc = Common.esc;
             listEl.innerHTML = fileNames.map(f => {
                 const isActive = (f === projectState.active_file);
                 const isEntry = (f === projectState.entry_point);
@@ -2220,16 +2253,17 @@ print("Routine completed successfully!")
                     : "text-slate-300 hover:bg-slate-900 hover:text-white";
 
                 return `
-                    <div onclick="switchToFile('${escapeHtml(f)}')"
-                        class="group px-2.5 py-1.5 rounded text-xs font-mono flex items-center justify-between cursor-pointer transition ${activeClass}">
+                    <div data-file="${esc(f)}" data-act="open" title="${esc(f)}" aria-current="${isActive}"
+                        class="group px-2.5 py-1.5 rounded text-xs font-mono flex items-center justify-between cursor-pointer transition ${activeClass} ${changed.has(f) ? 'is-modified' : ''}">
                         <div class="flex items-center space-x-1.5 truncate">
-                            <span class="truncate">${escapeHtml(f)}</span>
-                            ${isEntry ? '<span class="text-[11px] px-1 py-0.5 bg-amber-500/20 text-amber-300 rounded font-semibold" title="Entry Point">main</span>' : ''}
+                            <span class="truncate">${esc(f)}</span>
+                            <span class="file-dot" title="Unsaved changes" aria-label="unsaved changes"></span>
+                            ${isEntry ? '<span class="text-[11px] px-1 py-0.5 bg-amber-500/20 text-amber-300 rounded font-semibold" title="Runs when you Simulate or Submit">main</span>' : ''}
                         </div>
                         <div class="hidden group-hover:flex group-focus-within:flex items-center space-x-1 flex-shrink-0 pl-2">
-                            ${!isEntry && ext === 'py' ? `<button onclick="event.stopPropagation(); setFileAsEntryPoint('${escapeHtml(f)}')" title="Set as Entry Point" class="text-slate-400 hover:text-amber-300 text-[11px] p-0.5">Set main</button>` : ''}
-                            <button onclick="event.stopPropagation(); openRenameFileModal('${escapeHtml(f)}')" title="Rename file" class="text-slate-400 hover:text-blue-300 text-[11px] p-0.5">Rename</button>
-                            ${fileNames.length > 1 ? `<button onclick="event.stopPropagation(); deleteFile('${escapeHtml(f)}')" title="Delete file" class="text-slate-400 hover:text-rose-400 text-[11px] p-0.5">Delete</button>` : ''}
+                            ${!isEntry && ext === 'py' ? `<button type="button" data-act="entry" data-path="${esc(f)}" title="Run this file when you Simulate or Submit" class="text-slate-400 hover:text-amber-300 text-[11px] p-0.5">Set main</button>` : ''}
+                            <button type="button" data-act="rename" data-path="${esc(f)}" title="Rename ${esc(f)}" class="text-slate-400 hover:text-blue-300 text-[11px] p-0.5">Rename</button>
+                            ${fileNames.length > 1 ? `<button type="button" data-act="delete" data-path="${esc(f)}" title="Delete ${esc(f)}" class="text-slate-400 hover:text-rose-400 text-[11px] p-0.5">Delete</button>` : ''}
                         </div>
                     </div>
                 `;
@@ -2302,25 +2336,18 @@ print("Routine completed successfully!")
             const input = document.getElementById("newFileNameInput");
             if (!input) return;
 
-            let name = input.value.trim();
-            if (!name) {
+            if (!input.value.trim()) {
                 notify("Please enter a file name.");
                 return;
             }
-
-            if (!name.includes(".")) {
-                if (selectedNewFileType === 'txt') name += ".txt";
-                else if (selectedNewFileType === 'json') name += ".json";
-                else if (selectedNewFileType === 'py') name += ".py";
-            }
-
-            const cleanName = name.replace(/[^a-zA-Z0-9_.-]/g, "");
-            if (!cleanName) {
-                notify("Invalid file name. Use letters, numbers, underscores, and dots.");
+            const defaultExt = { txt: ".txt", json: ".json", py: ".py" }[selectedNewFileType] || "";
+            const checked = Common.cleanFileName(input.value, { defaultExt });
+            if (checked.error) {
+                notify(checked.error);
                 return;
             }
-
-            if (projectState.files[cleanName] !== undefined) {
+            const cleanName = checked.name;
+            if (cleanName in projectState.files) {
                 notify(`File "${cleanName}" already exists in the project.`);
                 return;
             }
@@ -2330,16 +2357,20 @@ print("Routine completed successfully!")
                 initialContent = `# ${cleanName}\n# Created for project: ${projectState.current_project}\n\n`;
             } else if (cleanName.endsWith('.json')) {
                 initialContent = "{\n  \n}\n";
-            } else if (cleanName.endsWith('.txt')) {
-                initialContent = "";
             }
 
+            // A new file is an unsaved change like any edit: it reaches the server with Save / Commit.
+            // (It used to be uploaded straight away, which on a branch overwrote main's working copy.)
+            fileBuffer.capture();
             projectState.files[cleanName] = initialContent;
             closeNewFileModal();
+            fileBuffer.load(cleanName);
             saveProjectToStorage();
-            switchToFile(cleanName);
-            syncActiveProjectToServer();
-            appendStudentLog(`\n[PROJECT] Created new file: "${cleanName}".\n`);
+            renderEditorTabs();
+            renderProjectExplorer();
+            StudentRepo.markEdited();
+            appendStudentLog(`\n[PROJECT] Created new file: "${cleanName}" (not saved yet).\n`);
+            setTimeout(() => { if (editor) { editor.layout(); editor.focus(); } }, 30);
         }
 
         let isInitialProjectCreation = false;
@@ -2390,6 +2421,8 @@ print("Routine completed successfully!")
             let rawName = input ? input.value.trim() : "";
             if (!rawName) rawName = "my_robot_project";
             const clean = rawName.replace(/[^a-zA-Z0-9_-]/g, "_");
+            // Ask before creating anything: the new project replaces what is in the editor.
+            if (!isInitialProjectCreation && !StudentRepo.confirmDiscard(`create "${clean}"`)) return;
 
             try {
                 const res = await fetch('/api/workspace/projects', {
@@ -2409,9 +2442,8 @@ print("Routine completed successfully!")
                 if (modal) modal.classList.add("hidden");
                 isInitialProjectCreation = false;
                 appendStudentLog(`\n[WORKSPACE] Created project folder "${clean}" for ${selectedModel === 'niryo' ? 'Niryo Ned' : 'Universal Robots UR3'}.\n`);
-                selectStudentRobotModel(selectedModel, false);
-                await fetchWorkspaceFolders();
-                await onSelectStudentProject(clean);
+                await fetchWorkspaceFolders(true);
+                await onSelectStudentProject(clean, true);     // discarding was confirmed above; this also switches the robot
             } catch (e) {
                 notify("Failed to create project folder: " + e.message);
             }
@@ -2441,9 +2473,13 @@ print("Routine completed successfully!")
                     notify("Failed to rename project: " + (data.detail || "Error"));
                     return;
                 }
+                // The folder and its history moved on the server; keep the editor (and any unsaved edits) as they are.
+                projectState.current_project = clean;
+                projectState.folderName = clean;
+                saveProjectToStorage();
+                StudentRepo.renamed(clean);
                 appendStudentLog(`\n[WORKSPACE] Renamed project from "${current}" to "${clean}".\n`);
-                await fetchWorkspaceFolders();
-                await onSelectStudentProject(clean);
+                await fetchWorkspaceFolders(true);
             } catch (e) {
                 notify("Rename failed: " + e.message);
             }
@@ -2472,72 +2508,66 @@ print("Routine completed successfully!")
             const input = document.getElementById("renameFileNameInput");
             if (!input) return;
 
-            let newName = input.value.trim().replace(/[^a-zA-Z0-9_.-]/g, "");
-            if (!newName) {
-                notify("Please enter a valid file name.");
+            const oldName = renameTargetFile;
+            const oldExt = oldName.includes(".") ? oldName.slice(oldName.lastIndexOf(".")) : "";
+            const checked = Common.cleanFileName(input.value, { defaultExt: oldExt });
+            if (checked.error) {
+                notify(checked.error);
                 return;
             }
-
-            if (newName === renameTargetFile) {
+            const newName = checked.name;
+            if (newName === oldName) {
                 closeRenameFileModal();
                 return;
             }
-
-            if (projectState.files[newName]) {
+            if (newName in projectState.files) {          // `in`: an empty file must not be silently replaced
                 notify(`File "${newName}" already exists in the project.`);
                 return;
             }
 
-            if (editor && projectState.active_file === renameTargetFile) {
-                projectState.files[renameTargetFile] = editor.getValue();
-            }
-
-            const content = projectState.files[renameTargetFile];
-            delete projectState.files[renameTargetFile];
-            projectState.files[newName] = content;
-
-            if (projectState.entry_point === renameTargetFile) {
-                projectState.entry_point = newName;
-            }
-            if (projectState.active_file === renameTargetFile) {
-                projectState.active_file = newName;
-            }
+            fileBuffer.capture();
+            const renamed = {};                             // same position in the tab bar
+            for (const [k, v] of Object.entries(projectState.files)) renamed[k === oldName ? newName : k] = v;
+            projectState.files = renamed;
+            if (projectState.entry_point === oldName) projectState.entry_point = newName;
+            if (projectState.active_file === oldName) projectState.active_file = newName;
+            fileBuffer.rename(oldName, newName);
 
             closeRenameFileModal();
             saveProjectToStorage();
             renderEditorTabs();
             renderProjectExplorer();
-            switchToFile(projectState.active_file);
-            appendStudentLog(`\n[PROJECT] Renamed "${renameTargetFile}" -> "${newName}".\n`);
+            StudentRepo.markEdited();
+            appendStudentLog(`\n[PROJECT] Renamed "${oldName}" -> "${newName}" (not saved yet).\n`);
         }
 
+        // Removes exactly one file. The editor text belonged to that file, so it is dropped with it and never
+        // written into the file shown next (that was the "deleting notes.txt overwrites main.py" bug).
         function deleteFile(filename) {
-            const fileNames = Object.keys(projectState.files);
-            if (fileNames.length <= 1) {
-                notify("Cannot delete the only file in the project. Projects must contain at least one file.");
+            if (!projectState.files || !(filename in projectState.files)) return;
+            if (Object.keys(projectState.files).length <= 1) {
+                notify("A project needs at least one file, so its last file can't be deleted.");
+                return;
+            }
+            if (!confirm(`Delete "${filename}"?\n\nOnly this file is removed; your other files stay exactly as they are. ${persistHint()}`)) {
                 return;
             }
 
-            if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
-                return;
-            }
-
+            fileBuffer.capture();                       // keep unsaved edits if another file is open
             delete projectState.files[filename];
-
+            fileBuffer.forget(filename);
             if (projectState.entry_point === filename) {
-                const otherPy = Object.keys(projectState.files).find(f => f.endsWith('.py'));
-                projectState.entry_point = otherPy || Object.keys(projectState.files)[0];
+                projectState.entry_point = Common.resolveEntry(projectState.files, null);
             }
-
-            if (projectState.active_file === filename) {
-                projectState.active_file = projectState.entry_point || Object.keys(projectState.files)[0];
+            if (!(projectState.active_file in projectState.files)) {
+                fileBuffer.load(projectState.entry_point);
             }
 
             saveProjectToStorage();
-            switchToFile(projectState.active_file);
             renderEditorTabs();
             renderProjectExplorer();
-            appendStudentLog(`\n[PROJECT] Deleted file "${filename}".\n`);
+            StudentRepo.markEdited();
+            appendStudentLog(`\n[PROJECT] Deleted file "${filename}" (not saved yet).\n`);
         }
 
         function setFileAsEntryPoint(filename) {
@@ -2549,7 +2579,8 @@ print("Routine completed successfully!")
             saveProjectToStorage();
             renderEditorTabs();
             renderProjectExplorer();
-            appendStudentLog(`\n[PROJECT] "${filename}" is now set as the project's Main Entry Point.\n`);
+            StudentRepo.markEdited();
+            appendStudentLog(`\n[PROJECT] "${filename}" now runs when you Simulate or Submit (not saved yet).\n`);
         }
 
         async function exportProjectZip() {
@@ -2558,9 +2589,7 @@ print("Routine completed successfully!")
                 return;
             }
 
-            if (editor && projectState.active_file) {
-                projectState.files[projectState.active_file] = editor.getValue();
-            }
+            fileBuffer.capture();
 
             const zip = new JSZip();
             const folderName = projectState.folderName || "robot_project";
@@ -2596,19 +2625,24 @@ print("Routine completed successfully!")
 
             const reader = new FileReader();
             reader.onload = (e) => {
-                const content = e.target.result;
-                let cleanName = file.name.replace(/[^a-zA-Z0-9_.-]/g, "");
-                if (projectState.files[cleanName]) {
-                    if (!confirm(`File "${cleanName}" already exists. Overwrite?`)) {
-                        event.target.value = "";
-                        return;
-                    }
-                }
-                projectState.files[cleanName] = content;
-                saveProjectToStorage();
-                switchToFile(cleanName);
-                appendStudentLog(`\n[PROJECT] Imported external file: "${cleanName}" (${file.size} bytes).\n`);
                 event.target.value = "";
+                const checked = Common.cleanFileName(file.name);
+                if (checked.error) {
+                    notify(`Can't import "${file.name}": ${checked.error}`);
+                    return;
+                }
+                const cleanName = checked.name;
+                if (cleanName in projectState.files && !confirm(`File "${cleanName}" already exists. Replace it with the imported file?`)) {
+                    return;
+                }
+                fileBuffer.capture();
+                projectState.files[cleanName] = e.target.result;
+                fileBuffer.load(cleanName);       // show the imported text; the old editor text must not be captured over it
+                saveProjectToStorage();
+                renderEditorTabs();
+                renderProjectExplorer();
+                StudentRepo.markEdited();
+                appendStudentLog(`\n[PROJECT] Imported external file: "${cleanName}" (${file.size} bytes, not saved yet).\n`);
             };
             reader.readAsText(file);
         }
@@ -2625,13 +2659,13 @@ print("Routine completed successfully!")
             try {
                 require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' } });
                 require(['vs/editor/editor.main'], async function () {
-                    initProjectState();
+                    // Login may already have loaded a project from the server: never replace it with the local copy.
+                    if (!projectState.files || !Object.keys(projectState.files).length) initProjectState();
 
-                    const initialCode = (projectState.files && projectState.files[projectState.active_file]) || buildDefaultCode(configuredIp, currentRobotModel);
                     const edCont = document.getElementById('editorContainer');
                     if (edCont && !editor) {
                         editor = monaco.editor.create(edCont, {
-                            value: initialCode,
+                            value: "",
                             language: 'python',
                             theme: Theme.monacoTheme(),
                             automaticLayout: true,
@@ -2661,13 +2695,8 @@ print("Routine completed successfully!")
                             if (editor) editor.layout();
                         });
 
-                        editor.onDidChangeModelContent(() => {
-                            if (projectState.active_file) {
-                                projectState.files[projectState.active_file] = editor.getValue();
-                                saveProjectToStorage();
-                            }
-                            StudentRepo.markEdited();
-                        });
+                        // Edits go into the file the text was loaded from (fileBuffer), then autosave locally.
+                        editor.onDidChangeModelContent(() => fileBuffer.handleChange());
 
                         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function() {
                             saveCodeLocally();
@@ -2676,6 +2705,8 @@ print("Routine completed successfully!")
                         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function() {
                             submitCode();
                         });
+
+                        fileBuffer.attach();          // show the active file (an empty file stays empty)
                     }
 
                     renderEditorTabs();
@@ -2732,23 +2763,16 @@ print("Routine completed successfully!")
             if (exTitle) exTitle.innerText = `Lab Examples (${modelLabel})`;
         }
 
+        // Replaces the files in the editor with the starter main.py. It keeps the open project (the old version
+        // threw away current_project, so the next Save silently saved nothing).
         function resetEditorToDefault() {
             const modelLabel = (currentRobotModel === 'niryo') ? 'Niryo Ned' : 'Universal Robots UR3';
-            if (confirm(`Reset project files to default ${modelLabel} template? Any unsaved edits will be lost.`)) {
-                projectState = {
-                    folderName: "robot_project",
-                    entry_point: "main.py",
-                    active_file: "main.py",
-                    files: {
-                        "main.py": buildDefaultCode(configuredIp, currentRobotModel)
-                    }
-                };
-                editor.setValue(projectState.files["main.py"]);
-                saveProjectToStorage();
-                renderEditorTabs();
-                renderProjectExplorer();
-                appendStudentLog(`\n[PROJECT] Reset project to default ${modelLabel} starter template.\n`);
-            }
+            const count = Object.keys(projectState.files || {}).length;
+            if (!confirm(`Reset "${projectState.current_project || 'this project'}" to the default ${modelLabel} starter?\n\nAll ${count} file(s) in the editor are replaced by a single main.py. ${persistHint()}`)) return;
+            replaceProjectFiles({ "main.py": buildDefaultCode(configuredIp, currentRobotModel) }, "main.py");
+            saveProjectToStorage();
+            StudentRepo.markEdited();
+            appendStudentLog(`\n[PROJECT] Reset project to default ${modelLabel} starter template (not saved yet).\n`);
         }
 
         async function checkRobotStatus() {
@@ -2792,9 +2816,7 @@ print("Routine completed successfully!")
         }
 
         async function checkSyntax() {
-            if (editor && projectState.active_file) {
-                projectState.files[projectState.active_file] = editor.getValue();
-            }
+            fileBuffer.capture();
             saveProjectToStorage();
 
             const btn = document.getElementById("btnSyntax");
@@ -2804,7 +2826,7 @@ print("Routine completed successfully!")
             }
 
             try {
-                const entryCode = projectState.files[projectState.entry_point] || (editor ? editor.getValue() : "");
+                const entryCode = projectState.files[projectState.entry_point] ?? "";
                 const res = await fetch('/api/check-syntax', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2834,16 +2856,16 @@ print("Routine completed successfully!")
         }
 
         async function simulateCode() {
-            if (editor && projectState.active_file) {
-                projectState.files[projectState.active_file] = editor.getValue();
-            }
+            fileBuffer.capture();
             saveProjectToStorage();
 
-            const entryCode = projectState.files[projectState.entry_point] || (editor ? editor.getValue() : "");
+            const entryCode = projectState.files[projectState.entry_point] ?? "";
             if (!entryCode || !entryCode.trim()) {
                 notify(`Entry file "${projectState.entry_point}" is empty. Please add code before simulating.`);
                 return;
             }
+            // Generated files belong to the project + branch + version the run was started from.
+            const runFor = { project: projectState.current_project, branch: StudentRepo.state.branch, commit: StudentRepo.state.commitId };
 
             // Automatically switch to Simulation & Live Output View!
             switchMainPortalView('sim');
@@ -2901,7 +2923,7 @@ print("Routine completed successfully!")
 
                 // Auto-switch visualizer if robot model detected in code
                 if (data.robot_model && data.robot_model !== currentRobotModel) {
-                    selectStudentRobotModel(data.robot_model, false);
+                    selectStudentRobotModel(data.robot_model);
                 } else if (ur3Vis && ur3Vis.currentModel !== currentRobotModel) {
                     ur3Vis.setRobotModel(currentRobotModel);
                 }
@@ -2929,18 +2951,9 @@ print("Routine completed successfully!")
                     appendStudentLog("[INFO] Routine completed (no motion waypoints commanded).\n");
                 }
 
-                // Capture any sandbox output files generated during simulation
+                // Files the script wrote during the simulation
                 if (data.output_files && Object.keys(data.output_files).length > 0) {
-                    let createdList = [];
-                    for (const [fname, fcontent] of Object.entries(data.output_files)) {
-                        projectState.files[fname] = fcontent;
-                        createdList.push(fname);
-                    }
-                    saveProjectToStorage();
-                    renderEditorTabs();
-                    renderProjectExplorer();
-                    appendStudentLog(`\n[SANDBOX I/O] Generated file(s) saved to workspace: ${createdList.join(", ")}\n`);
-                    syncActiveProjectToServer().catch(e => console.warn('Background sync failed:', e));
+                    mergeSimulationOutputs(data.output_files, runFor);
                 }
             } catch (err) {
                 clearTimeout(timeoutId);
@@ -2959,6 +2972,41 @@ print("Routine completed successfully!")
                     btn.innerHTML = "<span>Simulate</span>";
                 }
             }
+        }
+
+        // Adds files written by a simulation to the project they were produced for.
+        //  - on main's working copy they are saved straight away (as before);
+        //  - on a branch / older version they stay in the editor as uncommitted changes (they used to be
+        //    uploaded into main's working copy, mixing the branch's files into it);
+        //  - if the user switched project / branch / version meanwhile they are only reported.
+        function mergeSimulationOutputs(outputs, runFor) {
+            const names = Object.keys(outputs);
+            const repo = StudentRepo.state;
+            if (runFor.project !== projectState.current_project || runFor.branch !== repo.branch || runFor.commit !== repo.commitId) {
+                appendStudentLog(`\n[SANDBOX I/O] The simulation wrote ${names.join(", ")}, but you switched to another project/version meanwhile, so they were not added. Simulate again to get them.\n`);
+                return;
+            }
+            fileBuffer.capture();
+            Object.assign(projectState.files, outputs);
+            // If the open file was regenerated, show the new text (otherwise the old editor text would be saved over it).
+            if (names.includes(projectState.active_file)) fileBuffer.load(projectState.active_file);
+            renderEditorTabs();
+            renderProjectExplorer();
+            if (!onMainWorkingCopy()) {
+                StudentRepo.markEdited();
+                appendStudentLog(`\n[SANDBOX I/O] Generated file(s) added to the editor: ${names.join(", ")}. Commit to keep them on "${repo.branch}".\n`);
+                return;
+            }
+            saveProjectToStorage();
+            syncActiveProjectToServer()
+                .then((sent) => {
+                    if (sent.project === projectState.current_project && StudentRepo.onWorkingCopy()) StudentRepo.markSaved(sent);
+                    appendStudentLog(`\n[SANDBOX I/O] Generated file(s) saved to your project: ${names.join(", ")}\n`);
+                })
+                .catch((e) => {
+                    StudentRepo.markEdited();
+                    appendStudentLog(`\n[SANDBOX I/O] Generated file(s) added to the editor but NOT saved (${e.message}): ${names.join(", ")}. Press Save to retry.\n`);
+                });
         }
 
         function openCommitMessageModal(programName) {
@@ -2997,14 +3045,12 @@ print("Routine completed successfully!")
 
             const programName = projectState.current_project || "default";
 
-            if (editor && projectState.active_file) {
-                projectState.files[projectState.active_file] = editor.getValue();
-            }
+            fileBuffer.capture();
             if (StudentRepo.isOpen() && (StudentRepo.state.branch !== 'main' || typeof StudentRepo.state.commitId === 'number') &&
                 !confirm(`You are viewing ${StudentRepo.state.branch !== 'main' ? 'branch "' + StudentRepo.state.branch + '"' : 'commit #' + StudentRepo.state.commitId}.\nSubmit sends exactly what is in the editor to "main" as a new iteration. Continue?`)) return;
             saveProjectToStorage();
 
-            const entryCode = projectState.files[projectState.entry_point] || (editor ? editor.getValue() : "");
+            const entryCode = projectState.files[projectState.entry_point] ?? "";
             if (!entryCode || !entryCode.trim()) {
                 notify(`Entry file "${projectState.entry_point}" is empty. Please add code before sending for execution.`);
                 return;
@@ -3138,6 +3184,15 @@ print("Routine completed successfully!")
                         }
                     }
                 }).catch(err => console.warn("Background simulation animation error:", err));
+
+                // A submission is a commit on main; like the Commit dialog, it also becomes the saved working copy,
+                // so the instructor's live view matches what was submitted and nothing stays "unsaved".
+                if (onMainWorkingCopy() && StudentRepo.isDirty()) {
+                    syncActiveProjectToServer()
+                        .then((sent) => { if (sent.project === projectState.current_project && StudentRepo.onWorkingCopy()) StudentRepo.markSaved(sent); })
+                        .catch((e) => notify(`Submitted, but your working copy was not saved: ${e.message}`));
+                }
+                StudentRepo.refresh();
 
                 // Refresh saved projects list
                 fetchStudentProjects();
@@ -3342,24 +3397,18 @@ print("Routine completed successfully!")
                 if (ex && (ex.code || ex.files)) {
                     const files = (ex.files && Object.keys(ex.files).length) ? ex.files : { "main.py": ex.code };
                     const names = Object.keys(files);
-                    if (confirm(`Load example "${ex.title}" (${names.length} file${names.length === 1 ? '' : 's'}: ${names.join(', ')})?\nThis replaces ALL files in the current project.`)) {
+                    const onWc = onMainWorkingCopy();
+                    if (confirm(`Load example "${ex.title}" (${names.length} file${names.length === 1 ? '' : 's'}: ${names.join(', ')})?\n\nThis replaces ALL files of "${projectState.current_project}" in the editor${onWc ? ' and saves them' : ''}. ${onWc ? '' : persistHint()}`)) {
                         const targetModel = ex.robot_model || currentRobotModel || 'ur';
                         projectState.robot_model = targetModel;
-                        selectStudentRobotModel(targetModel, false);
+                        selectStudentRobotModel(targetModel);
                         lockStudentProjectRobot(targetModel);
 
                         // Restore the whole example so it runs exactly as the instructor saved it.
-                        projectState.files = { ...files };
-                        projectState.entry_point = (ex.entry_point in files) ? ex.entry_point : names[0];
-                        projectState.active_file = projectState.entry_point;
-
-                        if (editor) {
-                            editor.setValue(projectState.files[projectState.active_file] || "");
-                            setTimeout(() => editor.layout(), 40);
-                        }
-                        saveCodeLocally();
-                        renderEditorTabs();
-                        renderProjectExplorer();
+                        replaceProjectFiles(files, ex.entry_point);
+                        setTimeout(() => editor && editor.layout(), 40);
+                        if (onWc) saveCodeLocally();       // on main it is saved, as before
+                        else StudentRepo.markEdited();     // on a branch / older version it stays an uncommitted change
                         appendStudentLog(`[INFO] Loaded example: ${ex.title} (${names.length} file${names.length === 1 ? '' : 's'})\n`);
                         const dd = document.getElementById("examplesDropdown");
                         if (dd) dd.classList.add("hidden");
@@ -3370,15 +3419,7 @@ print("Routine completed successfully!")
             }
         }
 
-        function escapeHtml(str) {
-            if (!str) return '';
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
+        function escapeHtml(str) { return Common.esc(str); }
 
         // ==========================================
         // Live Run Execution Monitor (Student View-Only)

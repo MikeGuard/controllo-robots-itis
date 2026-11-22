@@ -1,6 +1,7 @@
 // Run: node tests/tree.test.js   (pure helper from static/js/repo.js; no browser needed)
 const assert = require('assert');
 global.window = {}; global.document = { readyState: 'loading', addEventListener() {}, getElementById() { return null; } };
+require('../static/js/common.js');          // loaded before repo.js, as in instructor.html
 require('../static/js/repo.js');
 const { buildTree } = window.RepoTree;
 const names = (n) => n.children.map((c) => (c.dir ? c.name + '/' : c.name));

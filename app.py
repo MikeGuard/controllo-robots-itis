@@ -319,16 +319,20 @@ async def get_approved_students_list():
     return {"students": students}
 
 
-def verify_admin_permission(authorization: Optional[str], required_perm: str) -> Dict[str, Any]:
-    """Helper to verify caller has specific permission or is superadmin."""
+def verify_authenticated_user(authorization: Optional[str]) -> Dict[str, Any]:
+    """The session behind an 'Authorization: Bearer <token>' header (any role), or 401. Every check below starts here."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Authentication required.")
-    token = authorization.replace("Bearer ", "").strip()
-    session = active_sessions.get(token)
+    session = active_sessions.get(authorization.replace("Bearer ", "").strip())
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired session. Please log in again.")
-    role = session.get("role")
-    if role == "superadmin":
+    return session
+
+
+def verify_admin_permission(authorization: Optional[str], required_perm: str) -> Dict[str, Any]:
+    """Helper to verify caller has specific permission or is superadmin."""
+    session = verify_authenticated_user(authorization)
+    if session.get("role") == "superadmin":
         return session
     perms = session.get("permissions") or []
     if "*" in perms or required_perm in perms:
@@ -338,24 +342,22 @@ def verify_admin_permission(authorization: Optional[str], required_perm: str) ->
 
 def verify_any_admin(authorization: Optional[str]) -> Dict[str, Any]:
     """Requires a valid admin or superadmin session (no specific permission)."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    token = authorization.replace("Bearer ", "").strip()
-    session = active_sessions.get(token)
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired session. Please log in again.")
+    session = verify_authenticated_user(authorization)
     if session.get("role") not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Instructor access required.")
     return session
 
 
+def verify_superadmin(authorization: Optional[str], detail: str = "Superadmin access required.") -> Dict[str, Any]:
+    session = verify_authenticated_user(authorization)
+    if session.get("role") != "superadmin":
+        raise HTTPException(status_code=403, detail=detail)
+    return session
+
+
 def repo_session(authorization: Optional[str], owner: str) -> Dict[str, Any]:
     """Admins may use any repository; a student only their own (same rule as the workspace API)."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    session = active_sessions.get(authorization.replace("Bearer ", "").strip())
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired session. Please log in again.")
+    session = verify_authenticated_user(authorization)
     if session.get("role") in ("admin", "superadmin"):
         return session
     if session["username"].lower() != (owner or "").lower():
@@ -363,15 +365,23 @@ def repo_session(authorization: Optional[str], owner: str) -> Dict[str, Any]:
     return session
 
 
-def verify_authenticated_user(authorization: Optional[str]) -> Dict[str, Any]:
-    """Requires any valid authenticated session (student, admin, superadmin)."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    token = authorization.replace("Bearer ", "").strip()
-    session = active_sessions.get(token)
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired session. Please log in again.")
-    return session
+def project_code_errors(files: Optional[Dict[str, str]], code: Optional[str] = None, check_code: bool = False) -> List[str]:
+    """Safety + syntax errors of a program: every .py file of `files` ("[name] error"), and `code` when there are
+    no files (single-file program) or `check_code` is set. The one check behind syntax-check, simulate, submit,
+    send-code, submission edits and commits."""
+    files = files or {}
+    modules = project_module_names(files)
+    errors: List[str] = []
+    if not files or check_code:
+        ok, errs = validate_python_code(code or "", project_modules=modules)
+        if not ok:
+            errors += errs
+    for fname, content in files.items():
+        if fname.endswith(".py"):
+            ok, errs = validate_python_code(content or "", project_modules=modules)
+            if not ok:
+                errors += [f"[{fname}] {e}" for e in errs]
+    return errors
 
 
 @app.post("/api/auth/login")
@@ -530,12 +540,7 @@ async def delete_user_endpoint(user_id: int, authorization: Optional[str] = Head
 @app.get("/api/admin/admins")
 async def get_admins_endpoint(authorization: Optional[str] = Header(default=None)):
     """Lists all admin users and their permissions (superadmin only)."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    token = authorization.replace("Bearer ", "").strip()
-    session = active_sessions.get(token)
-    if not session or session.get("role") != "superadmin":
-        raise HTTPException(status_code=403, detail="Superadmin access required.")
+    verify_superadmin(authorization)
 
     admins = await database.get_admin_users()
     return {"admins": admins}
@@ -547,12 +552,7 @@ async def create_admin_endpoint(
     authorization: Optional[str] = Header(default=None)
 ):
     """Allows superadmin (mike) to create new admin users with granular permissions."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    token = authorization.replace("Bearer ", "").strip()
-    session = active_sessions.get(token)
-    if not session or session.get("role") != "superadmin":
-        raise HTTPException(status_code=403, detail="Only Superadmin can create new admin accounts.")
+    verify_superadmin(authorization, "Only Superadmin can create new admin accounts.")
 
     username = payload.username.strip()
     password = payload.password.strip()
@@ -587,12 +587,7 @@ async def update_permissions_endpoint(
     authorization: Optional[str] = Header(default=None)
 ):
     """Allows superadmin (mike) to modify granular permissions of an admin."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    token = authorization.replace("Bearer ", "").strip()
-    session = active_sessions.get(token)
-    if not session or session.get("role") != "superadmin":
-        raise HTTPException(status_code=403, detail="Only Superadmin can modify admin permissions.")
+    verify_superadmin(authorization, "Only Superadmin can modify admin permissions.")
 
     success = await database.update_user_permissions(user_id, payload.permissions)
     if not success:
@@ -645,12 +640,7 @@ async def set_trusted_student_endpoint(
 
 def _workspace_owner(authorization: Optional[str], owner: Optional[str] = None) -> str:
     """Resolves whose workspace is being accessed. Only admins may access another user's workspace."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    token = authorization.replace("Bearer ", "").strip()
-    session = active_sessions.get(token)
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired session. Please log in again.")
+    session = verify_authenticated_user(authorization)
     if owner and owner.strip() and owner.strip().lower() != session["username"].lower():
         if session.get("role") not in ("admin", "superadmin"):
             raise HTTPException(status_code=403, detail="You can only access your own projects.")
@@ -780,9 +770,19 @@ async def rename_workspace_project(
 ):
     user = _workspace_owner(authorization, owner)
     try:
-        return workspace.rename_project(user, name, payload.new_name)
+        old, new = workspace.clean_project_name(name), workspace.clean_project_name(payload.new_name)
     except workspace.WorkspaceError as e:
         raise _ws_error(e)
+    if old.lower() != new.lower() and await database.list_commits(user, new, limit=1):
+        raise HTTPException(status_code=409, detail=f"'{new}' already has commit history. Please pick another name.")
+    try:
+        result = workspace.rename_project(user, old, new)
+    except workspace.WorkspaceError as e:
+        raise _ws_error(e)
+    if old != new:
+        # Commits and branches belong to the project: they move with the folder, so its history stays attached.
+        await database.rename_repo(user, old, new)
+    return result
 
 
 
@@ -940,24 +940,8 @@ async def reset_emergency_stop(model: Optional[str] = None, authorization: Optio
 
 @app.post("/api/check-syntax")
 async def check_syntax(payload: SyntaxCheckRequest):
-    files = payload.files or {}
-    project_modules = project_module_names(files)
-
-    valid = True
-    errors = []
-
-    if files:
-        for fname, fcontent in files.items():
-            if fname.endswith(".py"):
-                f_valid, f_errors = validate_python_code(fcontent or "", project_modules=project_modules)
-                if not f_valid:
-                    valid = False
-                    for err in f_errors:
-                        errors.append(f"[{fname}] {err}")
-    else:
-        valid, errors = validate_python_code(payload.code or "", project_modules=project_modules)
-
-    return {"valid": valid, "errors": errors}
+    errors = project_code_errors(payload.files, payload.code)
+    return {"valid": not errors, "errors": errors}
 
 
 @app.post("/api/simulate")
@@ -967,24 +951,10 @@ async def simulate_code(payload: SyntaxCheckRequest):
     for smooth 3D browser visualization. Supports multi-file project simulation.
     """
     files = payload.files or {}
-    project_modules = project_module_names(files)
     entry_point = (payload.entry_point or "main.py").strip()
 
-    valid = True
-    errors = []
-
-    if files:
-        for fname, fcontent in files.items():
-            if fname.endswith(".py"):
-                f_valid, f_errors = validate_python_code(fcontent or "", project_modules=project_modules)
-                if not f_valid:
-                    valid = False
-                    for err in f_errors:
-                        errors.append(f"[{fname}] {err}")
-    else:
-        valid, errors = validate_python_code(payload.code or "", project_modules=project_modules)
-
-    if not valid:
+    errors = project_code_errors(files, payload.code)
+    if errors:
         return JSONResponse(
             status_code=422,
             content={"success": False, "detail": "Safety or syntax check failed.", "errors": errors}
@@ -1035,23 +1005,10 @@ async def submit_code(payload: SubmissionRequest):
         )
 
     files = payload.files or {}
-    project_modules = project_module_names(files)
     entry_point = (payload.entry_point or "main.py").strip()
 
-    valid = True
-    errors = []
-    if files:
-        for fname, fcontent in files.items():
-            if fname.endswith(".py"):
-                f_valid, f_errors = validate_python_code(fcontent or "", project_modules=project_modules)
-                if not f_valid:
-                    valid = False
-                    for err in f_errors:
-                        errors.append(f"[{fname}] {err}")
-    else:
-        valid, errors = validate_python_code(payload.code or "", project_modules=project_modules)
-
-    if not valid:
+    errors = project_code_errors(files, payload.code)
+    if errors:
         return JSONResponse(
             status_code=422,
             content={"detail": "Safety or syntax check failed.", "errors": errors}
@@ -1062,10 +1019,9 @@ async def submit_code(payload: SubmissionRequest):
         code_to_save = files[entry_point]
 
     # Determine robot model
-    all_text = code_to_save + " " + " ".join(files.values())
     model = (payload.robot_model or "").strip().lower()
     if model not in ("ur", "niryo"):
-        model = "niryo" if ("pyniryo" in all_text or "NiryoRobot" in all_text) else "ur"
+        model = workspace.detect_robot_model(code_to_save + " " + " ".join(files.values()))
 
     sub_id = await database.create_submission(
         student_name=student_name,
@@ -1298,11 +1254,10 @@ async def approve_submission(
             sub_files = None
 
     override_model = ((payload.robot_model if payload else None) or robot_model or "").strip().lower()
-    all_code = sub.get("code", "") + " " + " ".join((sub_files or {}).values())
     if override_model in ("ur", "niryo"):
         sub_model = override_model
     else:
-        sub_model = sub.get("robot_model") or ("niryo" if ("pyniryo" in all_code or "NiryoRobot" in all_code) else "ur")
+        sub_model = sub.get("robot_model") or workspace.detect_robot_model(sub.get("code", "") + " " + " ".join((sub_files or {}).values()))
     model_name = "Niryo Ned" if sub_model == "niryo" else "UR3"
 
     if engine.is_emergency_halted(sub_model):
@@ -1353,31 +1308,20 @@ async def admin_send_code(payload: AdminSendCodeRequest, authorization: Optional
     prog_name = (payload.program_name or "Admin Routine").strip()
 
     files = payload.files or {}
-    project_modules = project_module_names(files)
 
-    valid, errors = validate_python_code(payload.code, project_modules=project_modules)
-    if files:
-        for fname, fcontent in files.items():
-            if fname.endswith(".py"):
-                f_valid, f_errors = validate_python_code(fcontent, project_modules=project_modules)
-                if not f_valid:
-                    valid = False
-                    for err in f_errors:
-                        errors.append(f"[{fname}] {err}")
-
-    if not valid:
+    errors = project_code_errors(files, payload.code, check_code=True)
+    if errors:
         return JSONResponse(
             status_code=422,
             content={"detail": "Safety check failed on custom code.", "errors": errors}
         )
 
     # Determine robot model (respect admin explicit selection, fall back to code detection)
-    all_text = payload.code + " " + " ".join(files.values())
     req_model = (payload.robot_model or "").strip().lower()
     if req_model in ("ur", "niryo"):
         detected_model = req_model
     else:
-        detected_model = "niryo" if ("pyniryo" in all_text or "NiryoRobot" in all_text) else "ur"
+        detected_model = workspace.detect_robot_model(payload.code + " " + " ".join(files.values()))
     target_ip = config.NIRYO_IP if detected_model == "niryo" else config.UR_IP
     ws_project = (payload.project_name or "").strip() or None
 
@@ -1445,31 +1389,18 @@ async def update_submission_endpoint(sub_id: int, payload: UpdateSubmissionReque
         raise HTTPException(status_code=404, detail="Submission not found")
 
     files = payload.files or {}
-    project_modules = project_module_names(files)
 
-    if payload.code is not None:
-        valid, errors = validate_python_code(payload.code, project_modules=project_modules)
-        if not valid:
+    if payload.code is not None or files:
+        errors = project_code_errors(files, payload.code, check_code=payload.code is not None)
+        if errors:
             return JSONResponse(
                 status_code=422,
                 content={"detail": "Syntax check failed on edited code.", "errors": errors}
             )
 
-    if files:
-        for fname, fcontent in files.items():
-            if fname.endswith(".py"):
-                f_valid, f_errors = validate_python_code(fcontent, project_modules=project_modules)
-                if not f_valid:
-                    return JSONResponse(
-                        status_code=422,
-                        content={"detail": f"Syntax check failed in [{fname}].", "errors": f_errors}
-                    )
-
     detected_model = payload.robot_model
-    if not detected_model:
-        all_text = (payload.code or "") + " " + " ".join(files.values())
-        if payload.code is not None or files:
-            detected_model = "niryo" if ("pyniryo" in all_text or "NiryoRobot" in all_text) else "ur"
+    if not detected_model and (payload.code is not None or files):
+        detected_model = workspace.detect_robot_model((payload.code or "") + " " + " ".join(files.values()))
 
     await database.update_submission_code(
         sub_id=sub_id,
@@ -1611,28 +1542,12 @@ async def _owner_is_admin(owner: str) -> bool:
 def _validate_commit_files(files: Dict[str, str], entry_point: str):
     if not files:
         raise HTTPException(status_code=400, detail="A commit needs at least one file.")
-    if len(files) > workspace.MAX_FILES_PER_PROJECT:
-        raise HTTPException(status_code=400, detail=f"Too many files (max {workspace.MAX_FILES_PER_PROJECT}).")
-    cleaned: Dict[str, str] = {}
-    for fname, content in files.items():
-        try:
-            cname = workspace.clean_filename(fname)
-        except workspace.WorkspaceError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        content = content or ""
-        if len(content.encode("utf-8")) > workspace.MAX_FILE_BYTES:
-            raise HTTPException(status_code=400, detail=f"File '{cname}' is too large.")
-        cleaned[cname] = content
-    entry = (entry_point or "main.py").strip()
-    if entry not in cleaned:
-        entry = "main.py" if "main.py" in cleaned else next(iter(cleaned))
-    modules = project_module_names(cleaned)
-    errors: List[str] = []
-    for fname, content in cleaned.items():
-        if fname.endswith(".py"):
-            ok, errs = validate_python_code(content, project_modules=modules)
-            if not ok:
-                errors += [f"[{fname}] {e}" for e in errs]
+    try:
+        cleaned = workspace.clean_files(files)
+    except workspace.WorkspaceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    entry = workspace.resolve_entry_point(cleaned, entry_point)
+    errors = project_code_errors(cleaned)
     if errors:
         raise HTTPException(status_code=422, detail="Safety or syntax check failed: " + "; ".join(errors[:5]))
     return cleaned, entry
@@ -1651,9 +1566,7 @@ def _working_copy_info(owner: str, project: str) -> Optional[Dict[str, Any]]:
 @app.get("/api/repos")
 async def list_repos(authorization: Optional[str] = Header(default=None)):
     """Every project (folder) with its branches and head commit: commit-backed ones plus workspace-only folders."""
-    if not authorization or not active_sessions.get(authorization.replace("Bearer ", "").strip()):
-        raise HTTPException(status_code=401, detail="Authentication required.")
-    session = active_sessions[authorization.replace("Bearer ", "").strip()]
+    session = verify_authenticated_user(authorization)
     is_admin = session.get("role") in ("admin", "superadmin")
     repos = {(r["owner"].lower(), r["project"].lower()): r for r in await database.list_repo_rows()}
     if not is_admin:
@@ -1851,33 +1764,33 @@ async def get_example_endpoint(example_id: int):
     return ex
 
 
+def _check_example(payload: CreateExampleRequest):
+    """Shared by create / update example: -> (files or None, entry point), or the 422 response to return.
+    Sets payload.code to the entry file's code when the example has files."""
+    files = payload.files if (payload.files and any((v or "").strip() for v in payload.files.values())) else None
+    if files:
+        entry = workspace.resolve_entry_point(files, payload.entry_point or "main.py")
+        payload.code = files[entry]
+    else:
+        if not payload.code.strip():
+            raise HTTPException(status_code=400, detail="Code cannot be empty.")
+        entry = (payload.entry_point or "main.py").strip()
+    errors = project_code_errors(files, payload.code)
+    if errors:
+        return JSONResponse(status_code=422, content={"detail": "Syntax check failed on example code.", "errors": errors})
+    return files, entry
+
+
 @app.post("/api/examples")
 async def create_example_endpoint(payload: CreateExampleRequest, authorization: Optional[str] = Header(default=None)):
     verify_admin_permission(authorization, "can_manage_examples")
     if not payload.title.strip():
         raise HTTPException(status_code=400, detail="Title is required.")
 
-    files = payload.files if (payload.files and any((v or "").strip() for v in payload.files.values())) else None
-    entry = (payload.entry_point or "main.py").strip()
-    if files:
-        if entry not in files:
-            entry = "main.py" if "main.py" in files else next(iter(files))
-        modules = project_module_names(files)
-        errors = []
-        for fname, content in files.items():
-            if fname.endswith(".py"):
-                ok, errs = validate_python_code(content or "", project_modules=modules)
-                if not ok:
-                    errors += [f"[{fname}] {e}" for e in errs]
-        if errors:
-            return JSONResponse(status_code=422, content={"detail": "Syntax check failed on example code.", "errors": errors})
-        payload.code = files[entry]
-    else:
-        if not payload.code.strip():
-            raise HTTPException(status_code=400, detail="Code cannot be empty.")
-        valid, errors = validate_python_code(payload.code)
-        if not valid:
-            return JSONResponse(status_code=422, content={"detail": "Syntax check failed on example code.", "errors": errors})
+    checked = _check_example(payload)
+    if isinstance(checked, JSONResponse):
+        return checked
+    files, entry = checked
 
     model = (payload.robot_model or "ur").strip().lower()
     if model not in ("ur", "niryo"):
@@ -1912,8 +1825,8 @@ async def upload_example_file(
     content = await file.read()
     code = content.decode("utf-8")
 
-    valid, errors = validate_python_code(code)
-    if not valid:
+    errors = project_code_errors(None, code)
+    if errors:
         return JSONResponse(
             status_code=422,
             content={"detail": f"Syntax error in uploaded file {file.filename}.", "errors": errors}
@@ -1956,27 +1869,10 @@ async def update_example_endpoint(example_id: int, payload: CreateExampleRequest
     if not payload.title.strip():
         raise HTTPException(status_code=400, detail="Title is required.")
 
-    files = payload.files if (payload.files and any((v or "").strip() for v in payload.files.values())) else None
-    entry = (payload.entry_point or "main.py").strip()
-    if files:
-        if entry not in files:
-            entry = "main.py" if "main.py" in files else next(iter(files))
-        modules = project_module_names(files)
-        errors = []
-        for fname, content in files.items():
-            if fname.endswith(".py"):
-                ok, errs = validate_python_code(content or "", project_modules=modules)
-                if not ok:
-                    errors += [f"[{fname}] {e}" for e in errs]
-        if errors:
-            return JSONResponse(status_code=422, content={"detail": "Syntax check failed on example code.", "errors": errors})
-        payload.code = files[entry]
-    else:
-        if not payload.code.strip():
-            raise HTTPException(status_code=400, detail="Code cannot be empty.")
-        valid, errors = validate_python_code(payload.code)
-        if not valid:
-            return JSONResponse(status_code=422, content={"detail": "Syntax check failed on example code.", "errors": errors})
+    checked = _check_example(payload)
+    if isinstance(checked, JSONResponse):
+        return checked
+    files, entry = checked
 
     model = (payload.robot_model or "ur").strip().lower()
     if model not in ("ur", "niryo"):

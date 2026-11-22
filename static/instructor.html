@@ -10,6 +10,7 @@
     <script src="/static/design.js"></script>
     <script src="/static/js/store.js"></script>
     <script src="/static/js/estop.js"></script>
+    <script src="/static/js/common.js"></script>
     <script src="/static/js/repo.js"></script>
     <link rel="stylesheet" href="/static/design.css">
     <!-- Monaco Editor CDN -->
@@ -1050,20 +1051,7 @@
     <!-- Monaco Loader -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
     <script>
-        function notify(msg) {
-            let el = document.getElementById("notifyToast");
-            if (!el) {
-                el = document.createElement("div");
-                el.id = "notifyToast";
-                el.setAttribute("role", "status");
-                el.className = "fixed bottom-4 right-4 z-[100] max-w-sm px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 text-xs text-slate-100 transition-opacity duration-200 opacity-0 pointer-events-none";
-                document.body.appendChild(el);
-            }
-            el.textContent = msg;
-            el.style.opacity = "1";
-            clearTimeout(el._t);
-            el._t = setTimeout(() => { el.style.opacity = "0"; }, 4500);
-        }
+        function notify(msg) { Common.notify(msg); }
 
         let viewer = null;
         let studioEditor = null;
@@ -1117,6 +1105,16 @@
             active_file: "main.py",
             files: {}
         };
+        // The editor text always belongs to the file it was loaded from (see Common.createFileBuffer).
+        const studioBuffer = Common.createFileBuffer({
+            editor: () => studioEditor,
+            state: () => adminProjectState,
+            onEdit: () => RepoUI.markEdited(),
+            onLoad: (name) => {
+                const ind = document.getElementById("studioActiveIndicator");
+                if (ind) ind.innerText = `${name} (${(name.split('.').pop() || '').toUpperCase()})`;
+            },
+        });
         let isStudioExplorerOpen = true;
         let allWorkspaceProjectsCache = [];
 
@@ -1320,6 +1318,14 @@ print("Gripper test finished.")
             initMonacoEditor();
         });
 
+        // Reloading or closing the console would drop uncommitted Code Studio edits.
+        window.addEventListener("beforeunload", (e) => {
+            if (typeof RepoUI !== "undefined" && RepoUI.isDirty()) {
+                e.preventDefault();
+                e.returnValue = "";
+            }
+        });
+
         function initMonacoEditor() {
             if (typeof require === 'undefined') {
                 setTimeout(initMonacoEditor, 80);
@@ -1330,14 +1336,13 @@ print("Gripper test finished.")
                 require(['vs/editor/editor.main'], function () {
                     const studioCont = document.getElementById('studioEditorContainer');
                     if (studioCont && !studioEditor) {
-                        const existingCode = (adminProjectState.files && adminProjectState.files[adminProjectState.active_file])
-                            ? adminProjectState.files[adminProjectState.active_file]
-                            : CREATOR_TEMPLATES.default(urIp);
+                        // A project may already be open (Monaco loads asynchronously); otherwise start from the template.
                         if (!adminProjectState.files || Object.keys(adminProjectState.files).length === 0) {
-                            adminProjectState.files = { "main.py": existingCode };
+                            adminProjectState.files = { "main.py": CREATOR_TEMPLATES.default(urIp) };
+                            adminProjectState.active_file = adminProjectState.entry_point = "main.py";
                         }
                         studioEditor = monaco.editor.create(studioCont, {
-                            value: existingCode,
+                            value: "",
                             language: 'python',
                             theme: Theme.monacoTheme(),
                             readOnly: false,
@@ -1358,12 +1363,8 @@ print("Gripper test finished.")
                         });
                         viewer = studioEditor;
 
-                        studioEditor.onDidChangeModelContent(() => {
-                            if (adminProjectState.active_file) {
-                                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-                            }
-                            RepoUI.markEdited();
-                        });
+                        studioEditor.onDidChangeModelContent(() => studioBuffer.handleChange());
+                        studioBuffer.attach();
 
                         studioEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () {
                             RepoUI.openCommit();
@@ -1491,22 +1492,6 @@ print("Gripper test finished.")
             }
         }
 
-        // Kept for older callers: "student:alice:proj" / "admin:mike:proj".
-        async function studioSwitchProject(encodedVal) {
-            if (!encodedVal) return;
-            const parts = encodedVal.split(":");
-            if (parts.length >= 3) return RepoUI.open(parts[1], parts.slice(2).join(":"));
-            return RepoUI.open(currentAdminUser || "admin", encodedVal);
-        }
-
-        async function studioBranchCurrentProject() { return RepoUI.newBranch(); }
-
-        async function studioNewProject() { return RepoUI.newProject(); }
-
-        async function studioRenameProject() { return RepoUI.renameProject(); }
-
-        async function studioDeleteProject() { return RepoUI.deleteProject(); }
-
         // Edits live in the editor until committed. This only captures the editor into the project state and
         // refreshes the "uncommitted changes" indicator; committing is explicit (Ctrl+S / Commit).
         function studioSaveNow(showToast = false) {
@@ -1524,19 +1509,23 @@ print("Gripper test finished.")
             if (badge) badge.innerText = `${files.length} file${files.length === 1 ? '' : 's'}`;
             const tabCountBadge = document.getElementById("studioTabFilesCountBadge");
             if (tabCountBadge) tabCountBadge.innerText = files.length;
+            const changed = RepoUI.changedFiles();
+            const esc = Common.esc;
 
+            // Clicks are handled by RepoUI (data-file / data-act), like the file tree.
             tabsCont.innerHTML = files.map(fname => {
                 const isActive = (fname === adminProjectState.active_file);
                 const isEntry = (fname === adminProjectState.entry_point);
                 return `
-                    <div class="group flex items-center space-x-1.5 px-3 py-1 rounded-t-lg text-xs font-mono cursor-pointer border-t border-x transition select-none ${
+                    <div data-file="${esc(fname)}" data-act="open" role="tab" aria-selected="${isActive}" title="${esc(fname)}" class="group flex items-center space-x-1.5 px-3 py-1 rounded-t-lg text-xs font-mono cursor-pointer border-t border-x transition select-none ${
                         isActive
                             ? 'bg-slate-950 text-sky-400 border-slate-700 font-bold shadow-sm'
                             : 'bg-slate-900/60 text-slate-400 border-transparent hover:bg-slate-800/70 hover:text-slate-200'
-                    }" onclick="studioSwitchFile('${escapeHtml(fname)}')">
-                        <span>${escapeHtml(fname)}</span>
-                        ${isEntry ? '<span title="Entry Point Script" class="px-1 py-0.5 text-[11px] rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-sans font-bold">ENTRY</span>' : ''}
-                        ${files.length > 1 ? `<button onclick="event.stopPropagation(); studioDeleteFile('${escapeHtml(fname)}')" title="Delete ${escapeHtml(fname)}" class="ml-1 text-slate-500 hover:text-rose-400 opacity-60 group-hover:opacity-100 transition">×</button>` : ''}
+                    } ${changed.has(fname) ? 'is-modified' : ''}">
+                        <span>${esc(fname)}</span>
+                        <span class="file-dot" title="Uncommitted changes" aria-label="uncommitted changes"></span>
+                        ${isEntry ? '<span title="Runs when you Simulate or Run" class="px-1 py-0.5 text-[11px] rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-sans font-bold">ENTRY</span>' : ''}
+                        ${files.length > 1 ? `<button type="button" data-act="delete" data-path="${esc(fname)}" title="Delete ${esc(fname)}" aria-label="Delete ${esc(fname)}" class="ml-1 text-slate-500 hover:text-rose-400 opacity-60 group-hover:opacity-100 transition">×</button>` : ''}
                     </div>
                 `;
             }).join("");
@@ -1544,29 +1533,14 @@ print("Gripper test finished.")
 
         function studioRenderExplorer() { RepoUI.renderTree(); }
 
+        function studioRenderFiles() {
+            studioRenderFileTabs();
+            studioRenderExplorer();
+            RepoUI.markEdited();
+        }
+
         function studioSwitchFile(fname) {
-            if (!adminProjectState.files || !(fname in adminProjectState.files)) return;
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
-            adminProjectState.active_file = fname;
-
-            if (studioEditor) {
-                studioEditor.setValue(adminProjectState.files[fname] || "");
-                const ext = fname.split('.').pop().toLowerCase();
-                let lang = 'python';
-                if (ext === 'json') lang = 'json';
-                else if (ext === 'txt' || ext === 'csv' || ext === 'md') lang = 'plaintext';
-                const model = studioEditor.getModel();
-                if (model) monaco.editor.setModelLanguage(model, lang);
-            }
-
-            const ind = document.getElementById("studioActiveIndicator");
-            if (ind) {
-                const ext = fname.split('.').pop().toUpperCase();
-                ind.innerText = `${fname} (${ext})`;
-            }
-
+            if (!studioBuffer.open(fname)) return;      // empty files open too
             studioRenderFileTabs();
             studioRenderExplorer();
             setTimeout(() => { if (studioEditor) studioEditor.layout(); }, 30);
@@ -1575,73 +1549,69 @@ print("Gripper test finished.")
         function studioNewFile() {
             const name = prompt("New file name. Use folder/name.py to create it inside a folder:");
             if (!name || !name.trim()) return;
-            let clean = name.trim().replace(/\\/g, "/").replace(/^\/+/, "");
-            if (!clean.split("/").pop().includes(".")) clean += ".py";
-            clean = clean.split("/").map(seg => seg.replace(/[^a-zA-Z0-9_.-]/g, "")).filter(Boolean).join("/");
-            if (!clean || clean.split("/").some(seg => seg.startsWith("."))) { notify("Invalid file name."); return; }
+            const checked = Common.cleanFileName(name, { folders: true, defaultExt: ".py" });
+            if (checked.error) { notify(checked.error); return; }
+            const clean = checked.name;
             if (clean in adminProjectState.files) {
                 notify(`File "${clean}" already exists.`);
                 return;
             }
+            studioBuffer.capture();
             adminProjectState.files[clean] = clean.endsWith('.py') ? `# ${clean}\n` : (clean.endsWith('.json') ? `{\n  "speed": 0.5\n}\n` : "");
-            studioSwitchFile(clean);
-            studioSaveNow(false);
-            showActionToast(`Created file "${clean}".`);
+            studioBuffer.load(clean);
+            studioRenderFiles();
+            showActionToast(`Created file "${clean}" (not committed yet).`);
         }
 
         function studioRenameFile(oldName) {
             const newNameInput = prompt(`Rename file "${oldName}" to:`, oldName);
             if (!newNameInput || !newNameInput.trim() || newNameInput.trim() === oldName) return;
-            let clean = newNameInput.trim().replace(/\\/g, "/").replace(/^\/+/, "").split("/").map(seg => seg.replace(/[^a-zA-Z0-9_.-]/g, "")).filter(Boolean).join("/");
-            if (!clean || clean.split("/").some(seg => seg.startsWith("."))) { notify("Invalid file name."); return; }
-            if (!clean.split("/").pop().includes(".")) {
-                const oldExt = oldName.includes(".") ? "." + oldName.split(".").pop() : ".py";
-                clean += oldExt;
-            }
+            const oldExt = oldName.includes(".") ? oldName.slice(oldName.lastIndexOf(".")) : ".py";
+            const checked = Common.cleanFileName(newNameInput, { folders: true, defaultExt: oldExt });
+            if (checked.error) { notify(checked.error); return; }
+            const clean = checked.name;
+            if (clean === oldName) return;
             if (clean in adminProjectState.files) {
                 notify(`File "${clean}" already exists.`);
                 return;
             }
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
-            adminProjectState.files[clean] = adminProjectState.files[oldName];
-            delete adminProjectState.files[oldName];
+            studioBuffer.capture();
+            const renamed = {};                         // keeps the tab where it was
+            for (const [k, v] of Object.entries(adminProjectState.files)) renamed[k === oldName ? clean : k] = v;
+            adminProjectState.files = renamed;
             if (adminProjectState.entry_point === oldName) adminProjectState.entry_point = clean;
             if (adminProjectState.active_file === oldName) adminProjectState.active_file = clean;
-            studioSwitchFile(adminProjectState.active_file);
-            studioSaveNow(false);
-            showActionToast(`Renamed "${oldName}" to "${clean}".`);
+            studioBuffer.rename(oldName, clean);
+            studioRenderFiles();
+            showActionToast(`Renamed "${oldName}" to "${clean}" (not committed yet).`);
         }
 
         function studioSetEntryPoint(fname) {
             adminProjectState.entry_point = fname;
-            studioRenderFileTabs();
-            studioRenderExplorer();
-            studioSaveNow(false);
-            showActionToast(`Entry point set to "${fname}".`);
+            studioRenderFiles();
+            showActionToast(`Entry point set to "${fname}" (not committed yet).`);
         }
 
+        // Removes exactly one file; its editor text is dropped with it and never written into another file.
         function studioDeleteFile(fname) {
             const keys = Object.keys(adminProjectState.files || {});
+            if (!keys.includes(fname)) return;
             if (keys.length <= 1) {
                 notify("A project must contain at least one file.");
                 return;
             }
-            if (!confirm(`Delete file "${fname}"?`)) return;
+            if (!confirm(`Delete "${fname}"?\n\nOnly this file is removed; the other files stay as they are. Nothing changes on the server until you commit.`)) return;
+            studioBuffer.capture();
             delete adminProjectState.files[fname];
-            const remaining = Object.keys(adminProjectState.files);
+            studioBuffer.forget(fname);
             if (adminProjectState.entry_point === fname) {
-                adminProjectState.entry_point = remaining.find(f => f.endsWith('.py')) || remaining[0];
+                adminProjectState.entry_point = Common.resolveEntry(adminProjectState.files, null);
             }
-            if (adminProjectState.active_file === fname) {
-                adminProjectState.active_file = adminProjectState.entry_point;
-                if (studioEditor) studioEditor.setValue(adminProjectState.files[adminProjectState.active_file] || "");
+            if (!(adminProjectState.active_file in adminProjectState.files)) {
+                studioBuffer.load(adminProjectState.entry_point);
             }
-            studioRenderFileTabs();
-            studioRenderExplorer();
-            studioSaveNow(false);
-            showActionToast(`Deleted file "${fname}".`);
+            studioRenderFiles();
+            showActionToast(`Deleted "${fname}" (not committed yet).`);
         }
 
         function studioToggleExplorer() {
@@ -1657,11 +1627,16 @@ print("Gripper test finished.")
             if (!file) return;
             const reader = new FileReader();
             reader.onload = (e) => {
-                const fname = file.name.replace(/[^a-zA-Z0-9_.-]/g, "");
+                evt.target.value = "";
+                const checked = Common.cleanFileName(file.name);
+                if (checked.error) { notify(`Can't import "${file.name}": ${checked.error}`); return; }
+                const fname = checked.name;
+                if (fname in adminProjectState.files && !confirm(`"${fname}" already exists. Replace it with the imported file?`)) return;
+                studioBuffer.capture();
                 adminProjectState.files[fname] = e.target.result;
-                studioSwitchFile(fname);
-                studioSaveNow(false);
-                showActionToast(`Imported "${fname}".`);
+                studioBuffer.load(fname);               // show the imported text, never capture the old one over it
+                studioRenderFiles();
+                showActionToast(`Imported "${fname}" (not committed yet).`);
             };
             reader.readAsText(file);
         }
@@ -1674,40 +1649,14 @@ print("Gripper test finished.")
             showActionToast(`Target execution platform set to ${sel.value === 'niryo' ? 'Niryo Ned' : 'UR3 Arm'}.`);
         }
 
-        function copyCurrentToStudio() {
-            if (!selectedSubId) return;
-            const sub = submissionsList.find(s => s.id === selectedSubId);
-            if (!sub) return;
-            let files = sub.files;
-            if (typeof files === 'string' && files.trim()) {
-                try { files = JSON.parse(files); } catch(e) { files = null; }
-            }
-            if (!files || typeof files !== 'object' || Object.keys(files).length === 0) {
-                files = { "main.py": sub.code || "" };
-            }
-            adminProjectState.files = { ...files };
-            adminProjectState.entry_point = ("main.py" in files) ? "main.py" : Object.keys(files)[0];
-            adminProjectState.active_file = adminProjectState.entry_point;
-
-            const nameInput = document.getElementById("creatorProgName");
-            if (nameInput) nameInput.value = `${sub.program_name || 'Queued'}_copy`;
-
-            switchAdminTab('code');
-            if (studioEditor) studioEditor.setValue(adminProjectState.files[adminProjectState.active_file] || "");
-            studioRenderFileTabs();
-            studioRenderExplorer();
-            studioSaveNow();
-            showActionToast(`Loaded submission #${sub.id} into Code Studio.`);
-        }
-
         async function simulateStudioProject() {
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
+            RepoUI.capture();
             await studioSaveNow(false);
 
-            const entryCode = adminProjectState.files[adminProjectState.entry_point] || (studioEditor ? studioEditor.getValue() : "");
+            const entryCode = adminProjectState.files[adminProjectState.entry_point] ?? "";
             const model = document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : "ur";
+            // Generated files belong to the project / branch / commit the run was started from.
+            const runFor = `${RepoUI.state.owner}/${RepoUI.state.project}@${RepoUI.state.branch}#${RepoUI.state.commitId}`;
 
             switchAdminTab('sim');
 
@@ -1752,17 +1701,23 @@ print("Gripper test finished.")
                     simBadge.innerText = "READY";
                 }
 
-                // Capture sandbox output files!
+                // Files the script wrote: added to the editor as uncommitted changes of the version that ran.
                 if (data.output_files && Object.keys(data.output_files).length > 0) {
-                    for (const [fname, fcontent] of Object.entries(data.output_files)) {
-                        adminProjectState.files[fname] = fcontent;
-                    }
-                    studioRenderFileTabs();
-                    studioRenderExplorer();
-                    studioSaveNow(false);
-                    appendSimLog(`
-[SANDBOX I/O] Generated file(s) saved in project: ${Object.keys(data.output_files).join(", ")}
+                    const names = Object.keys(data.output_files);
+                    if (runFor !== `${RepoUI.state.owner}/${RepoUI.state.project}@${RepoUI.state.branch}#${RepoUI.state.commitId}`) {
+                        appendSimLog(`
+[SANDBOX I/O] The script wrote ${names.join(", ")}, but another project/branch/commit is open now, so they were not added.
 `);
+                    } else {
+                        studioBuffer.capture();
+                        Object.assign(adminProjectState.files, data.output_files);
+                        // A regenerated open file must show the new text, or the old editor text would be captured over it.
+                        if (names.includes(adminProjectState.active_file)) studioBuffer.load(adminProjectState.active_file);
+                        studioRenderFiles();
+                        appendSimLog(`
+[SANDBOX I/O] Generated file(s) added to the project (not committed yet): ${names.join(", ")}
+`);
+                    }
                 }
 
                 if (data.logs && data.logs.length > 0) {
@@ -2450,41 +2405,17 @@ print("Gripper test finished.")
                 // Templates replace the ENTRY file, never whichever helper file happens to be open.
                 const entry = adminProjectState.entry_point || "main.py";
                 if (!confirm(`Replace the contents of ${entry} with this template? (Other files are not touched. Nothing is lost until you commit.)`)) return;
-                RepoUI.capture();
+                studioBuffer.capture();
                 adminProjectState.files[entry] = code;
-                studioSwitchFile(entry);
-                if (studioEditor) studioEditor.setValue(code);
-                studioSaveNow(false);
-                showActionToast("Loaded template into Code Studio");
+                studioBuffer.load(entry);
+                studioRenderFiles();
+                showActionToast("Loaded template into Code Studio (not committed yet)");
             }
-        }
-
-        function handleCreatorFileImport(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                if (studioEditor) studioEditor.setValue(e.target.result);
-                if (adminProjectState.active_file) {
-                    adminProjectState.files[adminProjectState.active_file] = e.target.result;
-                }
-                let name = file.name;
-                if (name.endsWith(".py")) name = name.slice(0, -3);
-                const progNameInput = document.getElementById("creatorProgName");
-                if (progNameInput) progNameInput.value = name;
-                studioSaveNow(false);
-                showActionToast(`Imported file "${file.name}"`);
-            };
-            reader.readAsText(file);
-            event.target.value = "";
         }
 
         async function checkCreatorSyntax() {
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
-            const entryCode = adminProjectState.files[adminProjectState.entry_point] || (studioEditor ? studioEditor.getValue() : "");
+            RepoUI.capture();
+            const entryCode = adminProjectState.files[adminProjectState.entry_point] ?? "";
             try {
                 const res = await fetch('/api/check-syntax', {
                     method: 'POST',
@@ -2509,12 +2440,10 @@ print("Gripper test finished.")
         }
 
         async function sendCreatorCode(executeNow = false) {
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
+            RepoUI.capture();
             await studioSaveNow(false);
 
-            const entryCode = adminProjectState.files[adminProjectState.entry_point] || (studioEditor ? studioEditor.getValue() : "");
+            const entryCode = adminProjectState.files[adminProjectState.entry_point] ?? "";
             const progName = document.getElementById("creatorProgName").value.trim() || "Admin Routine";
             const targetModel = document.getElementById("creatorModelSelect").value;
 
@@ -2954,9 +2883,7 @@ print("Gripper test finished.")
             };
         }
 
-        function escapeHtml(str) {
-            return String(str || "").replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
+        function escapeHtml(str) { return Common.esc(str); }
 
         // ==========================================
         // --- Run Page Telemetry & Controller Debug Console ---
@@ -3553,6 +3480,7 @@ print("Gripper test finished.")
         }
 
         async function logoutAdmin() {
+            if (!RepoUI.confirmDiscard('sign out')) return;
             try {
                 if (currentAdminToken) {
                     await fetch("/api/auth/logout", {
@@ -4015,9 +3943,7 @@ print("Gripper test finished.")
         }
 
         function snapshotStudioProject() {
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
+            RepoUI.capture();
             const files = { ...(adminProjectState.files || {}) };
             const entry = (adminProjectState.entry_point in files) ? adminProjectState.entry_point : Object.keys(files)[0];
             const history = adminProjectState.is_student_project
@@ -4096,9 +4022,7 @@ print("Gripper test finished.")
         }
 
         function pullCodeFromStudioToExample() {
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
+            RepoUI.capture();
             const model = document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : "ur";
             const title = adminProjectState.current_project || "Studio Example";
             setExampleProject(snapshotStudioProject());
@@ -4110,9 +4034,7 @@ print("Gripper test finished.")
         }
 
         function openSaveAsExampleModal() {
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
+            RepoUI.capture();
             const currentModel = document.getElementById("creatorModelSelect") ? document.getElementById("creatorModelSelect").value : "ur";
             const currentName = adminProjectState.current_project || "Studio Routine";
 
@@ -4183,9 +4105,7 @@ print("Gripper test finished.")
                 notify("JSZip library is still loading. Please try again in a moment.");
                 return;
             }
-            if (studioEditor && adminProjectState.active_file) {
-                adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-            }
+            RepoUI.capture();
             const zip = new JSZip();
             const projName = adminProjectState.current_project || "admin_project";
             const folder = zip.folder(projName);
@@ -4270,7 +4190,7 @@ print("Gripper test finished.")
             const files = { ...(ex.files || { "main.py": ex.code || "" }) };
             const entry = (ex.entry_point in files) ? ex.entry_point : Object.keys(files)[0];
             switchAdminTab('code');
-            if (!(await studioConfirmDiscard())) return;
+            if (!RepoUI.confirmDiscard('load the example')) return;
             // Find a free project name, then create it as a new project whose first commit is the example.
             const existing = new Set((RepoUI.state.repos || []).filter(r => r.owner === (currentAdminUser || 'admin')).map(r => r.project.toLowerCase()));
             let name = base, i = 2; while (existing.has(name.toLowerCase())) name = `${base}_${i++}`;
@@ -4285,10 +4205,6 @@ print("Gripper test finished.")
                 await RepoUI.open(currentAdminUser || 'admin', name, { force: true });
                 showActionToast(`Loaded example "${ex.title}" as project "${name}" (${Object.keys(files).length} file(s)).`);
             } catch (e) { notify("Could not load example: " + e.message); }
-        }
-
-        function studioConfirmDiscard() {
-            return Promise.resolve(!RepoUI.isDirty() || confirm("You have uncommitted changes in the editor. Discard them?"));
         }
 
         async function deleteAdminExample(id) {
