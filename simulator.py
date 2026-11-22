@@ -31,6 +31,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sandbox_io
+import workspace
+from safety import project_module_names
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -1211,6 +1213,52 @@ def build_analytics(waypoints: List[Dict[str, Any]], timeline: Timeline, model: 
 # Script simulation
 # ---------------------------------------------------------------------------
 
+class _PrintCapture:
+    """What sys.stdout points to while a simulated program runs: every line printed by ANY of its files is
+    collected (in order, bounded) into the simulation log, like the robot run's stdout log.
+
+    Before, only the entry file had a capturing print(); a helper module imported by it used the real print,
+    whose text went to the worker's stdout (the JSON result channel) and was silently dropped."""
+    MAX_LINES = 3000
+
+    def __init__(self, sink: List[str]):
+        self.sink = sink
+        self.partial = ""
+        self.truncated = False
+
+    def write(self, text) -> int:
+        text = str(text)
+        self.partial += text
+        if "\n" in self.partial:
+            *lines, self.partial = self.partial.split("\n")
+            for line in lines:
+                self._add(line)
+        return len(text)
+
+    def _add(self, line: str):
+        if len(self.sink) < self.MAX_LINES:
+            self.sink.append(line)
+        elif not self.truncated:
+            self.truncated = True
+            self.sink.append(f"[SIMULATOR] Output truncated after {self.MAX_LINES} lines.")
+
+    def finish(self):
+        if self.partial:
+            self._add(self.partial)
+            self.partial = ""
+
+    def flush(self):
+        pass
+
+    def isatty(self) -> bool:
+        return False
+
+    def writable(self) -> bool:
+        return True
+
+    encoding = "utf-8"
+
+
 def simulate_script(
     code_str: str,
     robot_model: Optional[str] = None,
@@ -1250,24 +1298,25 @@ def simulate_script(
     else:
         timeline.start_waypoint("ur", UR_HOME_Q, get_tcp_pose_list(UR_HOME_Q))
 
-    def mock_print(*args, **kwargs):
-        captured_logs.append(" ".join(str(a) for a in args))
+    # Output of every project file goes through sys.stdout -> log_capture (see _PrintCapture), so the normal
+    # print() is used everywhere: sep / end / file=... behave exactly as on the robot.
+    log_capture = _PrintCapture(captured_logs)
 
-    def mock_printf(*args, **kwargs):
+    def sim_printf(*args, **kwargs):
+        """Same printf() the robot run's prelude puts in builtins (C-style formatting when possible)."""
         if len(args) > 1 and isinstance(args[0], str) and ("%" in args[0]):
             try:
-                captured_logs.append(args[0] % args[1:])
+                print(args[0] % args[1:], **kwargs)
                 return
             except Exception:
                 pass
-        captured_logs.append(" ".join(str(a) for a in args))
+        print(*args, **kwargs)
 
     import builtins
     import socket
 
     sim_builtins = dict(builtins.__dict__)
-    sim_builtins["print"] = mock_print
-    sim_builtins["printf"] = mock_printf
+    sim_builtins["printf"] = sim_printf
 
     sleep_counter = [0]
 
@@ -1366,7 +1415,7 @@ def simulate_script(
 
     mock_wrap_mod = types.ModuleType("ur_wrapper")
     mock_wrap_mod.RobotArm = MockRobotArm
-    mock_wrap_mod.printf = mock_printf
+    mock_wrap_mod.printf = sim_printf
     mock_wrap_mod.SafetyViolationError = SafetyViolationError
     mock_wrap_mod.MAX_JOINT_SPEED = WRAP_MAX_JOINT_SPEED
     mock_wrap_mod.MAX_JOINT_ACCEL = WRAP_MAX_JOINT_ACCEL
@@ -1437,22 +1486,29 @@ def simulate_script(
         "NiryoRobot": lambda *a, **kw: niryo_robot,
         "pyniryo": mock_niryo_mod,
         "RobotArm": MockRobotArm,
-        "printf": mock_printf,
+        "printf": sim_printf,
     }
 
     temp_sim_dir = None
     output_files: Dict[str, str] = {}
+    project_modules = project_module_names(files or {})      # 'helper', 'lib', 'lib.util', ...
+    written_since = None
+    not_kept: List[str] = []
+
+    def _outputs() -> Dict[str, str]:
+        """Every text file the program wrote (new, changed, or rewritten with the same text), sub-folders too."""
+        found = sandbox_io.collect_outputs(temp_sim_dir, files or {}, since=written_since,
+                                           allowed_ext=workspace.ALLOWED_EXTENSIONS, skipped=not_kept)
+        if not_kept:
+            captured_logs.append(f"[SANDBOX I/O] Not kept (file type not allowed in a project): {', '.join(not_kept)}")
+        return found
     try:
         temp_sim_dir = tempfile.mkdtemp(prefix="sim_proj_")
         holder["dir"] = temp_sim_dir
-        for fname, fcontent in (files or {}).items():
-            clean_name = os.path.basename(fname.strip())
-            if clean_name:
-                mod_name = os.path.splitext(clean_name)[0]
-                sys.modules.pop(mod_name, None)
-                fpath = os.path.join(temp_sim_dir, clean_name)
-                with open(fpath, "w", encoding="utf-8") as f:
-                    f.write(fcontent or "")
+        for mod_name in project_modules:                       # never reuse a module cached by an earlier run
+            sys.modules.pop(mod_name, None)
+        # Same layout as the robot run (folders kept), so `from lib.util import f` works here too.
+        written_since = sandbox_io.write_project_files(temp_sim_dir, files)
         if temp_sim_dir not in sys.path:
             sys.path.insert(0, temp_sim_dir)
         if files and isinstance(files, dict) and len(files) > 0:
@@ -1495,35 +1551,52 @@ def simulate_script(
             res["error"] = error
         return res
 
+    def _where(exc: BaseException) -> str:
+        """' (line N)' in the entry file, or ' (helper.py line N, called from line M)' when the error was raised
+        inside another project file."""
+        root = os.path.realpath(temp_sim_dir) + os.sep if temp_sim_dir else None
+        entry_line, inner = None, None
+        tb = exc.__traceback__
+        while tb is not None:
+            fname = tb.tb_frame.f_code.co_filename
+            if fname == "<string>":
+                entry_line, inner = tb.tb_lineno, None
+            elif root and os.path.realpath(fname).startswith(root):
+                inner = (os.path.relpath(os.path.realpath(fname), root).replace(os.sep, "/"), tb.tb_lineno)
+            tb = tb.tb_next
+        if inner:
+            return f" ({inner[0]} line {inner[1]}" + (f", called from line {entry_line})" if entry_line else ")")
+        return f" (line {entry_line})" if entry_line else ""
+
     try:
-        exec(compile(code_str, "<string>", "exec"), sim_globals)
+        old_stdout, had_printf, old_printf = sys.stdout, hasattr(builtins, "printf"), getattr(builtins, "printf", None)
+        sys.stdout = log_capture
+        builtins.printf = sim_printf          # as in the robot prelude: printf() works in every project file
+        try:
+            exec(compile(code_str, "<string>", "exec"), sim_globals)
+        finally:
+            log_capture.finish()
+            sys.stdout = old_stdout
+            if had_printf:
+                builtins.printf = old_printf
+            else:
+                del builtins.printf
         if temp_sim_dir:
-            output_files = sandbox_io.collect_outputs(temp_sim_dir, files or {})
+            output_files = _outputs()
         return _result(True)
     except Exception as e:
         if temp_sim_dir:
-            output_files = sandbox_io.collect_outputs(temp_sim_dir, files or {})
-        # report the student's line for runtime errors
-        err = str(e)
-        tb = e.__traceback__
-        line = None
-        while tb is not None:
-            if tb.tb_frame.f_code.co_filename == "<string>":
-                line = tb.tb_lineno
-            tb = tb.tb_next
-        if line:
-            err = f"{err} (line {line})"
-        return _result(False, err)
+            output_files = _outputs()
+        # report where the student's code failed (entry line, or helper file + line)
+        return _result(False, f"{e}{_where(e)}")
     finally:
         # Clean up temporary mounted project directory
         if temp_sim_dir:
             try:
                 if temp_sim_dir in sys.path:
                     sys.path.remove(temp_sim_dir)
-                if files:
-                    for fname in files.keys():
-                        mod_name = os.path.splitext(os.path.basename(fname.strip()))[0]
-                        sys.modules.pop(mod_name, None)
+                for mod_name in project_modules:
+                    sys.modules.pop(mod_name, None)
                 shutil.rmtree(temp_sim_dir, ignore_errors=True)
             except Exception:
                 pass

@@ -1591,6 +1591,7 @@ print("Routine completed successfully!")
                     try {
                         const msg = JSON.parse(event.data);
                         if (msg.type === 'code_synced') applyInstructorSync(msg);
+                        else if (msg.type === 'files_generated') applyGeneratedFiles(msg);
                     } catch(e) {
                         console.error("Live sync msg error:", e);
                     }
@@ -1641,6 +1642,29 @@ print("Routine completed successfully!")
             saveProjectToStorage();
             StudentRepo.rebaseline(Common.fileSet(projectState.files, projectState.entry_point));
             appendStudentLog(`\n[LIVE SYNC] Code updated from Instructor Code Studio (${time}).\n`);
+        }
+
+        // A run on the robot wrote files and the server already saved them into this project's working copy.
+        // Show them in the editor (and count them as saved), so a later Save cannot put the old text back.
+        function applyGeneratedFiles(msg) {
+            if (!msg.files || typeof msg.files !== 'object' || msg.project !== projectState.current_project) return;
+            const names = Object.keys(msg.files);
+            if (!names.length) return;
+            const run = msg.submission_id ? ` #${msg.submission_id}` : '';
+            if (!onMainWorkingCopy()) {
+                appendStudentLog(`\n[RUN${run}] The run updated ${names.join(", ")} in your working copy on main. Open main → Working copy to see them.\n`);
+                return;
+            }
+            fileBuffer.capture();
+            const overwritten = names.filter(n => n in projectState.files && StudentRepo.changedFiles().has(n));
+            Object.assign(projectState.files, msg.files);
+            if (names.includes(projectState.active_file)) fileBuffer.load(projectState.active_file);
+            StudentRepo.acceptSavedFiles(msg.files);
+            saveProjectToStorage();
+            renderEditorTabs();
+            renderProjectExplorer();
+            appendStudentLog(`\n[RUN${run}] Files written by the program were saved to your project: ${names.join(", ")}.\n` +
+                (overwritten.length ? `Your unsaved edits to ${overwritten.join(", ")} were replaced by the run's output.\n` : ""));
         }
 
         function logoutStudent() {

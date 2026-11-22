@@ -178,6 +178,22 @@
   let softTimer = null;
   function refreshSoon() { clearTimeout(softTimer); softTimer = setTimeout(() => { if (isOpen()) refreshCommits(); }, 400); }
 
+  // A robot run wrote files into a student's working copy. If that working copy is what the editor shows, reload
+  // it (or, with uncommitted edits in the way, just say so instead of discarding them).
+  async function workingCopyChanged(owner, project, names) {
+    if (!isOpen() || S.commitId !== 'wc' || S.owner.toLowerCase() !== String(owner).toLowerCase() ||
+        S.project.toLowerCase() !== String(project).toLowerCase()) return;
+    const list = names.join(', ');
+    if (isDirty()) { notify(`The run updated ${list} in ${owner}'s working copy. Select "Working copy" again to load it (your edits would be discarded).`); return; }
+    const seq = ++S.seq;
+    try {
+      const v = await fetchVersion('wc');
+      if (seq !== S.seq || S.commitId !== 'wc' || isDirty()) return;
+      applyVersion(v);
+      showActionToast(`Working copy updated by the run: ${list}`);
+    } catch (_) { /* keep what we have */ }
+  }
+
   /* ---------- actions ---------- */
 
   function defaultFiles() {
@@ -503,6 +519,6 @@
   window.RepoUI = {
     state: S, open, loadRepos, selectCommit, selectBranch, newProject, newBranch, openCommit, closeCommit, confirmCommit, commit,
     runSelected, renameProject, deleteProject, renderHeader, renderTree, renderPicker, markEdited, refreshSoon, refreshCommits,
-    isDirty, isOpen, toggle, closeAll, capture, changedFiles, confirmDiscard,
+    isDirty, isOpen, toggle, closeAll, capture, changedFiles, confirmDiscard, workingCopyChanged,
   };
 })();
