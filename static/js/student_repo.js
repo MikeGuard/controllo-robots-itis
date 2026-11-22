@@ -271,5 +271,11 @@
     markSaved(set) { S.commitId = 'wc'; S.base = C.fileSet(set.files, set.entry); render(); refresh(); },
     // the project folder was renamed on the server (history moves with it); edits in the editor are kept
     renamed(name) { S.project = name; render(); refresh(); },
+    // the server saved these files into the working copy (e.g. written by a robot run): only they become "saved"
+    acceptSavedFiles(files) {
+      if (!S.base) return;
+      S.base = C.fileSet({ ...S.base.files, ...files }, S.base.entry);
+      render();
+    },
   };
 })();

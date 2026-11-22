@@ -2287,58 +2287,8 @@ print("Gripper test finished.")
             }
         }
 
-        async function simulateInspectorCode() {
-            const code = viewer.getValue();
-            const sub = submissionsList.find(s => s.id === selectedSubId);
-            const model = sub ? sub.robot_model : null;
-            await runGenericSimulation(code, model);
-        }
-
         async function simulateCreatorCode() {
             await simulateStudioProject();
-        }
-
-        async function runGenericSimulation(code, model) {
-            appendLog(`\n[SIMULATOR] Simulating code in isolated environment...\n`);
-            try {
-                const res = await fetch('/api/simulate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code, robot_model: model })
-                });
-                const data = await res.json();
-                if (!data.success) {
-                    const err = data.error || (data.errors ? data.errors.join(", ") : "Simulation failed");
-                    appendLog(`[SIMULATOR ERROR] ${err}\n`);
-                    notify("Simulation Error: " + err);
-                    return;
-                }
-
-                if (!data.waypoints || data.waypoints.length === 0) {
-                    appendLog("[SIMULATOR] No motion waypoints found in code.\n");
-                    return;
-                }
-
-                appendLog(`[SIMULATOR] Loaded ${data.waypoints.length} waypoints. Starting 3D simulation...\n`);
-                if (data.logs && data.logs.length > 0) {
-                    data.logs.forEach(l => appendLog(`[PRINT] ${l}\n`, true));
-                }
-
-                if (!adminUr3Vis && typeof UR3Visualizer !== 'undefined') {
-                    adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
-                }
-                if (adminUr3Vis && typeof adminUr3Vis.onWindowResize === 'function') {
-                    adminUr3Vis.onWindowResize();
-                }
-                if (adminUr3Vis && data.robot_model && adminUr3Vis.currentModel !== data.robot_model) {
-                    adminUr3Vis.setRobotModel(data.robot_model);
-                }
-
-                if (adminUr3Vis) adminUr3Vis.playTrajectory(data.waypoints);
-                showActionToast(`3D Simulation running (${data.waypoints.length} waypoints)`);
-            } catch (e) {
-                appendLog(`[SIMULATOR ERROR] ${e.message}\n`);
-            }
         }
 
         // ==========================================
@@ -2872,6 +2822,8 @@ print("Gripper test finished.")
                         fetchAdminExamples();
                     } else if (data.type === 'new_user_registered' || data.type === 'user_status_changed') {
                         fetchAdminUsers();
+                    } else if (data.type === 'workspace_files_updated') {
+                        RepoUI.workingCopyChanged(data.owner, data.project, data.files || []);
                     }
                 } catch (_) { }
             };

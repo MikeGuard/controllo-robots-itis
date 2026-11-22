@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import json
@@ -57,7 +57,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+class RevalidatingStaticFiles(StaticFiles):
+    """JS / CSS / images are revalidated on every page load (a cheap 304 when unchanged), so after an update
+    (git pull + restart) a browser never runs the new pages with old cached scripts."""
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", RevalidatingStaticFiles(directory=STATIC_DIR), name="static")
 
 # Connected WebSockets for log broadcasting
 active_log_sockets: Dict[int, Set[WebSocket]] = {}
@@ -176,21 +185,33 @@ class UpdatePermissionsRequest(BaseModel):
 
 # --- Web Page Views ---
 
+_ASSET_URL = __import__("re").compile(r'((?:src|href)="/static/[^"?]+\.(?:js|css))"')
+
+
+def _page(name: str) -> HTMLResponse:
+    """A page, never cached, whose /static JS and CSS links carry the assets' current version: a browser that
+    still holds older copies from before an update fetches the new ones straight away."""
+    latest = 0.0
+    for root, _dirs, names in os.walk(STATIC_DIR):
+        for n in names:
+            try:
+                latest = max(latest, os.path.getmtime(os.path.join(root, n)))
+            except OSError:
+                pass
+    with open(os.path.join(STATIC_DIR, name), encoding="utf-8") as f:
+        html = _ASSET_URL.sub(lambda m: f'{m.group(1)}?v={int(latest)}"', f.read())
+    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"})
+
+
 @app.get("/")
 async def get_student_portal():
-    return FileResponse(
-        os.path.join(STATIC_DIR, "student.html"),
-        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"}
-    )
+    return _page("student.html")
 
 
 @app.get("/admin")
 async def get_instructor_dashboard():
     # Never cache: the console must always (re)authenticate and load fresh code.
-    return FileResponse(
-        os.path.join(STATIC_DIR, "instructor.html"),
-        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"}
-    )
+    return _page("instructor.html")
 
 
 # --- Helper Functions ---
@@ -1205,6 +1226,14 @@ async def launch_submission_execution(
                 "owner": workspace_owner,
                 "project": workspace_project,
                 "files": list(saved.keys())
+            })
+            # The student's open editor must show the new text too: otherwise their next Save would write the
+            # old text back over what the run just produced.
+            await broadcast_to_student(workspace_owner, {
+                "type": "files_generated",
+                "project": workspace_project,
+                "submission_id": sub_id,
+                "files": saved,
             })
 
     # Launch execution in background task

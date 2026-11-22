@@ -61,13 +61,70 @@ def _send_niryo_emergency_halt(ip: str):
         print(f"[EMERGENCY STOP] Niryo halt notice ({ip}): {e}")
 
 
-def _safe_relpath(name: str) -> Optional[str]:
-    """Normalised relative path inside the run directory, or None if it would escape it."""
-    raw = (name or "").strip().replace("\\", "/")
-    segs = [x for x in raw.split("/") if x not in ("", ".")]
-    if not segs or ".." in segs or raw.startswith("/") or any(x.startswith("~") for x in segs):
-        return None
-    return "/".join(segs)
+SUPERVISOR_SCRIPT = ".supervisor_run.py"     # hidden name: never a project file, never collected as an output
+
+
+def _supervisor_script(model: str, target_ip: str, entry_path: str, work_dir: str) -> str:
+    """
+    Source of the small script that starts a robot run. It prepares the process (robot constants, printf,
+    ur_rtde aliases, the file sandbox) and then runs the student's entry file UNCHANGED, in its own namespace:
+
+      * error line numbers are the student's own (the old prelude was pasted in front of main.py, so an error
+        on line 20 was reported on line 59);
+      * the supervisor's imports (os, sys, builtins, ...) are not visible to the student's code (they were:
+        `os.system(...)` worked without `import os`, which the safety check forbids);
+      * a traceback starts at the student's file, without the supervisor's own lines.
+    """
+    ur_ip = getattr(config, "UR_IP", "10.0.10.60")
+    niryo_ip = getattr(config, "NIRYO_IP", "10.0.10.61")
+    constants = {"ROBOT_MODEL": model, "ROBOT_IP": target_ip, "UR_IP": ur_ip, "NIRYO_IP": niryo_ip}
+    env = {"ROBOT_MODEL": model, "ROBOT_IP": target_ip, "UR_ROBOT_IP": ur_ip, "NIRYO_ROBOT_IP": niryo_ip}
+    return (
+        f"# --- Robot run supervisor ({model.upper()}): not part of the student's project ---\n"
+        "import builtins, os, runpy, sys\n"
+        f"os.environ.update({env!r})\n"
+        "try:\n"
+        "    import ur_rtde\n"
+        "    if 'rtde_control' not in sys.modules:\n"
+        "        import ur_rtde.rtde_control; sys.modules['rtde_control'] = ur_rtde.rtde_control\n"
+        "    if 'rtde_receive' not in sys.modules:\n"
+        "        import ur_rtde.rtde_receive; sys.modules['rtde_receive'] = ur_rtde.rtde_receive\n"
+        "    if 'rtde_io' not in sys.modules:\n"
+        "        import ur_rtde.rtde_io; sys.modules['rtde_io'] = ur_rtde.rtde_io\n"
+        "except Exception:\n"
+        "    pass\n"
+        "def printf(*args, **kwargs):\n"
+        "    kwargs.setdefault('flush', True)\n"
+        "    if len(args) > 1 and isinstance(args[0], str) and ('%' in args[0]):\n"
+        "        try:\n"
+        "            print(args[0] % args[1:], **kwargs)\n"
+        "            return\n"
+        "        except Exception:\n"
+        "            pass\n"
+        "    print(*args, **kwargs)\n"
+        "builtins.printf = printf\n"
+        "try:\n"
+        "    import importlib.util as _ilu\n"
+        f"    _spec = _ilu.spec_from_file_location('_sandbox_io', {os.path.join(work_dir, 'sandbox_io.py')!r})\n"
+        "    _sbx = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_sbx)\n"
+        "    _sbx.install(os.getcwd())\n"
+        "except Exception as _e:\n"
+        "    print('[Supervisor] File sandbox unavailable:', _e)\n"
+        f"_entry = os.path.realpath({entry_path!r})\n"
+        "sys.argv = [_entry]\n"
+        "sys.path[0] = os.path.dirname(_entry)          # imports resolve as if the entry file had been started\n"
+        "try:\n"
+        f"    runpy.run_path(_entry, init_globals={constants!r}, run_name='__main__')\n"
+        "except SystemExit:\n"
+        "    raise\n"
+        "except BaseException as _exc:\n"
+        "    import traceback\n"
+        "    _tb = _exc.__traceback__\n"
+        "    while _tb is not None and os.path.realpath(_tb.tb_frame.f_code.co_filename) != _entry:\n"
+        "        _tb = _tb.tb_next\n"
+        "    traceback.print_exception(type(_exc), _exc, _tb)\n"
+        "    sys.exit(1)\n"
+    )
 
 
 class EmergencyHaltedError(RuntimeError):
@@ -216,74 +273,23 @@ class ExecutionEngine:
             work_dir = os.path.dirname(os.path.abspath(__file__))
             target_ip = getattr(config, "NIRYO_IP", "10.0.10.61") if model == "niryo" else getattr(config, "UR_IP", "10.0.10.60")
 
-            # Build runtime prelude with safety bindings and model-specific constants
-            runtime_prelude = (
-                f"# --- Multi-Robot Execution Prelude ({model.upper()}) ---\n"
-                f"import builtins, os, sys\n"
-                f"ROBOT_MODEL = '{model}'\n"
-                f"ROBOT_IP = '{target_ip}'\n"
-                f"UR_IP = '{getattr(config, 'UR_IP', '10.0.10.60')}'\n"
-                f"NIRYO_IP = '{getattr(config, 'NIRYO_IP', '10.0.10.61')}'\n"
-                f"os.environ['ROBOT_MODEL'] = '{model}'\n"
-                f"os.environ['ROBOT_IP'] = '{target_ip}'\n"
-                f"os.environ['UR_ROBOT_IP'] = '{getattr(config, 'UR_IP', '10.0.10.60')}'\n"
-                f"os.environ['NIRYO_ROBOT_IP'] = '{getattr(config, 'NIRYO_IP', '10.0.10.61')}'\n"
-                "try:\n"
-                "    import ur_rtde\n"
-                "    if 'rtde_control' not in sys.modules:\n"
-                "        import ur_rtde.rtde_control; sys.modules['rtde_control'] = ur_rtde.rtde_control\n"
-                "    if 'rtde_receive' not in sys.modules:\n"
-                "        import ur_rtde.rtde_receive; sys.modules['rtde_receive'] = ur_rtde.rtde_receive\n"
-                "    if 'rtde_io' not in sys.modules:\n"
-                "        import ur_rtde.rtde_io; sys.modules['rtde_io'] = ur_rtde.rtde_io\n"
-                "except Exception:\n"
-                "    pass\n"
-                "def printf(*args, **kwargs):\n"
-                "    kwargs.setdefault('flush', True)\n"
-                "    if len(args) > 1 and isinstance(args[0], str) and ('%' in args[0]):\n"
-                "        try:\n"
-                "            print(args[0] % args[1:], **kwargs)\n"
-                "            return\n"
-                "        except Exception:\n"
-                "            pass\n"
-                "    print(*args, **kwargs)\n"
-                "builtins.printf = printf\n"
-                "try:\n"
-                "    import importlib.util as _ilu\n"
-                f"    _spec = _ilu.spec_from_file_location('_sandbox_io', {os.path.join(work_dir, 'sandbox_io.py')!r})\n"
-                "    _sbx = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_sbx)\n"
-                "    _sbx.install(os.getcwd())\n"
-                "except Exception as _e:\n"
-                "    print('[Supervisor] File sandbox unavailable:', _e)\n"
-                "# --- End Prelude ---\n\n"
-            )
-
-            # Create isolated execution directory in OS temp to prevent uvicorn dev-reload from triggering
+            # Isolated run folder in the OS temp dir (so uvicorn --reload is not triggered). The project is written
+            # exactly as committed; a separate supervisor script then starts the entry file.
             run_dir = tempfile.mkdtemp(prefix=f"robot_run_{submission_id}_{model}_")
-            entry_file_name = (entry_point or "main.py").strip()
-
             if files and isinstance(files, dict) and len(files) > 0:
-                entry_file_name = _safe_relpath(entry_file_name) or "main.py"
-                for fname, fcontent in files.items():
-                    clean_name = _safe_relpath(fname)       # nested folders kept; '..' / absolute paths dropped
-                    if clean_name:
-                        dst_path = os.path.join(run_dir, *clean_name.split("/"))
-                        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
-                        if clean_name == entry_file_name:
-                            with open(dst_path, "w", encoding="utf-8") as f:
-                                f.write(runtime_prelude + (fcontent or code_str))
-                        else:
-                            with open(dst_path, "w", encoding="utf-8") as f:
-                                f.write(fcontent or "")
-                temp_path = os.path.join(run_dir, *entry_file_name.split("/"))
-                if not os.path.exists(temp_path):
-                    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-                    with open(temp_path, "w", encoding="utf-8") as f:
-                        f.write(runtime_prelude + code_str)
+                entry_file_name = sandbox_io.safe_relpath(entry_point or "main.py") or "main.py"
+                project = dict(files)
+                entry_key = next((k for k in project if sandbox_io.safe_relpath(k) == entry_file_name), None)
+                if entry_key is None or not project[entry_key]:
+                    project[entry_key or entry_file_name] = code_str
             else:
-                temp_path = os.path.join(run_dir, f"main_{model}.py")
-                with open(temp_path, "w", encoding="utf-8") as f:
-                    f.write(runtime_prelude + code_str)
+                entry_file_name = f"main_{model}.py"
+                project = {entry_file_name: code_str}
+            written_since = sandbox_io.write_project_files(run_dir, project)
+            entry_path = os.path.join(run_dir, *entry_file_name.split("/"))
+            temp_path = os.path.join(run_dir, SUPERVISOR_SCRIPT)
+            with open(temp_path, "w", encoding="utf-8") as f:
+                f.write(_supervisor_script(model, target_ip, entry_path, work_dir))
 
         except Exception as e:
             # Setup failed before the worker started: release the slot and close the DB row, never leave "running".
@@ -408,23 +414,31 @@ class ExecutionEngine:
 
         finally:
             if run_dir and os.path.exists(run_dir):
-                if on_outputs:
-                    try:
-                        outputs = sandbox_io.collect_outputs(
-                            run_dir, files or {}, skip={entry_file_name, os.path.basename(temp_path)}
-                        )
-                        if outputs:
-                            res = on_outputs(outputs)
-                            if asyncio.iscoroutine(res):
-                                await res
-                            note = f"\n[Supervisor] Saved {len(outputs)} generated file(s) to project: {', '.join(outputs.keys())}\n"
-                            await append_logs(submission_id, note)
-                            if log_callback:
-                                r2 = log_callback(note)
-                                if asyncio.iscoroutine(r2):
-                                    await r2
-                    except Exception as e:
-                        print(f"[Supervisor] Could not save generated files: {e}")
+                try:
+                    import workspace
+                    not_kept: list = []
+                    outputs = sandbox_io.collect_outputs(
+                        run_dir, project, skip={entry_file_name}, since=written_since,
+                        allowed_ext=workspace.ALLOWED_EXTENSIONS, skipped=not_kept)
+                    notes = []
+                    if outputs and on_outputs:
+                        res = on_outputs(outputs)
+                        if asyncio.iscoroutine(res):
+                            await res
+                        notes.append(f"[Supervisor] Saved {len(outputs)} generated file(s) to the project: {', '.join(outputs)}")
+                    elif outputs:
+                        notes.append(f"[Supervisor] The program wrote {', '.join(outputs)}. Not saved: only runs of a "
+                                     f"student's main branch update the project's working copy.")
+                    if not_kept:
+                        notes.append(f"[Supervisor] Not saved (file type not allowed in a project): {', '.join(not_kept)}")
+                    for note in notes:
+                        await append_logs(submission_id, f"\n{note}\n")
+                        if log_callback:
+                            r2 = log_callback(f"\n{note}\n")
+                            if asyncio.iscoroutine(r2):
+                                await r2
+                except Exception as e:
+                    print(f"[Supervisor] Could not save generated files: {e}")
                 try:
                     shutil.rmtree(run_dir, ignore_errors=True)
                 except Exception:
