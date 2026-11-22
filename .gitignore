@@ -3,8 +3,16 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
-# runtime state (contains user accounts / local robot IPs)
+# runtime state (contains user accounts / local robot IPs): local to each machine (e.g. the Raspberry Pi),
+# never committed, so `git pull` can never overwrite or delete it.
+# SQLite runs in WAL mode: the -wal / -shm side files hold not-yet-checkpointed data of the same database.
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.db.bak
+*.sqlite
+*.sqlite3
 runtime_config.json
 # stray temp scripts
 tmp*.py

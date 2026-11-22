@@ -10,16 +10,18 @@
  * uncommitted changes they are committed first, so nothing else can be executed by accident.
  *
  * Server API: /api/repos/...  (see app.py). This file only talks to that API and to the existing studio
- * globals (adminProjectState, studioEditor, ...).
+ * globals (adminProjectState, studioEditor, studioBuffer, ...). Shared helpers come from static/js/common.js.
+ *
+ * "Uncommitted" always means: different from S.base, the exact files of the version that was loaded or last committed.
  */
 (function () {
   'use strict';
 
+  const C = window.Common;
   const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const esc = C.esc;
   const enc = encodeURIComponent;
-  const STATUS = { pending: 'Pending', running: 'Running', completed: 'Completed', failed: 'Failed', aborted: 'Aborted', rejected: 'Rejected' };
-  const badge = (st) => `<span class="badge" data-status="${STATUS[st] ? st : 'offline'}">${STATUS[st] || esc(st || '—')}</span>`;
+  const badge = C.statusBadge;
 
   /* ---------- pure helpers (also used by tests/tree.test.js) ---------- */
 
@@ -42,74 +44,42 @@
     return root;
   }
 
-  function relTime(iso) {
-    if (!iso) return '';
-    const d = new Date(iso); if (isNaN(d)) return '';
-    const s = Math.max(0, Math.floor((Date.now() - d) / 1000));
-    if (s < 60) return 'just now';
-    if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-    if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-    if (s < 86400 * 30) return `${Math.floor(s / 86400)} d ago`;
-    return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
-  }
-  const stamp = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }); };
+  const relTime = C.relTime;
+  const stamp = C.stamp;
 
   /* ---------- state ---------- */
 
   const S = {
     repos: [], owner: null, project: null, adminOwned: false,
     branch: 'main', branches: [], commits: [], commitId: null,   // commitId: number | 'wc' (working copy) | null (nothing committed yet)
-    workingCopy: null, baseline: '', seq: 0, collapsed: new Set(), editTimer: null, model: 'ur',
+    workingCopy: null, base: null, seq: 0, collapsed: new Set(), editTimer: null, model: 'ur',
   };
 
-  const headers = () => ({ Authorization: `Bearer ${currentAdminToken}`, 'Content-Type': 'application/json' });
-  async function api(path, opts = {}) {
-    const res = await fetch(path, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
-    if (!res.ok) {
-      let d = `HTTP ${res.status}`;
-      try { const j = await res.json(); d = j.detail || (j.errors || []).join('; ') || d; } catch (_) {}
-      throw new Error(d);
-    }
-    return res.json();
-  }
+  const api = (path, opts) => C.apiJson(path, currentAdminToken, opts);
   const repoUrl = (o, p) => `/api/repos/${enc(o)}/${enc(p)}`;
 
-  function capture() {
-    if (typeof studioEditor !== 'undefined' && studioEditor && adminProjectState.active_file) {
-      adminProjectState.files[adminProjectState.active_file] = studioEditor.getValue();
-    }
-  }
-  function snapshot() {
-    const files = adminProjectState.files || {};
-    const sorted = {}; Object.keys(files).sort().forEach((k) => { sorted[k] = files[k]; });
-    return JSON.stringify({ f: sorted, e: adminProjectState.entry_point });
-  }
-  function isDirty() { capture(); return !!S.project && snapshot() !== S.baseline; }
+  // Editor text -> the file it was loaded from (studioBuffer, see Common.createFileBuffer).
+  function capture() { if (typeof studioBuffer !== 'undefined') studioBuffer.capture(); }
+  function current() { capture(); return C.fileSet(adminProjectState.files, adminProjectState.entry_point); }
+  const versionSet = (v) => C.fileSet(v.files, C.resolveEntry(v.files, v.entry_point));
   function isOpen() { return !!S.project; }
+  function isDirty() { return isOpen() && !C.sameFileSet(current(), S.base); }
+  const changedFiles = () => (isOpen() ? C.changedFiles(S.base, current().files) : new Set());
+  const removedFiles = () => (isOpen() && S.base ? Object.keys(S.base.files).filter((n) => !(n in adminProjectState.files)) : []);
   const hasCommit = () => typeof S.commitId === 'number';
   const currentCommit = () => S.commits.find((c) => c.id === S.commitId) || null;
 
-  function confirmDiscard() {
+  function confirmDiscard(what = 'continue') {
     if (!isDirty()) return true;
-    return confirm('You have uncommitted changes in the editor. Discard them and continue?');
+    return confirm(`You have uncommitted changes in the editor. Discard them and ${what}?`);
   }
 
   /* ---------- loading ---------- */
 
-  function setLanguage(fname) {
-    if (typeof studioEditor === 'undefined' || !studioEditor) return;
-    const ext = (fname.split('.').pop() || '').toLowerCase();
-    const lang = ext === 'json' ? 'json' : (['txt', 'csv', 'md', 'log'].includes(ext) ? 'plaintext' : (ext === 'yaml' || ext === 'yml' ? 'yaml' : 'python'));
-    const m = studioEditor.getModel(); if (m) monaco.editor.setModelLanguage(m, lang);
-  }
-
   function applyVersion(v) {
-    const files = { ...v.files };
-    const names = Object.keys(files);
-    const entry = (v.entry_point in files) ? v.entry_point : (names.includes('main.py') ? 'main.py' : names[0]);
-    adminProjectState.files = files;
-    adminProjectState.entry_point = entry;
-    adminProjectState.active_file = entry;
+    S.base = versionSet(v);
+    adminProjectState.files = { ...v.files };
+    adminProjectState.entry_point = S.base.entry;
     adminProjectState.current_project = S.project;
     adminProjectState.owner = S.owner;
     adminProjectState.is_student_project = !S.adminOwned;
@@ -120,11 +90,9 @@
     const sel = $('creatorModelSelect'); if (sel) sel.value = S.model === 'niryo' ? 'niryo' : 'ur';
     if (typeof studioEditor !== 'undefined' && studioEditor) {
       studioEditor.updateOptions({ readOnly: false });
-      studioEditor.setValue(files[entry] || '');
-      setLanguage(entry);
       setTimeout(() => studioEditor.layout(), 40);
     }
-    S.baseline = snapshot();
+    studioBuffer.load(S.base.entry);                    // never captures: the old text belongs to the old version
     studioRenderFileTabs();
     renderTree();
     renderHeader();
@@ -173,10 +141,12 @@
     }
   }
 
+  // Picking the version you are already on (with uncommitted changes) reloads it: that is "discard my changes".
   async function selectCommit(id) {
     closeAll();
-    if (id === S.commitId) return;
-    if (!confirmDiscard()) return;
+    const same = id === S.commitId;
+    if (same && !isDirty()) return;
+    if (!confirmDiscard(same ? 'reload this version' : 'open the other version')) return;
     const seq = ++S.seq;
     try {
       const v = await fetchVersion(id);
@@ -194,11 +164,13 @@
 
   async function refreshCommits() {
     if (!isOpen()) return;
+    const owner = S.owner, project = S.project, branch = S.branch;
     try {
       const [detail, list] = await Promise.all([
-        api(repoUrl(S.owner, S.project)),
-        api(`${repoUrl(S.owner, S.project)}/commits?branch=${enc(S.branch)}`),
+        api(repoUrl(owner, project)),
+        api(`${repoUrl(owner, project)}/commits?branch=${enc(branch)}`),
       ]);
+      if (S.owner !== owner || S.project !== project || S.branch !== branch) return;   // moved on meanwhile
       S.branches = detail.branches; S.workingCopy = detail.working_copy; S.commits = list.commits;
       renderHeader();
     } catch (_) { /* keep what we have */ }
@@ -229,22 +201,32 @@
     } catch (e) { notify('Could not create project: ' + e.message); }
   }
 
+  // The editor keeps showing exactly what you branch from (uncommitted edits, or the student's working copy,
+  // included). The branch starts at the selected commit, or main's latest one; whatever differs from that
+  // commit shows as uncommitted on the new branch.
   async function newBranch() {
     closeAll();
     if (!isOpen()) return;
     const base = hasCommit() ? S.commitId : null;
-    const name = prompt(`New branch name (starts from ${base ? '#' + base : 'the working copy'} on ${S.branch}):`, '');
-    if (!name || !name.trim()) return;
+    const from = base ? `commit #${base}` : (S.commitId === 'wc' ? `${S.owner}'s working copy` : `the latest commit on main`);
+    const raw = prompt(`New branch name (letters, digits, - _ . /):\nIt starts from ${from}; the files in the editor come along. Main and the student are not changed.`, '');
+    if (!raw || !raw.trim()) return;
+    const name = raw.trim();
+    const owner = S.owner, project = S.project;
     try {
-      capture(); const carry = isDirty() ? { files: { ...adminProjectState.files }, entry: adminProjectState.entry_point } : null;
-      await api(`${repoUrl(S.owner, S.project)}/branches`, { method: 'POST', body: JSON.stringify({ name: name.trim(), from_commit_id: base }) });
-      await open(S.owner, S.project, { branch: name.trim(), force: true });
-      if (carry) {                                   // edits made before branching move with you
-        adminProjectState.files = carry.files; adminProjectState.entry_point = carry.entry; adminProjectState.active_file = carry.entry;
-        if (studioEditor) studioEditor.setValue(carry.files[carry.entry] || '');
-        studioRenderFileTabs(); renderTree(); renderHeader();
-      }
-      showActionToast(`Switched to new branch "${name.trim()}".`);
+      const res = await api(`${repoUrl(owner, project)}/branches`, { method: 'POST', body: JSON.stringify({ name, from_commit_id: base }) });
+      const [detail, list, baseVersion] = await Promise.all([
+        api(repoUrl(owner, project)),
+        api(`${repoUrl(owner, project)}/commits?branch=${enc(name)}`),
+        res.base_id != null ? fetchVersion(res.base_id) : Promise.resolve(null),
+      ]);
+      if (S.owner !== owner || S.project !== project) return;
+      S.seq++;                                           // a version still loading must not land on the new branch
+      Object.assign(S, { branches: detail.branches, branch: name, commits: list.commits, workingCopy: detail.working_copy, commitId: res.base_id ?? null });
+      S.base = baseVersion ? versionSet(baseVersion) : C.fileSet({}, null);
+      adminProjectState.submission_id = selectedSubId = hasCommit() ? S.commitId : null;
+      studioRenderFileTabs(); renderTree(); renderHeader();
+      showActionToast(`Switched to new branch "${name}".`);
     } catch (e) { notify('Could not create branch: ' + e.message); }
   }
 
@@ -255,6 +237,9 @@
     $('commitDialogTarget').textContent = `${S.owner}/${S.project} on ${S.branch}`;
     const notes = [];
     if (!dirty) notes.push('No changes since the selected version.');
+    const ch = [...changedFiles()], rm = removedFiles();
+    if (ch.length) notes.push(`Changed: ${ch.slice(0, 6).join(', ')}${ch.length > 6 ? ', …' : ''}.`);
+    if (rm.length) notes.push(`Deleted: ${rm.slice(0, 6).join(', ')}${rm.length > 6 ? ', …' : ''}.`);
     if (hasCommit() && currentCommit() && currentCommit().id !== (S.commits[0] || {}).id) notes.push(`You are on an older commit (#${S.commitId}); the new commit is based on it.`);
     if (!S.adminOwned && S.branch === 'main') notes.push(`This also updates ${S.owner}'s working copy, so the student sees it.`);
     if (S.branch !== 'main') notes.push('This branch is separate: the student is not affected.');
@@ -272,23 +257,27 @@
   }
 
   // Creates a commit from the editor. Returns the new commit id, or null if it failed.
+  // Exactly the files sent become the baseline: anything typed while the request runs stays "uncommitted".
   async function commit(message) {
-    capture();
+    const sent = current();
+    const owner = S.owner, project = S.project, branch = S.branch;
     try {
-      const res = await api(`${repoUrl(S.owner, S.project)}/commits`, {
+      const res = await api(`${repoUrl(owner, project)}/commits`, {
         method: 'POST',
-        body: JSON.stringify({ branch: S.branch, parent_id: hasCommit() ? S.commitId : null, files: adminProjectState.files,
-                               entry_point: adminProjectState.entry_point, message, robot_model: $('creatorModelSelect') ? $('creatorModelSelect').value : S.model }),
+        body: JSON.stringify({ branch, parent_id: hasCommit() ? S.commitId : null, files: sent.files,
+                               entry_point: sent.entry, message, robot_model: $('creatorModelSelect') ? $('creatorModelSelect').value : S.model }),
       });
-      S.commitId = res.commit_id; S.baseline = snapshot();
+      if (S.owner === owner && S.project === project && S.branch === branch) {
+        S.commitId = res.commit_id; S.base = sent;
+        selectedSubId = res.commit_id; adminProjectState.submission_id = res.commit_id;
+      }
       await refreshCommits();
-      selectedSubId = res.commit_id; adminProjectState.submission_id = res.commit_id;
       renderHeader();
       if (typeof fetchSubmissions === 'function') fetchSubmissions();
-      showActionToast(`Committed #${res.commit_id} to ${S.branch}${res.synced_to_student ? ` and synced to ${S.owner}` : ''}.`);
+      showActionToast(`Committed #${res.commit_id} to ${branch}${res.synced_to_student ? ` and synced to ${owner}` : ''}.`);
       return res.commit_id;
     } catch (e) {
-      notify('Commit failed: ' + e.message);
+      notify('Commit failed, nothing was recorded: ' + e.message);
       return null;
     }
   }
@@ -297,15 +286,16 @@
   async function runSelected() {
     if (!hasAdminPermission('can_execute')) { notify('Missing permission: can_execute.'); return; }
     if (!isOpen()) { notify('Open a project first.'); return; }
+    let runId = S.commitId;
     if (isDirty() || !hasCommit()) {
       const why = !hasCommit() ? 'There is no commit to run yet.' : 'The editor has uncommitted changes.';
       if (!confirm(`${why}\nRun executes an exact commit, so your changes will be committed to "${S.branch}" first. Continue?`)) return;
-      const id = await commit(!hasCommit() ? 'Initial commit' : 'Run from Studio');
-      if (id === null) return;
+      runId = await commit(!hasCommit() ? 'Initial commit' : 'Run from Studio');
+      if (runId === null) return;
     }
     if (typeof fetchSubmissions === 'function') await fetchSubmissions();
     const model = $('creatorModelSelect') ? $('creatorModelSelect').value : S.model;
-    await quickRunSubmission(S.commitId, null, model);
+    await quickRunSubmission(runId, null, model);
     refreshSoon();
   }
 
@@ -327,12 +317,13 @@
     if (!isOpen()) return;
     try {
       if (S.branch !== 'main') {
-        if (!confirm(`Delete branch "${S.branch}" and its commits? The main branch is not affected.`)) return;
+        const n = (S.branches.find((b) => b.name === S.branch) || {}).commits || 0;
+        if (!confirm(`Delete branch "${S.branch}" and its ${n} commit${n === 1 ? '' : 's'}?\n\nThis cannot be undone. The main branch and the student's working copy are not affected.`)) return;
         await api(`${repoUrl(S.owner, S.project)}/branches/${enc(S.branch)}`, { method: 'DELETE' });
         await open(S.owner, S.project, { force: true });
         showActionToast('Branch deleted.');
       } else if (S.adminOwned) {
-        if (!confirm(`Permanently delete project "${S.project}" with all its branches and commits?`)) return;
+        if (!confirm(`Permanently delete the project "${S.project}" with all its branches and commits?\n\nThis cannot be undone.`)) return;
         await api(repoUrl(S.owner, S.project), { method: 'DELETE' });
         S.project = null; await loadRepos();
         const first = S.repos[0]; if (first) await open(first.owner, first.project, { force: true }); else renderHeader();
@@ -354,7 +345,6 @@
     $('commitLabel').textContent = hasCommit() ? `#${S.commitId}` : (S.commitId === 'wc' ? 'Working copy' : 'No commits');
     const st = $('studioCommitStatus');
     st.innerHTML = c ? badge(c.status) : (S.commitId === 'wc' ? '<span class="badge">Not committed</span>' : '');
-    $('studioDirtyBadge').classList.toggle('hidden', !isDirty());
     const names = Object.keys(adminProjectState.files || {});
     const folder = $('studioFolderName'); if (folder) folder.textContent = open ? `${S.owner}/${S.project}@${S.branch}` : '';
     const np = $('creatorProgName'); if (np && open) np.value = S.project;
@@ -363,21 +353,27 @@
     const foot = $('studioFooterStats'); if (foot) foot.textContent = `${names.length} file${names.length === 1 ? '' : 's'} • Entry: ${adminProjectState.entry_point}`;
 
     const line = $('studioContextLine');
-    if (!open) { line.textContent = 'Pick a project to start. Edit, Run and Simulate act on the branch and commit you select here.'; return; }
+    if (!open) { line.textContent = 'Pick a project to start. Edit, Run and Simulate act on the branch and commit you select here.'; updateDirtyUI(); return; }
     let version;
     if (c) version = `commit #${c.id} by ${esc(c.author)}, ${esc(stamp(c.submitted_at))}${c.message ? ` — “${esc(c.message)}”` : ''}`;
+    else if (hasCommit()) version = `starts from #${S.commitId} (no commits on this branch yet)`;
     else if (S.commitId === 'wc') version = `the working copy (not committed yet)`;
     else version = 'no commits yet';
-    const dirty = isDirty();
-    line.innerHTML = `<span class="ctx-path">${esc(S.owner)} / ${esc(S.project)}</span> <span class="ctx-sep">›</span> branch <strong>${esc(S.branch)}</strong> <span class="ctx-sep">›</span> ${version}` +
-      `<span class="ctx-hint">${dirty ? 'Unsaved edits: Simulate uses the editor; Run commits them first.' : 'Edit, Run and Simulate use this version.'}</span>`;
+    line.innerHTML = `<span class="ctx-path">${esc(S.owner)} / ${esc(S.project)}</span> <span class="ctx-sep">›</span> branch <strong>${esc(S.branch)}</strong> <span class="ctx-sep">›</span> ${version}<span class="ctx-hint"></span>`;
     const bs = $('studioBottomStatus'); if (bs) bs.textContent = open ? `${S.owner}/${S.project} • ${S.branch}` : 'No project open';
+    updateDirtyUI();
   }
 
+  // Cheap refresh after every edit: badge, hint, per-file dots and the Commit button's emphasis.
   function updateDirtyUI() {
-    const d = $('studioDirtyBadge'); if (d) d.classList.toggle('hidden', !isDirty());
+    const dirty = isDirty();
+    const d = $('studioDirtyBadge'); if (d) d.classList.toggle('hidden', !dirty);
     const line = $('studioContextLine'); const hint = line && line.querySelector('.ctx-hint');
-    if (hint) hint.textContent = isDirty() ? 'Unsaved edits: Simulate uses the editor; Run commits them first.' : 'Edit, Run and Simulate use this version.';
+    if (hint) hint.textContent = dirty ? 'Uncommitted edits: Simulate uses the editor; Run commits them first (Ctrl+S to commit).' : 'Edit, Run and Simulate use this version.';
+    const changed = changedFiles();
+    C.markModified($('studioFileTabs'), changed);
+    C.markModified($('studioFilesList'), changed);
+    const btn = $('btnCommitStudio'); if (btn) btn.classList.toggle('btn-primary', dirty);
   }
   function markEdited() {
     if (!isOpen()) return;
@@ -412,13 +408,15 @@
   }
 
   function renderCommits() {
+    const dirty = isDirty();
+    const sub = (selected, text) => (selected && dirty ? 'Click to discard your uncommitted changes' : text);
     let html = '';
     if (S.workingCopy && S.branch === 'main') {
-      html += `<button class="popover-item" role="option" aria-selected="${S.commitId === 'wc'}" data-commit="wc"><span class="pi-main"><strong>Working copy</strong><span class="cell-sub">What ${esc(S.owner)} currently has open (${S.workingCopy.files_count} file${S.workingCopy.files_count === 1 ? '' : 's'}), not committed</span></span><span class="pi-side"><span class="badge">Not committed</span></span></button>`;
+      html += `<button class="popover-item" role="option" aria-selected="${S.commitId === 'wc'}" data-commit="wc"><span class="pi-main"><strong>Working copy</strong><span class="cell-sub">${sub(S.commitId === 'wc', `What ${esc(S.owner)} currently has open (${S.workingCopy.files_count} file${S.workingCopy.files_count === 1 ? '' : 's'}), not committed`)}</span></span><span class="pi-side"><span class="badge">Not committed</span></span></button>`;
     }
     html += S.commits.map((c, i) => `<button class="popover-item" role="option" aria-selected="${c.id === S.commitId}" data-commit="${c.id}">
       <span class="pi-main"><strong>#${c.id}${i === 0 ? ' · latest' : ''}</strong> ${esc(c.message || 'No commit note')}
-        <span class="cell-sub">${esc(c.author)} · ${esc(stamp(c.submitted_at))} · ${c.files_count} file${c.files_count === 1 ? '' : 's'} · ${c.loc} lines</span></span>
+        <span class="cell-sub">${sub(c.id === S.commitId, `${esc(c.author)} · ${esc(stamp(c.submitted_at))} · ${c.files_count} file${c.files_count === 1 ? '' : 's'} · ${c.loc} lines`)}</span></span>
       <span class="pi-side">${badge(c.status)}</span></button>`).join('');
     $('commitList').innerHTML = html || '<div class="popover-empty">No commits on this branch yet.</div>';
   }
@@ -428,6 +426,7 @@
     const host = $('studioFilesList'); if (!host) return;
     const files = adminProjectState.files || {};
     const entry = adminProjectState.entry_point, active = adminProjectState.active_file;
+    const changed = changedFiles();
     const tree = buildTree(Object.keys(files));
     const row = (n, depth) => {
       const pad = `padding-left:${8 + depth * 14}px`;
@@ -437,11 +436,11 @@
           (closed ? '' : n.children.map((c) => row(c, depth + 1)).join(''));
       }
       const isEntry = n.path === entry;
-      return `<div class="tree-row tree-file ${n.path === active ? 'is-active' : ''}" style="${pad}" data-file="${esc(n.path)}" title="${esc(n.path)}">
-        <span class="tree-caret"></span><span class="tree-name">${esc(n.name)}</span>${isEntry ? '<span class="badge" style="margin-left:6px">entry</span>' : ''}
-        <span class="tree-actions">${!isEntry && n.path.endsWith('.py') ? `<button class="btn btn-sm btn-ghost" data-act="entry" data-path="${esc(n.path)}">Set entry</button>` : ''}
-          <button class="btn btn-sm btn-ghost" data-act="rename" data-path="${esc(n.path)}">Rename</button>
-          <button class="btn btn-sm btn-ghost btn-quiet-danger" data-act="delete" data-path="${esc(n.path)}">Delete</button></span></div>`;
+      return `<div class="tree-row tree-file ${n.path === active ? 'is-active' : ''} ${changed.has(n.path) ? 'is-modified' : ''}" style="${pad}" data-file="${esc(n.path)}" title="${esc(n.path)}" aria-current="${n.path === active}">
+        <span class="tree-caret"></span><span class="tree-name">${esc(n.name)}</span><span class="file-dot" style="margin-left:6px" title="Uncommitted changes" aria-label="uncommitted changes"></span>${isEntry ? '<span class="badge" style="margin-left:6px" title="Runs when you Simulate or Run">entry</span>' : ''}
+        <span class="tree-actions">${!isEntry && n.path.endsWith('.py') ? `<button type="button" class="btn btn-sm btn-ghost" data-act="entry" data-path="${esc(n.path)}">Set entry</button>` : ''}
+          <button type="button" class="btn btn-sm btn-ghost" data-act="rename" data-path="${esc(n.path)}">Rename</button>
+          <button type="button" class="btn btn-sm btn-ghost btn-quiet-danger" data-act="delete" data-path="${esc(n.path)}">Delete</button></span></div>`;
     };
     host.innerHTML = tree.children.map((c) => row(c, 0)).join('');
     const foot = $('studioFooterStats'); const names = Object.keys(files);
@@ -475,10 +474,10 @@
         else if (item.dataset.commit) selectCommit(item.dataset.commit === 'wc' ? 'wc' : Number(item.dataset.commit));
         return;
       }
-      const tree = e.target.closest && e.target.closest('#studioFilesList');
+      const tree = e.target.closest && (e.target.closest('#studioFilesList') || e.target.closest('#studioFileTabs'));
       if (tree) {
         const act = e.target.closest('[data-act]');
-        if (act) {
+        if (act && act.dataset.path) {
           e.stopPropagation();
           const path = act.dataset.path;
           if (act.dataset.act === 'entry') studioSetEntryPoint(path);
@@ -493,7 +492,10 @@
       }
       if (!(e.target.closest && (e.target.closest('.popover') || e.target.closest('.menu-btn')))) closeAll();
     });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeAll(); closeCommit(); } });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeAll(); closeCommit(); }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target && e.target.id === 'commitMessage') { e.preventDefault(); confirmCommit(); }
+    });
   }
   if (document.readyState !== 'loading') init(); else document.addEventListener('DOMContentLoaded', init);
 
@@ -501,6 +503,6 @@
   window.RepoUI = {
     state: S, open, loadRepos, selectCommit, selectBranch, newProject, newBranch, openCommit, closeCommit, confirmCommit, commit,
     runSelected, renameProject, deleteProject, renderHeader, renderTree, renderPicker, markEdited, refreshSoon, refreshCommits,
-    isDirty, isOpen, toggle, closeAll, capture,
+    isDirty, isOpen, toggle, closeAll, capture, changedFiles, confirmDiscard,
   };
 })();

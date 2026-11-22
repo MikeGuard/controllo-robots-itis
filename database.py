@@ -11,7 +11,8 @@ import hashlib
 import secrets
 from typing import List, Optional, Dict, Any, Union
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "submissions.db")
+# Local runtime data: never tracked by git (see .gitignore). UR_DB_PATH can move it out of the checkout.
+DB_PATH = os.environ.get("UR_DB_PATH") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "submissions.db")
 
 # --- Password Hashing Utilities ---
 
@@ -816,8 +817,8 @@ async def get_student_submissions(student_name: str, limit: int = 100) -> List[D
         db.row_factory = aiosqlite.Row
         async with db.execute(
             """
-            SELECT id, student_name, task_id, code, files, status, logs, submitted_at, executed_at, completed_at, robot_model, commit_message
-            FROM submissions 
+            SELECT id, student_name, task_id, project_name, code, files, entry_point, status, logs, submitted_at, executed_at, completed_at, robot_model, commit_message
+            FROM submissions
             WHERE LOWER(student_name) = LOWER(?) AND COALESCE(branch, 'main') = 'main'
             ORDER BY id DESC LIMIT ?
             """,

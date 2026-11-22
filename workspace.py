@@ -90,12 +90,81 @@ def _write_meta(pdir: str, meta: Dict) -> None:
         json.dump(meta, f)
 
 
+def detect_robot_model(text: str) -> str:
+    """'niryo' when the code uses pyniryo, else 'ur'. The one rule used everywhere a model must be guessed."""
+    return "niryo" if ("pyniryo" in (text or "") or "NiryoRobot" in (text or "")) else "ur"
+
+
+_STARTER_MAIN = {
+    "niryo": '''from pyniryo import *
+robot = NiryoRobot("10.0.130.49")
+print("Connected to Niryo")
+# Write your routine here
+robot.close_connection()
+''',
+    "ur": '''import numpy as np
+from rtde_control import RTDEControlInterface as RTDEControl
+from rtde_receive import RTDEReceiveInterface as RTDEReceive
+
+ROBOT_IP = "10.0.10.60"
+rtde_c = RTDEControl(ROBOT_IP)
+rtde_r = RTDEReceive(ROBOT_IP)
+
+home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
+print("Moving to home joint configuration...")
+rtde_c.moveJ(home_q, 0.5, 0.5)
+rtde_c.stopScript()
+print("Routine completed successfully!")
+''',
+}
+
+
+def starter_main_py(model: Optional[str]) -> str:
+    """main.py of a brand-new (or emptied) project."""
+    return _STARTER_MAIN["niryo" if model == "niryo" else "ur"]
+
+
+def resolve_entry_point(files: Dict[str, str], wanted: Optional[str] = None) -> str:
+    """The file a project runs: `wanted` if present, else main.py, else the first .py, else the first file.
+    Same rule as Common.resolveEntry in static/js/common.js."""
+    wanted = (wanted or "").strip()
+    if wanted and wanted in files:
+        return wanted
+    if "main.py" in files:
+        return "main.py"
+    return next((f for f in files if f.endswith(".py")), next(iter(files), "main.py"))
+
+
+def clean_files(files: Dict[str, str]) -> Dict[str, str]:
+    """Validates a whole project file set (count, names, sizes). Raises WorkspaceError; returns cleaned names."""
+    if len(files) > MAX_FILES_PER_PROJECT:
+        raise WorkspaceError(f"Too many files (max {MAX_FILES_PER_PROJECT}).")
+    cleaned: Dict[str, str] = {}
+    for fname, content in files.items():
+        cname = clean_filename(fname)
+        content = content or ""
+        if len(content.encode("utf-8")) > MAX_FILE_BYTES:
+            raise WorkspaceError(f"File '{cname}' is too large (max {MAX_FILE_BYTES // 1024} KB).")
+        cleaned[cname] = content
+    return cleaned
+
+
+def _write_atomic(target: str, content: str) -> None:
+    """Writes via a hidden temp file + rename, so a crash never leaves a half-written (or visible .tmp) file."""
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    tmp = os.path.join(os.path.dirname(target), f".{os.path.basename(target)}.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(content)
+    os.replace(tmp, target)
+
+
 def _iter_project_files(pdir: str):
-    """Yields (relative posix path, absolute path) for every visible file, nested folders included."""
+    """Yields (relative posix path, absolute path) for every visible file, nested folders included.
+    Leftover '*.tmp' files from an interrupted save are not project files (and their extension is not allowed)."""
     for root, dirs, names in os.walk(pdir):
         dirs[:] = sorted(d for d in dirs if not d.startswith("."))
         for n in sorted(names):
-            if n.startswith("."):
+            if n.startswith(".") or n.endswith(".tmp"):
                 continue
             ap = os.path.join(root, n)
             yield os.path.relpath(ap, pdir).replace(os.sep, "/"), ap
@@ -127,14 +196,10 @@ def list_projects(username: str) -> List[Dict]:
         if not robot_model:
             # Fallback inspection: check main.py
             main_path = os.path.join(pdir, meta.get("entry_point", "main.py"))
-            if os.path.isfile(main_path):
-                try:
-                    with open(main_path, "r", encoding="utf-8") as mf:
-                        mcode = mf.read()
-                        robot_model = "niryo" if ("pyniryo" in mcode or "NiryoRobot" in mcode) else "ur"
-                except Exception:
-                    robot_model = "ur"
-            else:
+            try:
+                with open(main_path, "r", encoding="utf-8") as mf:
+                    robot_model = detect_robot_model(mf.read())
+            except Exception:
                 robot_model = "ur"
             meta["robot_model"] = robot_model
             _write_meta(pdir, meta)
@@ -161,34 +226,8 @@ def create_project(username: str, project: str, files: Optional[Dict[str, str]] 
         raise WorkspaceError(f"A project named '{pname}' already exists.")
     if len(list_projects(username)) >= MAX_PROJECTS_PER_USER:
         raise WorkspaceError(f"Project limit reached ({MAX_PROJECTS_PER_USER}).")
-    os.makedirs(_project_dir(username, pname), exist_ok=False)
-
-    if not files:
-        model = robot_model or template or "ur"
-        if model == "niryo":
-            init_code = '''from pyniryo import *
-robot = NiryoRobot("10.0.130.49")
-print("Connected to Niryo")
-# Write your routine here
-robot.close_connection()
-'''
-        else:
-            init_code = '''import numpy as np
-from rtde_control import RTDEControlInterface as RTDEControl
-from rtde_receive import RTDEReceiveInterface as RTDEReceive
-
-ROBOT_IP = "10.0.10.60"
-rtde_c = RTDEControl(ROBOT_IP)
-rtde_r = RTDEReceive(ROBOT_IP)
-
-home_q = [-np.pi/2, -np.pi/2, -np.pi/2, -np.pi/2, np.pi/2, 0.0]
-print("Moving to home joint configuration...")
-rtde_c.moveJ(home_q, 0.5, 0.5)
-rtde_c.stopScript()
-print("Routine completed successfully!")
-'''
-        files = {"main.py": init_code}
-
+    files = clean_files(files) if files else {"main.py": starter_main_py(robot_model or template)}
+    os.makedirs(_project_dir(username, pname), exist_ok=False)      # only once the files are known to be valid
     return save_project(username, pname, files, entry_point, robot_model or template)
 
 
@@ -196,38 +235,25 @@ def save_project(username: str, project: str, files: Dict[str, str],
                  entry_point: Optional[str] = None, robot_model: Optional[str] = None) -> Dict:
     """Replaces the project's files with `files` (files missing from the dict are deleted)."""
     pdir = _project_dir(username, project)
+    cleaned = clean_files(files)            # validate everything before touching the disk
     os.makedirs(pdir, exist_ok=True)
 
-    if len(files) > MAX_FILES_PER_PROJECT:
-        raise WorkspaceError(f"Too many files (max {MAX_FILES_PER_PROJECT}).")
-    cleaned: Dict[str, str] = {}
-    for fname, content in files.items():
-        cname = clean_filename(fname)
-        content = content or ""
-        if len(content.encode("utf-8")) > MAX_FILE_BYTES:
-            raise WorkspaceError(f"File '{cname}' is too large (max {MAX_FILE_BYTES // 1024} KB).")
-        cleaned[cname] = content
-
-    # Write first (atomically, via temp file + rename), delete stale files last, so a failure
+    # Write first (atomically, via hidden temp file + rename), delete stale files last, so a failure
     # part-way through can never leave a project with fewer files than it started with.
     for cname, content in cleaned.items():
-        target = os.path.join(pdir, *cname.split("/"))
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        tmp = target + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(content)
-        os.replace(tmp, target)
+        _write_atomic(os.path.join(pdir, *cname.split("/")), content)
     for rel, path in list(_iter_project_files(pdir)):
-        if rel not in cleaned and not rel.endswith(".tmp"):
+        if rel not in cleaned:
             os.remove(path)
-    for root, dirs, names in os.walk(pdir, topdown=False):      # prune folders left empty
-        if root != pdir and not os.listdir(root):
+    for root, dirs, names in os.walk(pdir, topdown=False):
+        for n in names:                                          # leftovers of an interrupted older save
+            if n.endswith(".tmp"):
+                os.remove(os.path.join(root, n))
+        if root != pdir and not os.listdir(root):                # prune folders left empty
             os.rmdir(root)
 
     meta = _read_meta(pdir)
-    ep = (entry_point or meta.get("entry_point") or "main.py").strip()
-    if ep not in cleaned:
-        ep = "main.py" if "main.py" in cleaned else (next(iter(cleaned), "main.py"))
+    ep = resolve_entry_point(cleaned, entry_point or meta.get("entry_point"))
     if robot_model in ("ur", "niryo"):
         meta["robot_model"] = robot_model
     elif "robot_model" not in meta or not meta["robot_model"]:
@@ -245,33 +271,9 @@ def load_project(username: str, project: str) -> Dict:
     files = _list_files(pdir)
     robot_model = meta.get("robot_model") or "ur"
     if not files:
-        if robot_model == "niryo":
-            init_code = '''from pyniryo import *
-robot = NiryoRobot("10.0.130.49")
-print("Connected to Niryo")
-# Write your routine here
-robot.close_connection()
-'''
-        else:
-            init_code = '''import numpy as np
-from rtde_control import RTDEControlInterface as RTDEControl
-from rtde_receive import RTDEReceiveInterface as RTDEReceive
-
-ROBOT_IP = "10.0.10.60"
-rtde_c = RTDEControl(ROBOT_IP)
-rtde_r = RTDEReceive(ROBOT_IP)
-
-home_q = [0.0, -np.pi/2, np.pi/2, -np.pi/2, -np.pi/2, 0.0]
-print("Moving to home joint configuration...")
-rtde_c.moveJ(home_q, 0.5, 0.5)
-rtde_c.stopScript()
-print("Routine completed successfully!")
-'''
-        files = {"main.py": init_code}
+        files = {"main.py": starter_main_py(robot_model)}
         save_project(username, project, files, "main.py", robot_model)
-    ep = meta.get("entry_point", "main.py")
-    if ep not in files and files:
-        ep = "main.py" if "main.py" in files else next(iter(files))
+    ep = resolve_entry_point(files, meta.get("entry_point"))
     return {"name": os.path.basename(pdir), "files": files, "entry_point": ep, "robot_model": robot_model, "owner": username}
 
 
@@ -338,8 +340,6 @@ def merge_files(username: str, project: str, new_files: Dict[str, str]) -> Dict[
             if current_count >= MAX_FILES_PER_PROJECT:
                 continue
             current_count += 1
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "w", encoding="utf-8") as f:
-            f.write(content)
+        _write_atomic(target, content)
         saved[cname] = content
     return saved

@@ -242,3 +242,8 @@ body {
 .tree-actions { display: none; margin-left: auto; gap: 2px; }
 .tree-row:hover .tree-actions, .tree-row:focus-within .tree-actions { display: flex; }
 .tree-actions .btn { height: 22px; padding: 0 6px; font-size: 11px; }
+
+/* ---------- Unsaved-change marker (file tabs + tree rows; toggled by Common.markModified) ---------- */
+.file-dot { display: none; width: 7px; height: 7px; border-radius: 9999px; flex: none; background: var(--st-pending-fg); }
+.is-modified .file-dot { display: inline-block; }
+.is-modified .tree-name { font-style: italic; }
