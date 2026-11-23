@@ -274,7 +274,7 @@
             </div>
 
             <!-- Dual Workspace (Spacious 3D Arm + Deep Terminal) -->
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
+            <div class="grid grid-cols-1 grid-rows-2 lg:grid-cols-12 lg:grid-rows-1 gap-3 flex-1 min-h-0 overflow-hidden">
                 
                 <!-- 3D Robot Arm Visualizer Panel (7 cols on lg) -->
                 <div class="lg:col-span-7 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-0">
@@ -307,7 +307,7 @@
                 <div class="lg:col-span-5 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-0">
                     <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
                         <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Output</span>
-                        <div class="flex items-center space-x-2">
+                        <div id="terminalControls" class="flex items-center space-x-2">
                             <button onclick="copyTerminalLogs()" class="text-xs text-slate-400 hover:text-slate-200">Copy</button>
                             <button onclick="clearTerminal()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
                         </div>
@@ -506,7 +506,9 @@ No output. Run a simulation or submit to see logs.
                             <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Live Robot Execution Log</span>
                             <span id="studentRunStreamBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-sky-400">Stream: Idle</span>
                         </div>
-                        <button onclick="clearStudentRunTerminal()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
+                        <div id="studentRunTerminalControls" class="flex items-center space-x-2">
+                            <button onclick="clearStudentRunTerminal()" class="text-xs text-slate-400 hover:text-slate-200">Clear</button>
+                        </div>
                     </div>
                     <div id="studentRunTerminal" class="flex-1 min-h-0 p-3.5 bg-black font-mono text-xs text-emerald-400 overflow-y-auto break-words whitespace-pre-wrap selection:bg-emerald-800 selection:text-white">
 [Execution Monitor] Connected. When an instructor launches a queued routine, live output will stream here.
@@ -1004,9 +1006,9 @@ def offset_pose(pose, dx=0.0, dy=0.0, dz=0.0):
         }
 
         function copyTerminalLogs() {
-            const term = document.getElementById("terminal");
-            if (term) {
-                navigator.clipboard.writeText(term.innerText).then(() => {
+            const text = outputLog().all();
+            if (text) {
+                navigator.clipboard.writeText(text).then(() => {
                     appendStudentLog("\n[COPIED] Terminal logs copied to clipboard.\n");
                 }).catch(() => {});
             }
@@ -1195,6 +1197,7 @@ print("Routine completed successfully!")
 
         // Initialize on DOM load
         window.addEventListener("DOMContentLoaded", () => {
+            outputLog(); runLog();          // show the log controls right away
             try {
                 if (typeof UR3Visualizer !== 'undefined') {
                     ur3Vis = new UR3Visualizer("ur3CanvasContainer");
@@ -1565,7 +1568,7 @@ print("Routine completed successfully!")
                 }
             }
 
-            appendStudentLog(`\n[AUTH] Logged in as ${isMgr ? currentStudentUser.role : 'student'} "${currentStudentUser.username}". Sandbox unlocked.\n`, false);
+            appendStudentLog(`\n[AUTH] Logged in as ${isMgr ? currentStudentUser.role : 'student'} "${currentStudentUser.username}". Sandbox unlocked.\n`);
             fetchStudentProjects();
             fetchWorkspaceFolders();
             connectStudentLiveWs();
@@ -1837,7 +1840,7 @@ print("Routine completed successfully!")
                 // A project is open now: later folder refreshes (e.g. opening "Projects") must never auto-reload it
                 // over unsaved edits.
                 hasLoadedInitialWorkspaceProject = true;
-                appendStudentLog(`\n[WORKSPACE] Loaded project folder "${projectName}" (${Object.keys(projectState.files).length} files).\n`, false);
+                appendStudentLog(`\n[WORKSPACE] Loaded project folder "${projectName}" (${Object.keys(projectState.files).length} files).\n`);
                 if (!fromAutoLoad) {
                     fetchWorkspaceFolders(true);
                 }
@@ -2964,7 +2967,7 @@ print("Routine completed successfully!")
                         data.waypoints,
                         (wp, idx, total) => {
                             if (wp.is_final) {
-                                appendStudentLog(`[STEP ${idx}/${total}] ${wp.label}\n`, true);
+                                appendStudentLog(`[STEP ${idx}/${total}] ${wp.label}\n`);
                             }
                         },
                         () => {
@@ -3158,8 +3161,7 @@ print("Routine completed successfully!")
                 document.getElementById("submissionStatus").innerText = `Execution #${currentSubId}: ${programName} (${currentStudentUser.username})`;
                 updateBadge("pending");
                 clearTerminal();
-                const runTerm = document.getElementById("studentRunTerminal");
-                if (runTerm) runTerm.innerText = "";
+                runLog().clear();
 
                 const runLabel = document.getElementById("studentRunActiveLabel");
                 if (runLabel) {
@@ -3176,8 +3178,8 @@ print("Routine completed successfully!")
                 const offlineHint = !isRobotReady ? " (NOTE: Robot is offline; program will execute once physical robot is ready)" : "";
                 const msg1 = `[INFO] Program "${programName}" submitted by ${currentStudentUser.username} as #${currentSubId}${offlineHint}. Awaiting instructor execution...\n`;
                 const msg2 = `[PROJECT] Multi-File Bundle (${Object.keys(projectState.files).length} files, Entry: ${projectState.entry_point}) packaged successfully.\n\n`;
-                appendStudentLog(msg1, false);
-                appendStudentLog(msg2, false);
+                appendStudentLog(msg1);
+                appendStudentLog(msg2);
                 appendStudentRunLog(msg1);
                 appendStudentRunLog(msg2);
                 connectLogStream(currentSubId);
@@ -3249,8 +3251,19 @@ print("Routine completed successfully!")
             badge.innerText = status.toUpperCase();
         }
 
+        // Both log panes are bounded, throttled views with Auto-scroll / No spam / Last line controls (Common.createLogView).
+        let _outputLog = null, _runLog = null;
+        function outputLog() {
+            return _outputLog || (_outputLog = Common.createLogView(document.getElementById("terminal"),
+                { key: "student.output", controls: document.getElementById("terminalControls") }));
+        }
+        function runLog() {
+            return _runLog || (_runLog = Common.createLogView(document.getElementById("studentRunTerminal"),
+                { key: "student.run", controls: document.getElementById("studentRunTerminalControls") }));
+        }
+
         function clearTerminal() {
-            document.getElementById("terminal").innerText = "";
+            outputLog().clear();
         }
 
         function setStudentSimSpeed(speed) {
@@ -3272,12 +3285,8 @@ print("Routine completed successfully!")
             appendStudentLog(`[SIMULATOR] Simulation playback speed set to ${num}x.\n`);
         }
 
-        function appendStudentLog(text, autoScroll = true) {
-            const t = document.getElementById("terminal");
-            t.innerText += text;
-            if (autoScroll) {
-                t.scrollTop = t.scrollHeight;
-            }
+        function appendStudentLog(text) {
+            outputLog().append(text);
         }
 
         let currentSubStatus = null;
@@ -3293,7 +3302,7 @@ print("Routine completed successfully!")
 
             logSocket.onopen = () => {
                 const msg = `[WEBSOCKET] Connected to real-time log channel for execution #${subId}.\n`;
-                appendStudentLog(msg, false);
+                appendStudentLog(msg);
                 appendStudentRunLog(msg);
             };
 
@@ -3503,15 +3512,11 @@ print("Routine completed successfully!")
         }
 
         function clearStudentRunTerminal() {
-            const term = document.getElementById("studentRunTerminal");
-            if (term) term.innerText = "[Execution Monitor] Terminal cleared.\n";
+            runLog().clear("[Execution Monitor] Terminal cleared.");
         }
 
         function appendStudentRunLog(text) {
-            const term = document.getElementById("studentRunTerminal");
-            if (!term) return;
-            term.innerText += text;
-            term.scrollTop = term.scrollHeight;
+            runLog().append(text);
         }
 
         function startStudentRunMonitoring(model) {

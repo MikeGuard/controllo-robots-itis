@@ -453,9 +453,11 @@
                     </div>
 
                     <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-[460px]">
-                        <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                        <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
                             <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Simulation Output</span>
-                            <button onclick="clearSimTerminal()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
+                            <div id="simTerminalControls" class="flex items-center space-x-2">
+                                <button onclick="clearSimTerminal()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
+                            </div>
                         </div>
                         <div id="simTerminal" class="flex-1 p-3 bg-black font-mono text-xs text-emerald-400 overflow-y-auto whitespace-pre-wrap selection:bg-emerald-800 selection:text-white min-h-0">
 [SIMULATOR] Ready. Select a project and click Simulate.
@@ -680,7 +682,7 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="flex items-center space-x-2">
+                            <div id="adminTerminalControls" class="flex items-center space-x-2">
                                 <span id="termActiveStreamLabel" class="text-[11px] text-slate-400 font-mono">Stream: none</span>
                                 <button onclick="clearAdminTerminal()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
                             </div>
@@ -713,12 +715,14 @@
 
                     <!-- Right: Low-Level Robot Debug Console & Dashboard Hub -->
                     <div class="xl:col-span-4 flex flex-col bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden min-h-0 h-[360px] xl:h-auto">
-                        <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+                        <div class="px-3.5 py-2 bg-slate-850 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
                             <div class="flex items-center space-x-2">
                                 <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Robot Controller Debug Stream</span>
                                 <span class="px-1.5 py-0.5 rounded text-[11px] bg-slate-800 text-slate-400 font-mono">RTDE &amp; Supervisor</span>
                             </div>
-                            <button onclick="clearDebugConsole()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
+                            <div id="robotDebugConsoleControls" class="flex items-center space-x-2">
+                                <button onclick="clearDebugConsole()" class="text-xs text-slate-500 hover:text-slate-300">Clear</button>
+                            </div>
                         </div>
                         <!-- Debug Log Stream -->
                         <div id="robotDebugConsole"
@@ -1122,7 +1126,6 @@
         let runExecutionTimer = null;
         let runExecutionStartTime = 0;
         let activeRunModel = 'ur';
-        let terminalLogs = [];
         let terminalFilter = 'all';
 
         // Templates for New Script Studio
@@ -1306,6 +1309,7 @@ print("Gripper test finished.")
 
         // --- DOM Initialization ---
         window.addEventListener("DOMContentLoaded", () => {
+            simLog(); scriptLog(); debugLog();   // show the log controls right away
             try {
                 if (typeof UR3Visualizer !== 'undefined') {
                     adminUr3Vis = new UR3Visualizer("adminUr3CanvasContainer");
@@ -1758,25 +1762,36 @@ print("Gripper test finished.")
             }
         }
 
+        // The log panes are bounded, throttled views with Auto-scroll / No spam / Last line controls
+        // (Common.createLogView): fast output can no longer freeze the page, and they scroll inside themselves.
+        let _simLog = null, _scriptLog = null, _debugLog = null;
+        function simLog() {
+            return _simLog || (_simLog = Common.createLogView(document.getElementById("simTerminal"),
+                { key: "admin.sim", controls: document.getElementById("simTerminalControls") }));
+        }
+        // Each line is tagged as a program print (true) or a supervisor/simulator message (false), for the Prints tab.
+        function scriptLog() {
+            return _scriptLog || (_scriptLog = Common.createLogView(document.getElementById("adminTerminal"), {
+                key: "admin.script", controls: document.getElementById("adminTerminalControls"),
+                tag: (line, explicit) => {
+                    if (explicit === true || explicit === false) return explicit;
+                    const t = line.trim();
+                    return t.startsWith("[PRINT]") || (t.length > 0 && !t.startsWith("[Supervisor") && !t.startsWith("[SIMULATOR"));
+                },
+                onRender: updatePrintCountBadge,
+            }));
+        }
+        function debugLog() {
+            return _debugLog || (_debugLog = Common.createLogView(document.getElementById("robotDebugConsole"),
+                { key: "admin.debug", controls: document.getElementById("robotDebugConsoleControls") }));
+        }
+
         function clearSimTerminal() {
-            const term = document.getElementById("simTerminal");
-            if (term) term.innerText = "";
+            simLog().clear();
         }
 
         function appendSimLog(text) {
-            appendCapped("simTerminal", text);
-        }
-
-        // Append text to a log pane (keeps only the last ~200 KB and sticks to the bottom
-        // only if the user hasn't scrolled up). Scrolls the pane itself, never the page.
-        function appendCapped(id, text, maxChars = 200000) {
-            const el = document.getElementById(id);
-            if (!el) return;
-            const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-            let cur = el.textContent + text;
-            if (cur.length > maxChars) cur = cur.slice(cur.length - maxChars);
-            el.textContent = cur;
-            if (atBottom) el.scrollTop = el.scrollHeight;
+            simLog().append(text);
         }
 
         // ==========================================
@@ -2580,7 +2595,8 @@ print("Gripper test finished.")
             if (activeLogSocket) {
                 try { activeLogSocket.close(); } catch (e) { }
             }
-            terminalLogs = [];
+            scriptLog().clear();
+            if (terminalFilter === 'code_prints') renderTerminal();   // scan the newly selected program
             document.getElementById("termActiveStreamLabel").innerText = `Stream: #${subId}`;
 
             if (initialLogs && initialLogs.trim().length > 0) {
@@ -2602,31 +2618,11 @@ print("Gripper test finished.")
 
         function appendLog(msg, isExplicitPrint = null) {
             if (!msg) return;
-            const lines = msg.split("\n");
-            lines.forEach((line, idx) => {
-                if (idx === lines.length - 1 && line === "") return;
-                const fullLine = line + "\n";
-                let isPrint = isExplicitPrint;
-                if (isPrint === null) {
-                    const trimmed = line.trim();
-                    if (trimmed.startsWith("[PRINT]")) {
-                        isPrint = true;
-                    } else if (!trimmed.startsWith("[Supervisor") && !trimmed.startsWith("[SIMULATOR") && trimmed.length > 0) {
-                        isPrint = true;
-                    } else {
-                        isPrint = false;
-                    }
-                }
-                terminalLogs.push({ text: fullLine, isPrint: !!isPrint });
-            });
-
-            if (terminalLogs.length > 5000) terminalLogs.splice(0, terminalLogs.length - 5000);
-            updatePrintCountBadge();
-            renderTerminal();
+            scriptLog().append(msg, isExplicitPrint);
         }
 
         function updatePrintCountBadge() {
-            const printCount = terminalLogs.filter(l => l.isPrint).length;
+            const printCount = _scriptLog ? _scriptLog.count(l => l.tag) : 0;
             const badge = document.getElementById("printCountBadge");
             if (badge) {
                 if (printCount > 0) {
@@ -2639,10 +2635,7 @@ print("Gripper test finished.")
         }
 
         function clearAdminTerminal() {
-            terminalLogs = [];
-            updatePrintCountBadge();
-            const t = document.getElementById("adminTerminal");
-            if (t) t.innerText = "";
+            scriptLog().clear();
         }
 
         function setTerminalFilter(filter) {
@@ -2668,51 +2661,32 @@ print("Gripper test finished.")
         }
 
         function renderTerminal() {
-            const t = document.getElementById("adminTerminal");
-            if (!t) return;
-
+            const view = scriptLog();
             if (terminalFilter === 'code_prints') {
                 const sub = submissionsList.find(s => s.id === selectedSubId);
                 const code = viewer ? viewer.getValue() : (sub ? sub.code : "");
                 if (!code) {
-                    t.innerText = "[Code Printf Scanner] Select a program from the queue to scan its print statements.\n";
+                    view.showText("[Code Printf Scanner] Select a program from the queue to scan its print statements.\n");
                     return;
                 }
-                const lines = code.split("\n");
                 const matches = [];
-                lines.forEach((l, idx) => {
+                code.split("\n").forEach((l, idx) => {
                     if (/print\s*\(/.test(l) || /printf\s*\(/.test(l)) {
                         matches.push(`[Line ${idx + 1}]  ${l.trim()}`);
                     }
                 });
-                t.innerText = matches.length > 0
+                view.showText(matches.length > 0
                     ? `--- Print Statements Found in Code (${matches.length}) ---\n` + matches.join("\n") + "\n"
-                    : "(No print() or printf() commands detected in this script.)\n";
+                    : "(No print() or printf() commands detected in this script.)\n");
                 return;
             }
-
-            if (terminalLogs.length === 0) {
-                t.innerText = "[Supervisor] Waiting for execution output...\n";
-                return;
-            }
-
-            let filtered = terminalLogs;
             if (terminalFilter === 'prints') {
-                filtered = terminalLogs.filter(i => i.isPrint);
-                if (filtered.length === 0) {
-                    t.innerText = "[Printf Filter] No print outputs captured yet.\n";
-                    return;
-                }
+                view.setFilter(l => l.tag, "[Printf Filter] No print outputs captured yet.");
             } else if (terminalFilter === 'errors') {
-                filtered = terminalLogs.filter(i => /error|fault|stop|fail|exception|warning/i.test(i.text));
-                if (filtered.length === 0) {
-                    t.innerText = "[Error Filter] No errors or warnings logged.\n";
-                    return;
-                }
+                view.setFilter(l => /error|fault|stop|fail|exception|warning/i.test(l.text), "[Error Filter] No errors or warnings logged.");
+            } else {
+                view.setFilter(null);
             }
-
-            t.innerText = filtered.map(i => i.text).join("");
-            t.scrollTop = t.scrollHeight;
         }
 
         // ==========================================
@@ -2873,8 +2847,7 @@ print("Gripper test finished.")
             telemetryStreamModel = model;
             lastTelemetryQ = null;
 
-            const dbg = document.getElementById("robotDebugConsole");
-            if (dbg) dbg.innerText = "";
+            debugLog().clear();
 
             // Preload recent controller debug history once per (re)start
             (async () => {
@@ -3198,12 +3171,11 @@ print("Gripper test finished.")
         }
 
         function appendDebugConsole(text) {
-            appendCapped("robotDebugConsole", text);
+            debugLog().append(text);
         }
 
         function clearDebugConsole() {
-            const el = document.getElementById("robotDebugConsole");
-            if (el) el.innerText = "[Controller] Debug log cleared.\n";
+            debugLog().clear("[Controller] Debug log cleared.");
         }
 
         function setSimSpeed(speed) {
