@@ -7,6 +7,7 @@
  *   files    languageFor(name)  cleanFileName(raw, opts)  resolveEntry(files, wanted)
  *            fileSet(files, entry)  sameFileSet(a, b)  changedFiles(base, files)  markModified(root, changed)
  *   editor   createFileBuffer({ editor, state, onEdit, onLoad })   see below
+ *   logs     createLogView(el, { key, controls, ... })   bounded, throttled log pane with Auto-scroll / No spam / Last line
  */
 (function () {
   'use strict';
@@ -212,10 +213,162 @@
     return { capture, open, load, forget, rename, handleChange, attach, bound: () => bound };
   }
 
+  /* ---------- log panes ----------
+   * createLogModel(opts) keeps the lines of one log pane (no DOM, tested in tests/log_view.test.js).
+   * createLogView(el, opts) shows a model in a pane and adds its controls:
+   *   Auto-scroll   follow the newest line (pauses while you scroll up; untick to never move)
+   *   Full log      every line kept
+   *   No spam       hides simulation step-by-step progress and folds repeated lines into "line  (×N)"
+   *   Last line     only the newest line
+   * Only the last `maxLines` lines are kept and the pane is redrawn at most every 150 ms, however fast
+   * text arrives, so a program that prints in a loop can no longer freeze the page.
+   */
+  const LOG_MODES = { all: 'Full log', quiet: 'No spam', last: 'Last line' };
+  const SPAM_LINE = /^\s*(\[STEP \d+\/\d+\]|\[SIMULATOR\] \(\d+\/\d+\))/;     // simulation playback progress
+  const LOG_STAMP = /^\[\d{1,2}:\d{2}(:\d{2})?\]\s*/;                         // "[12:01:33] " ignored when folding repeats
+
+  function createLogModel({ maxLines = 1000, maxLineChars = 2000, isSpam = (t) => SPAM_LINE.test(t), tag = null } = {}) {
+    let lines = [];          // { text, tag }
+    let open = false;        // the last line has not ended with a newline yet
+    let dropped = 0;
+
+    function append(text, meta) {
+      if (text === null || text === undefined || text === '') return;
+      const parts = String(text).replace(/\r\n?/g, '\n').split('\n');
+      parts.forEach((p, i) => {
+        const isLast = i === parts.length - 1;
+        if (i === 0 && open && lines.length) lines[lines.length - 1].text += p;
+        else if (!(isLast && p === '')) lines.push({ text: p, tag: tag ? tag(p, meta) : meta });
+        // print('.', end='') in a loop builds one endless line: wrap it so the line cap still bounds the pane
+        let cur = lines[lines.length - 1];
+        while (cur && cur.text.length > maxLineChars) {
+          const rest = cur.text.slice(maxLineChars);
+          cur.text = cur.text.slice(0, maxLineChars);
+          cur = { text: rest, tag: cur.tag };
+          lines.push(cur);
+        }
+      });
+      open = parts[parts.length - 1] !== '';
+      if (lines.length > maxLines) {
+        const n = lines.length - maxLines;
+        lines.splice(0, n);
+        dropped += n;
+      }
+    }
+
+    function clear() { lines = []; open = false; dropped = 0; }
+
+    // The text a pane shows in `mode`; `filter(line)` keeps only some lines (the admin's Prints/Errors tabs).
+    function render(mode = 'all', filter = null) {
+      const src = filter ? lines.filter(filter) : lines;
+      if (mode === 'last') {
+        for (let i = src.length - 1; i >= 0; i--) if (src[i].text.trim()) return src[i].text;
+        return '';
+      }
+      const head = dropped ? `[… ${dropped} older line${dropped === 1 ? '' : 's'} not kept]\n` : '';
+      if (mode !== 'quiet') return head + src.map((l) => l.text).join('\n');
+      const out = [];
+      let prevKey = null, reps = 0;
+      src.forEach((l) => {
+        if (isSpam(l.text)) return;
+        const key = l.text.replace(LOG_STAMP, '');
+        if (!key.trim()) {                                     // collapse runs of blank lines
+          if (out.length && !out[out.length - 1].trim()) return;
+          out.push(''); prevKey = null; return;
+        }
+        if (key === prevKey) { reps++; out[out.length - 1] = `${l.text}  (×${reps})`; return; }
+        out.push(l.text); prevKey = key; reps = 1;
+      });
+      const last = src[src.length - 1];
+      if (last && isSpam(last.text)) out.push(last.text);      // still show where a running playback is
+      return head + out.join('\n');
+    }
+
+    return {
+      append, clear, render,
+      all: () => lines.map((l) => l.text).join('\n'),
+      count: (pred) => lines.reduce((n, l) => n + (pred(l) ? 1 : 0), 0),
+      size: () => lines.length,
+    };
+  }
+
+  function createLogView(el, { key, controls = null, placeholder, maxLines, isSpam, tag, onRender } = {}) {
+    const model = createLogModel({ maxLines, isSpam, tag });
+    const storeKey = `ur.logview.${key || (el && el.id) || 'log'}`;
+    const settings = { mode: 'all', follow: true };
+    try { Object.assign(settings, JSON.parse(localStorage.getItem(storeKey) || '{}')); } catch (_) { }
+    if (!LOG_MODES[settings.mode]) settings.mode = 'all';
+    let empty = placeholder !== undefined ? placeholder : (el ? el.textContent.trim() : '');
+    let filter = null, filterEmpty = '', fixed = null, timer = null, pinned = true;
+
+    function save() { try { localStorage.setItem(storeKey, JSON.stringify(settings)); } catch (_) { } }
+
+    function draw() {
+      timer = null;
+      if (!el) return;
+      let text;
+      if (fixed !== null) text = fixed;
+      else if (!model.size()) text = empty;
+      else {
+        text = model.render(settings.mode, filter);
+        if (!text && filter) text = filterEmpty;
+      }
+      if (el.textContent !== text) el.textContent = text;
+      if (settings.follow && pinned) el.scrollTop = el.scrollHeight;
+      if (onRender) onRender();
+    }
+    const schedule = () => { if (!timer) timer = setTimeout(draw, 150); };
+    const now = () => { if (timer) clearTimeout(timer); draw(); };
+
+    if (el) {
+      // Following pauses while the user scrolls up to read, and resumes at the bottom.
+      el.addEventListener('scroll', () => {
+        if (el.clientHeight) pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+      }, { passive: true });
+      // A pane filled while hidden (another tab) or resized still opens on its newest line.
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(() => { if (settings.follow && pinned) el.scrollTop = el.scrollHeight; }).observe(el);
+      }
+    }
+
+    if (controls && typeof document !== 'undefined') {
+      const wrap = document.createElement('span');
+      wrap.className = 'logview-controls flex items-center gap-2';
+      wrap.innerHTML =
+        `<label class="flex items-center gap-1 text-xs text-slate-400 cursor-pointer select-none whitespace-nowrap" title="Keep the newest line in view">` +
+        `<input type="checkbox" class="accent-sky-500"> Auto-scroll</label>` +
+        `<select class="text-[11px] bg-slate-800 border border-slate-700 text-slate-300 rounded px-1 py-0.5" ` +
+        `title="Full log: every line. No spam: hides simulation step-by-step progress and folds repeated lines. Last line: only the newest line.">` +
+        Object.entries(LOG_MODES).map(([v, label]) => `<option value="${v}">${label}</option>`).join('') + `</select>`;
+      const box = wrap.querySelector('input');
+      const sel = wrap.querySelector('select');
+      box.checked = settings.follow;
+      sel.value = settings.mode;
+      box.addEventListener('change', () => { settings.follow = box.checked; pinned = true; save(); now(); });
+      sel.addEventListener('change', () => { settings.mode = sel.value; pinned = true; save(); now(); });
+      controls.insertBefore(wrap, controls.firstChild);
+    }
+
+    return {
+      append(text, meta) { model.append(text, meta); schedule(); },
+      // Empties the pane; `text` (optional) is shown until new lines arrive.
+      clear(text = '') { model.clear(); fixed = null; empty = text; pinned = true; now(); },
+      // Show only the lines `fn(line)` accepts (null: all); `emptyText` when none match.
+      setFilter(fn, emptyText = '') { filter = fn; filterEmpty = emptyText; fixed = null; pinned = true; now(); },
+      // Show a fixed text instead of the log (the log keeps collecting); null goes back to the log.
+      showText(text) { fixed = text; now(); },
+      flush: now,
+      all: model.all,
+      count: model.count,
+      size: model.size,
+      mode: () => settings.mode,
+    };
+  }
+
   const api = {
     esc, notify, stamp, relTime, statusBadge, STATUS, apiJson,
     ALLOWED_EXTENSIONS, languageFor, cleanFileName, resolveEntry, fileSet, sameFileSet, changedFiles, markModified,
-    createFileBuffer,
+    createFileBuffer, createLogModel, createLogView, LOG_MODES,
   };
   if (typeof window !== 'undefined') window.Common = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
